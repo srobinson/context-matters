@@ -46,13 +46,11 @@ pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
         check_input_size(q, "query")?;
     }
 
-    // Parse and validate scope path
+    // Parse and validate scope path (None = search all scopes)
     let scope_path = match &params.scope {
         Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
         None => None,
     };
-    let default_scope = ScopePath::global();
-    let scope_ref = scope_path.as_ref().unwrap_or(&default_scope);
 
     // Parse kind filters
     let kind_filters: Vec<EntryKind> = params
@@ -71,14 +69,38 @@ pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
         limit
     };
 
-    // Route to search or resolve_context based on query presence
+    // Route to search or resolve_context based on query presence.
+    // When scope is None, search is unscoped (all entries).
+    // When scope is set, search narrows to that scope + ancestors.
     let entries = match &params.query {
         Some(query) => store
-            .search(query, Some(scope_ref), fetch_limit)
+            .search(query, scope_path.as_ref(), fetch_limit)
             .map_err(cm_err_to_string)?,
-        None => store
-            .resolve_context(scope_ref, &kind_filters, fetch_limit)
-            .map_err(cm_err_to_string)?,
+        None => {
+            // Without a query, resolve_context walks ancestors from the given scope.
+            // Without a scope, browse all active entries ordered by updated_at DESC.
+            match &scope_path {
+                Some(sp) => store
+                    .resolve_context(sp, &kind_filters, fetch_limit)
+                    .map_err(cm_err_to_string)?,
+                None => {
+                    let filter = cm_core::EntryFilter {
+                        kind: if kind_filters.len() == 1 {
+                            Some(kind_filters[0])
+                        } else {
+                            None
+                        },
+                        pagination: cm_core::Pagination {
+                            limit: fetch_limit,
+                            cursor: None,
+                        },
+                        ..Default::default()
+                    };
+                    let paged = store.browse(filter).map_err(cm_err_to_string)?;
+                    paged.items
+                }
+            }
+        }
     };
 
     // Post-filter by kinds (only when using search path, since resolve_context handles kinds internally)
@@ -104,8 +126,11 @@ pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
     // Apply limit after post-filtering
     let entries: Vec<Entry> = entries.into_iter().take(limit as usize).collect();
 
-    // Build scope chain from the target scope
-    let scope_chain: Vec<String> = scope_ref.ancestors().map(String::from).collect();
+    // Build scope chain from the target scope (empty when unscoped)
+    let scope_chain: Vec<String> = match &scope_path {
+        Some(sp) => sp.ancestors().map(String::from).collect(),
+        None => Vec::new(),
+    };
 
     // Build result entries with token budget tracking
     let mut results = Vec::with_capacity(entries.len());
