@@ -202,6 +202,10 @@ mod tests {
             table_names.contains(&"entry_relations"),
             "entry_relations table missing"
         );
+        assert!(
+            table_names.contains(&"entries_fts"),
+            "entries_fts virtual table missing"
+        );
 
         // Verify indexes exist
         let indexes: Vec<(String,)> = sqlx::query_as(
