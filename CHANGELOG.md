@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/srobinson/context-matters/compare/v0.1.3...v0.1.4) (2026-03-14)
+
+
+### Bug Fixes
+
+* cx_recall without scope searches all entries instead of only global ([14e382f](https://github.com/srobinson/context-matters/commit/14e382fae58d2eaf8fc8ac5fa5ef0f5e1f024dd3))
+
 ## [0.1.3](https://github.com/srobinson/context-matters/compare/v0.1.2...v0.1.3) (2026-03-14)
 
 
