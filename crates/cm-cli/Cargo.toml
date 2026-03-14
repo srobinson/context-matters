@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "CLI and MCP server for context-matters"
 
+[lib]
+name = "cm_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "cm"
 path = "src/main.rs"

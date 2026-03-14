@@ -1,4 +1,4 @@
-mod mcp;
+use cm_cli::mcp;
 
 use anyhow::Result;
 use clap::{ColorChoice, Parser, Subcommand};
