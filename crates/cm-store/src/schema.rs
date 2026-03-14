@@ -232,4 +232,175 @@ mod tests {
         write_pool.close().await;
         read_pool.close().await;
     }
+
+    /// Helper: create pools, run migrations, insert global scope, return pools.
+    async fn setup_with_scope() -> (SqlitePool, SqlitePool, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let (wp, rp) = create_pools(&db_path).await.unwrap();
+        run_migrations(&wp).await.unwrap();
+
+        sqlx::query("INSERT INTO scopes (path, kind, label) VALUES ('global', 'global', 'Global')")
+            .execute(&wp)
+            .await
+            .unwrap();
+
+        (wp, rp, dir)
+    }
+
+    #[tokio::test]
+    async fn fts_insert_trigger_indexes_new_entries() {
+        let (wp, rp, _dir) = setup_with_scope().await;
+
+        sqlx::query(
+            "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, created_by) \
+             VALUES ('e1', 'global', 'fact', 'Rust ownership', 'Ownership prevents data races', 'hash1', 'test')",
+        )
+        .execute(&wp)
+        .await
+        .unwrap();
+
+        // FTS search should find the entry
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT title FROM entries_fts WHERE entries_fts MATCH 'ownership'")
+                .fetch_all(&rp)
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "Rust ownership");
+
+        wp.close().await;
+        rp.close().await;
+    }
+
+    #[tokio::test]
+    async fn fts_update_trigger_reindexes() {
+        let (wp, rp, _dir) = setup_with_scope().await;
+
+        sqlx::query(
+            "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, created_by) \
+             VALUES ('e1', 'global', 'fact', 'Old title', 'Old body content', 'hash1', 'test')",
+        )
+        .execute(&wp)
+        .await
+        .unwrap();
+
+        // Update the body
+        sqlx::query("UPDATE entries SET body = 'New body with borrowing' WHERE id = 'e1'")
+            .execute(&wp)
+            .await
+            .unwrap();
+
+        // New content should be findable
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT title FROM entries_fts WHERE entries_fts MATCH 'borrowing'")
+                .fetch_all(&rp)
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), 1);
+
+        // Old content should not be findable
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT title FROM entries_fts WHERE entries_fts MATCH '\"Old body content\"'",
+        )
+        .fetch_all(&rp)
+        .await
+        .unwrap();
+        assert!(rows.is_empty(), "old content should be removed from FTS");
+
+        wp.close().await;
+        rp.close().await;
+    }
+
+    #[tokio::test]
+    async fn fts_delete_trigger_removes_from_index() {
+        let (wp, rp, _dir) = setup_with_scope().await;
+
+        sqlx::query(
+            "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, created_by) \
+             VALUES ('e1', 'global', 'fact', 'Delete me', 'This will vanish', 'hash1', 'test')",
+        )
+        .execute(&wp)
+        .await
+        .unwrap();
+
+        sqlx::query("DELETE FROM entries WHERE id = 'e1'")
+            .execute(&wp)
+            .await
+            .unwrap();
+
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT title FROM entries_fts WHERE entries_fts MATCH 'vanish'")
+                .fetch_all(&rp)
+                .await
+                .unwrap();
+        assert!(rows.is_empty(), "deleted entry should be removed from FTS");
+
+        wp.close().await;
+        rp.close().await;
+    }
+
+    #[tokio::test]
+    async fn updated_at_trigger_fires_on_update() {
+        let (wp, _rp, _dir) = setup_with_scope().await;
+
+        sqlx::query(
+            "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, created_by) \
+             VALUES ('e1', 'global', 'fact', 'Trigger test', 'Body', 'hash1', 'test')",
+        )
+        .execute(&wp)
+        .await
+        .unwrap();
+
+        let before: (String,) = sqlx::query_as("SELECT updated_at FROM entries WHERE id = 'e1'")
+            .fetch_one(&wp)
+            .await
+            .unwrap();
+
+        // Small delay to ensure timestamp changes
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        sqlx::query("UPDATE entries SET title = 'Updated title' WHERE id = 'e1'")
+            .execute(&wp)
+            .await
+            .unwrap();
+
+        let after: (String,) = sqlx::query_as("SELECT updated_at FROM entries WHERE id = 'e1'")
+            .fetch_one(&wp)
+            .await
+            .unwrap();
+
+        assert_ne!(before.0, after.0, "updated_at should change after UPDATE");
+
+        wp.close().await;
+        _rp.close().await;
+    }
+
+    #[tokio::test]
+    async fn triggers_exist_after_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let (wp, rp) = create_pools(&db_path).await.unwrap();
+        run_migrations(&wp).await.unwrap();
+
+        let triggers: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
+                .fetch_all(&rp)
+                .await
+                .unwrap();
+
+        let names: Vec<&str> = triggers.iter().map(|r| r.0.as_str()).collect();
+        let expected = [
+            "entries_fts_delete",
+            "entries_fts_insert",
+            "entries_fts_update",
+            "entries_updated_at",
+        ];
+        for t in &expected {
+            assert!(names.contains(t), "missing trigger: {t}");
+        }
+
+        wp.close().await;
+        rp.close().await;
+    }
 }
