@@ -44,7 +44,7 @@ pub const STORE_SUPERSEDES_HELP: &str = "ID of entry to supersede (soft-deletes 
 #[rustfmt::skip]
 pub const DEPOSIT_ABOUT: &str = "Batch-store conversation exchanges.\n\nEach exchange becomes an observation entry. Provide an optional summary to create a linked summary entry.";
 #[rustfmt::skip]
-pub const DEPOSIT_EXCHANGES_HELP: &str = "JSON array of {user, assistant} exchange objects";
+pub const DEPOSIT_EXCHANGES_HELP: &str = "JSON array of {user, assistant, title?} exchange objects";
 #[rustfmt::skip]
 pub const DEPOSIT_SUMMARY_HELP: &str = "Optional conversation summary (linked to exchanges)";
 #[rustfmt::skip]
@@ -93,7 +93,9 @@ pub const FORGET_ABOUT: &str = "Soft-delete entries.\n\nMarks entries as forgott
 pub const FORGET_IDS_HELP: &str = "Entry IDs to forget (space-separated, max 100)";
 
 #[rustfmt::skip]
-pub const STATS_ABOUT: &str = "Show store statistics.\n\nDisplays entry counts by kind and scope, relation count, database size, and scope tree.";
+pub const STATS_ABOUT: &str = "Show store statistics.\n\nDisplays entry counts by kind, scope, and tag, relation count, database size, and scope tree.";
+#[rustfmt::skip]
+pub const STATS_TAG_SORT_HELP: &str = "Tag sort order: name (alphabetical, default) or count (most used first)";
 
 #[rustfmt::skip]
 pub const EXPORT_ABOUT: &str = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter to a subtree.";

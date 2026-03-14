@@ -15,5 +15,5 @@ pub use store::ContextStore;
 pub use types::{
     Confidence, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation, NewEntry, NewScope,
     PagedResult, Pagination, PaginationCursor, RelationKind, Scope, ScopeKind, ScopePath,
-    StoreStats, UpdateEntry,
+    StoreStats, TagCount, UpdateEntry,
 };

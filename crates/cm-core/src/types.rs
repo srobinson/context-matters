@@ -683,6 +683,15 @@ pub struct EntryFilter {
     pub pagination: Pagination,
 }
 
+// ── TagCount ───────────────────────────────────────────────────────
+
+/// A tag with its usage count across active entries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagCount {
+    pub tag: String,
+    pub count: u64,
+}
+
 // ── StoreStats ─────────────────────────────────────────────────────
 
 /// Aggregate statistics about the context store.
@@ -705,6 +714,9 @@ pub struct StoreStats {
 
     /// Breakdown of active entries by scope path.
     pub entries_by_scope: std::collections::HashMap<String, u64>,
+
+    /// Breakdown of active entries by tag, pre-sorted by the store.
+    pub entries_by_tag: Vec<TagCount>,
 
     /// Database file size in bytes (0 for in-memory databases).
     pub db_size_bytes: u64,

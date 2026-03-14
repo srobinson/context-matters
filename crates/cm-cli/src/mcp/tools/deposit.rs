@@ -37,6 +37,8 @@ struct CxDepositParams {
 struct Exchange {
     user: String,
     assistant: String,
+    #[serde(default)]
+    title: Option<String>,
 }
 
 pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
@@ -52,10 +54,17 @@ pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
         ));
     }
 
-    // Validate individual exchange sizes
+    // Validate individual exchange sizes and explicit titles
     for (i, ex) in params.exchanges.iter().enumerate() {
         check_input_size(&ex.user, &format!("exchanges[{i}].user"))?;
         check_input_size(&ex.assistant, &format!("exchanges[{i}].assistant"))?;
+        if let Some(ref t) = ex.title
+            && (t.is_empty() || t.len() > EXCHANGE_TITLE_LEN)
+        {
+            return Err(format!(
+                "Validation error: exchanges[{i}].title must be 1-{EXCHANGE_TITLE_LEN} bytes"
+            ));
+        }
     }
 
     let scope_path =
@@ -68,7 +77,10 @@ pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
 
     // Create one entry per exchange
     for ex in &params.exchanges {
-        let title = snippet(&ex.user, EXCHANGE_TITLE_LEN);
+        let title = match &ex.title {
+            Some(t) => t.clone(),
+            None => snippet(&ex.user, EXCHANGE_TITLE_LEN),
+        };
         let body = format!("{}\n\n---\n\n{}", ex.user, ex.assistant);
 
         let new_entry = NewEntry {
