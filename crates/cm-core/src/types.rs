@@ -104,6 +104,12 @@ impl ScopePath {
     ///
     /// Returns `Err(ScopePathError)` if any invariant is violated.
     pub fn parse(input: &str) -> Result<Self, ScopePathError> {
+        Self::validate(input)?;
+        Ok(Self(input.to_string()))
+    }
+
+    /// Validate a scope path string without allocating.
+    fn validate(input: &str) -> Result<(), ScopePathError> {
         if input.is_empty() {
             return Err(ScopePathError::Empty);
         }
@@ -143,7 +149,7 @@ impl ScopePath {
             prev_kind = kind;
         }
 
-        Ok(Self(input.to_string()))
+        Ok(())
     }
 
     /// The root scope. Always valid.
@@ -213,7 +219,8 @@ impl TryFrom<String> for ScopePath {
     type Error = ScopePathError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        Self::parse(&s)
+        Self::validate(&s)?;
+        Ok(Self(s))
     }
 }
 

@@ -147,7 +147,7 @@ fn sanitize_word(word: &str) -> String {
 ///
 /// Strips:
 /// - Unbalanced quotes
-/// - Special characters that cause FTS5 syntax errors
+/// - Special characters that cause FTS5 syntax errors (parens, carets, etc.)
 fn sanitize_fts_input(input: &str) -> String {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -159,13 +159,48 @@ fn sanitize_fts_input(input: &str) -> String {
     let balanced_quotes = quote_count % 2 == 0;
 
     if balanced_quotes && trimmed.contains('"') {
-        // Preserve the input mostly as-is when quotes are balanced,
-        // only cleaning non-phrase segments
-        return trimmed.to_string();
+        // Preserve quoted phrases verbatim, sanitize non-quoted portions.
+        // Collect all parts (quoted phrases and sanitized words) then join with spaces.
+        let mut parts: Vec<String> = Vec::new();
+        let mut in_quote = false;
+        let mut segment = String::new();
+
+        for c in trimmed.chars() {
+            if c == '"' {
+                if in_quote {
+                    // Closing quote: emit quoted phrase as a single part
+                    parts.push(format!("\"{}\"", segment));
+                    segment.clear();
+                } else {
+                    // Opening quote: flush and sanitize accumulated non-quoted text
+                    if !segment.is_empty() {
+                        for word in sanitize_unquoted_words(&segment) {
+                            parts.push(word);
+                        }
+                        segment.clear();
+                    }
+                }
+                in_quote = !in_quote;
+            } else {
+                segment.push(c);
+            }
+        }
+        // Flush any trailing non-quoted text
+        if !segment.is_empty() {
+            for word in sanitize_unquoted_words(&segment) {
+                parts.push(word);
+            }
+        }
+        return parts.join(" ");
     }
 
     // Strip all quotes if unbalanced, then sanitize each word
-    let words: Vec<String> = trimmed
+    sanitize_unquoted_words(trimmed).join(" ")
+}
+
+/// Return sanitized words from a non-quoted segment as individual strings.
+fn sanitize_unquoted_words(segment: &str) -> Vec<String> {
+    segment
         .split_whitespace()
         .map(|w| {
             let stripped = w.replace('"', "");
@@ -176,9 +211,7 @@ fn sanitize_fts_input(input: &str) -> String {
             }
         })
         .filter(|w| !w.is_empty())
-        .collect();
-
-    words.join(" ")
+        .collect()
 }
 
 #[cfg(test)]
@@ -231,6 +264,25 @@ mod tests {
     fn fts_query_empty() {
         let q = FtsQuery::new("");
         assert_eq!(q.as_str(), "");
+    }
+
+    #[test]
+    fn fts_query_balanced_quotes_sanitizes_outside() {
+        // Parens are FTS5 grouping syntax and should be stripped from non-quoted portions
+        let q = FtsQuery::new("\"hello world\" AND foo(bar)");
+        assert_eq!(q.as_str(), "\"hello world\" AND foobar");
+    }
+
+    #[test]
+    fn fts_query_balanced_quotes_mixed() {
+        let q = FtsQuery::new("test \"exact phrase\" other* stuff");
+        assert_eq!(q.as_str(), "test \"exact phrase\" other* stuff");
+    }
+
+    #[test]
+    fn fts_query_strips_carets_outside_quotes() {
+        let q = FtsQuery::new("\"keep this\" ^remove");
+        assert_eq!(q.as_str(), "\"keep this\" remove");
     }
 
     #[test]

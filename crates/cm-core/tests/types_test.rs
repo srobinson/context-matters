@@ -330,8 +330,7 @@ fn scope_path_malformed_segment() {
 
 #[test]
 fn scope_path_full_depth() {
-    let path =
-        ScopePath::parse("global/project:helioy/repo:nancyr/session:abc123").unwrap();
+    let path = ScopePath::parse("global/project:helioy/repo:nancyr/session:abc123").unwrap();
     assert_eq!(path.depth(), 4);
     assert_eq!(path.leaf_kind(), ScopeKind::Session);
     let ancestors: Vec<&str> = path.ancestors().collect();
