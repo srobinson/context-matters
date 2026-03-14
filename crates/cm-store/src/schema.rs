@@ -178,4 +178,54 @@ mod tests {
         write_pool.close().await;
         read_pool.close().await;
     }
+
+    #[tokio::test]
+    async fn migration_001_creates_tables_and_indexes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+
+        let (write_pool, read_pool) = create_pools(&db_path).await.unwrap();
+        run_migrations(&write_pool).await.unwrap();
+
+        // Verify all three tables exist
+        let tables: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_sqlx_%' ORDER BY name",
+        )
+        .fetch_all(&read_pool)
+        .await
+        .unwrap();
+
+        let table_names: Vec<&str> = tables.iter().map(|r| r.0.as_str()).collect();
+        assert!(table_names.contains(&"scopes"), "scopes table missing");
+        assert!(table_names.contains(&"entries"), "entries table missing");
+        assert!(
+            table_names.contains(&"entry_relations"),
+            "entry_relations table missing"
+        );
+
+        // Verify indexes exist
+        let indexes: Vec<(String,)> = sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name",
+        )
+        .fetch_all(&read_pool)
+        .await
+        .unwrap();
+
+        let idx_names: Vec<&str> = indexes.iter().map(|r| r.0.as_str()).collect();
+        let expected = [
+            "idx_entries_content_hash",
+            "idx_entries_kind",
+            "idx_entries_scope",
+            "idx_entries_scope_kind",
+            "idx_entries_superseded",
+            "idx_entries_updated",
+            "idx_relations_target",
+        ];
+        for idx in &expected {
+            assert!(idx_names.contains(idx), "missing index: {idx}");
+        }
+
+        write_pool.close().await;
+        read_pool.close().await;
+    }
 }
