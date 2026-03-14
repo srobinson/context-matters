@@ -6,7 +6,7 @@
 
 use cm_core::{
     Confidence, ContextStore, Entry, EntryFilter, EntryKind, EntryMeta, NewEntry, Pagination,
-    RelationKind, ScopePath,
+    RelationKind, ScopePath, UpdateEntry,
 };
 use cm_store::CmStore;
 use serde::Deserialize;
@@ -566,29 +566,379 @@ fn entry_to_browse_json(entry: &Entry) -> Value {
     });
 
     if let Some(ref meta) = entry.meta
-        && !meta.tags.is_empty() {
-            result["tags"] = json!(meta.tags);
-        }
+        && !meta.tags.is_empty()
+    {
+        result["tags"] = json!(meta.tags);
+    }
 
     result
 }
 
-pub fn cx_get(_store: &CmStore, _args: &Value) -> Result<String, String> {
-    Err("cx_get not yet implemented".to_owned())
+// ── cx_get ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CxGetParams {
+    /// Entry IDs to retrieve. Maximum 100 per request.
+    ids: Vec<String>,
 }
 
-pub fn cx_update(_store: &CmStore, _args: &Value) -> Result<String, String> {
-    Err("cx_update not yet implemented".to_owned())
+pub fn cx_get(store: &CmStore, args: &Value) -> Result<String, String> {
+    let params: CxGetParams =
+        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+
+    if params.ids.is_empty() {
+        return Err("Validation error: ids cannot be empty".to_owned());
+    }
+    if params.ids.len() > super::MAX_BATCH_IDS {
+        return Err(format!(
+            "Validation error: maximum {} IDs per request",
+            super::MAX_BATCH_IDS
+        ));
+    }
+
+    let uuids: Vec<uuid::Uuid> = params
+        .ids
+        .iter()
+        .map(|s| uuid::Uuid::parse_str(s).map_err(|_| format!("Invalid UUID format: '{s}'")))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let entries = store.get_entries(&uuids).map_err(cm_err_to_string)?;
+    let found = entries.len();
+    let missing = uuids.len() - found;
+
+    let entries_json: Vec<Value> = entries.iter().map(entry_to_full_json).collect();
+
+    let response = json!({
+        "entries": entries_json,
+        "found": found,
+        "missing": missing,
+    });
+
+    json_response(response)
 }
 
-pub fn cx_forget(_store: &CmStore, _args: &Value) -> Result<String, String> {
-    Err("cx_forget not yet implemented".to_owned())
+/// Convert an entry to the full response format (includes body).
+fn entry_to_full_json(entry: &Entry) -> Value {
+    json!({
+        "id": entry.id.to_string(),
+        "scope_path": entry.scope_path.as_str(),
+        "kind": entry.kind.as_str(),
+        "title": &entry.title,
+        "body": &entry.body,
+        "content_hash": &entry.content_hash,
+        "meta": &entry.meta,
+        "created_by": &entry.created_by,
+        "created_at": entry.created_at.to_rfc3339(),
+        "updated_at": entry.updated_at.to_rfc3339(),
+        "superseded_by": entry.superseded_by.map(|id| id.to_string()),
+    })
 }
 
-pub fn cx_stats(_store: &CmStore, _args: &Value) -> Result<String, String> {
-    Err("cx_stats not yet implemented".to_owned())
+// ── cx_update ────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CxUpdateParams {
+    /// ID of the entry to update.
+    id: String,
+
+    /// New title.
+    #[serde(default)]
+    title: Option<String>,
+
+    /// New body content.
+    #[serde(default)]
+    body: Option<String>,
+
+    /// New kind classification.
+    #[serde(default)]
+    kind: Option<String>,
+
+    /// Replace metadata entirely.
+    #[serde(default)]
+    meta: Option<CxMetaInput>,
 }
 
-pub fn cx_export(_store: &CmStore, _args: &Value) -> Result<String, String> {
-    Err("cx_export not yet implemented".to_owned())
+#[derive(Debug, Deserialize)]
+struct CxMetaInput {
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    confidence: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    priority: Option<i32>,
+}
+
+pub fn cx_update(store: &CmStore, args: &Value) -> Result<String, String> {
+    let params: CxUpdateParams =
+        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+
+    let id = uuid::Uuid::parse_str(&params.id)
+        .map_err(|_| format!("Invalid UUID format: '{}'", params.id))?;
+
+    // Validate at least one field is provided
+    if params.title.is_none()
+        && params.body.is_none()
+        && params.kind.is_none()
+        && params.meta.is_none()
+    {
+        return Err("Validation error: at least one field must be provided".to_owned());
+    }
+
+    // Validate input sizes
+    if let Some(ref t) = params.title {
+        check_input_size(t, "title")?;
+    }
+    if let Some(ref b) = params.body {
+        check_input_size(b, "body")?;
+    }
+
+    // Parse kind if provided
+    let kind = match &params.kind {
+        Some(k) => Some(k.parse::<EntryKind>().map_err(cm_err_to_string)?),
+        None => None,
+    };
+
+    // Parse meta if provided
+    let meta = match params.meta {
+        Some(m) => {
+            let confidence = match &m.confidence {
+                Some(c) => Some(parse_confidence(c)?),
+                None => None,
+            };
+            let expires_at = match &m.expires_at {
+                Some(s) => Some(
+                    chrono::DateTime::parse_from_rfc3339(s)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .map_err(|e| {
+                            format!("Invalid expires_at: {e}. Expected ISO 8601 format.")
+                        })?,
+                ),
+                None => None,
+            };
+            Some(EntryMeta {
+                tags: m.tags,
+                confidence,
+                source: m.source,
+                expires_at,
+                priority: m.priority,
+                extra: std::collections::HashMap::new(),
+            })
+        }
+        None => None,
+    };
+
+    let update = UpdateEntry {
+        title: params.title,
+        body: params.body,
+        kind,
+        meta,
+    };
+
+    let entry = store.update_entry(id, update).map_err(cm_err_to_string)?;
+
+    let response = json!({
+        "entry": {
+            "id": entry.id.to_string(),
+            "scope_path": entry.scope_path.as_str(),
+            "kind": entry.kind.as_str(),
+            "title": &entry.title,
+            "content_hash": &entry.content_hash,
+            "updated_at": entry.updated_at.to_rfc3339(),
+        },
+        "message": "Entry updated.",
+    });
+
+    json_response(response)
+}
+
+// ── cx_forget ────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CxForgetParams {
+    /// Entry IDs to forget. Maximum 100 per request.
+    ids: Vec<String>,
+}
+
+pub fn cx_forget(store: &CmStore, args: &Value) -> Result<String, String> {
+    let params: CxForgetParams =
+        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+
+    if params.ids.is_empty() {
+        return Err("Validation error: ids cannot be empty".to_owned());
+    }
+    if params.ids.len() > super::MAX_BATCH_IDS {
+        return Err(format!(
+            "Validation error: maximum {} IDs per request",
+            super::MAX_BATCH_IDS
+        ));
+    }
+
+    let uuids: Vec<uuid::Uuid> = params
+        .ids
+        .iter()
+        .map(|s| uuid::Uuid::parse_str(s).map_err(|_| format!("Invalid UUID format: '{s}'")))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut forgotten = 0u32;
+    let mut already_inactive = 0u32;
+    let mut not_found = 0u32;
+    let mut details = Vec::with_capacity(uuids.len());
+
+    for &id in &uuids {
+        // Check current state
+        match store.get_entry(id) {
+            Ok(entry) => {
+                if entry.superseded_by.is_some() {
+                    already_inactive += 1;
+                    details.push(json!({"id": id.to_string(), "status": "already_inactive"}));
+                } else {
+                    match store.forget_entry(id) {
+                        Ok(()) => {
+                            forgotten += 1;
+                            details.push(json!({"id": id.to_string(), "status": "forgotten"}));
+                        }
+                        Err(e) => {
+                            details.push(json!({"id": id.to_string(), "status": "error", "error": cm_err_to_string(e)}));
+                        }
+                    }
+                }
+            }
+            Err(cm_core::CmError::EntryNotFound(_)) => {
+                not_found += 1;
+                details.push(json!({"id": id.to_string(), "status": "not_found"}));
+            }
+            Err(e) => {
+                details.push(
+                    json!({"id": id.to_string(), "status": "error", "error": cm_err_to_string(e)}),
+                );
+            }
+        }
+    }
+
+    let mut parts = Vec::new();
+    if forgotten > 0 {
+        parts.push(format!("Forgot {forgotten} entries."));
+    }
+    if already_inactive > 0 {
+        parts.push(format!("{already_inactive} already inactive."));
+    }
+    if not_found > 0 {
+        parts.push(format!("{not_found} not found."));
+    }
+    let message = if parts.is_empty() {
+        "No entries processed.".to_owned()
+    } else {
+        parts.join(" ")
+    };
+
+    let response = json!({
+        "forgotten": forgotten,
+        "already_inactive": already_inactive,
+        "not_found": not_found,
+        "details": details,
+        "message": message,
+    });
+
+    json_response(response)
+}
+
+// ── cx_stats ─────────────────────────────────────────────────────
+
+pub fn cx_stats(store: &CmStore, _args: &Value) -> Result<String, String> {
+    let stats = store.stats().map_err(cm_err_to_string)?;
+    let scopes = store.list_scopes(None).map_err(cm_err_to_string)?;
+
+    let scope_tree: Vec<Value> = scopes
+        .iter()
+        .map(|s| {
+            let entry_count = stats
+                .entries_by_scope
+                .get(s.path.as_str())
+                .copied()
+                .unwrap_or(0);
+            json!({
+                "path": s.path.as_str(),
+                "kind": s.kind.as_str(),
+                "label": &s.label,
+                "entry_count": entry_count,
+            })
+        })
+        .collect();
+
+    let response = json!({
+        "active_entries": stats.active_entries,
+        "superseded_entries": stats.superseded_entries,
+        "scopes": stats.scopes,
+        "relations": stats.relations,
+        "entries_by_kind": stats.entries_by_kind,
+        "entries_by_scope": stats.entries_by_scope,
+        "db_size_bytes": stats.db_size_bytes,
+        "scope_tree": scope_tree,
+    });
+
+    json_response(response)
+}
+
+// ── cx_export ────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CxExportParams {
+    /// Filter to a specific scope path.
+    #[serde(default)]
+    scope_path: Option<String>,
+
+    /// Export format. Only "json" supported.
+    #[serde(default = "default_format")]
+    format: String,
+}
+
+fn default_format() -> String {
+    "json".to_owned()
+}
+
+pub fn cx_export(store: &CmStore, args: &Value) -> Result<String, String> {
+    let params: CxExportParams =
+        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+
+    if params.format != "json" {
+        return Err(format!(
+            "Unsupported export format '{}'. Currently only 'json' is supported.",
+            params.format
+        ));
+    }
+
+    let scope_path = match &params.scope_path {
+        Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
+        None => None,
+    };
+
+    let entries = store
+        .export(scope_path.as_ref())
+        .map_err(cm_err_to_string)?;
+
+    let all_scopes = store.list_scopes(None).map_err(cm_err_to_string)?;
+
+    // Filter scopes by prefix if scope_path is specified
+    let scopes: Vec<_> = match &scope_path {
+        Some(sp) => all_scopes
+            .into_iter()
+            .filter(|s| s.path.as_str().starts_with(sp.as_str()))
+            .collect(),
+        None => all_scopes,
+    };
+
+    let count = entries.len();
+
+    let response = json!({
+        "entries": entries,
+        "scopes": scopes,
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "count": count,
+    });
+
+    json_response(response)
 }
