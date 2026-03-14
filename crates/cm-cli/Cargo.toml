@@ -1,0 +1,32 @@
+[package]
+name = "cm-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI and MCP server for context-matters"
+
+[[bin]]
+name = "cm"
+path = "src/main.rs"
+
+[dependencies]
+cm-core = { workspace = true }
+cm-store = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+base64 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"

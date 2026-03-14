@@ -1,1 +1,6 @@
 .nancy/
+/target/
+.env
+.context-matters/
+*.swp
+*.swo
