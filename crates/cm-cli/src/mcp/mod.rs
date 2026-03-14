@@ -24,7 +24,6 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 pub(crate) const MAX_INPUT_BYTES: usize = 1_048_576;
 
 /// Maximum number of IDs in a batch request.
-#[allow(dead_code)]
 pub(crate) const MAX_BATCH_IDS: usize = 100;
 
 /// Default result limit for retrieval tools.
@@ -34,7 +33,6 @@ pub(crate) const DEFAULT_LIMIT: u32 = 20;
 pub(crate) const MAX_LIMIT: u32 = 200;
 
 /// Snippet length for two-phase retrieval responses.
-#[allow(dead_code)]
 pub(crate) const SNIPPET_LENGTH: usize = 200;
 
 // ── Server Instructions ───────────────────────────────────────────
@@ -323,7 +321,6 @@ pub(crate) fn cm_err_to_string(e: CmError) -> String {
 // ── Helper Functions ──────────────────────────────────────────────
 
 /// Reject input exceeding the per-field byte limit.
-#[allow(dead_code)]
 pub(crate) fn check_input_size(value: &str, field: &str) -> Result<(), String> {
     if value.len() > MAX_INPUT_BYTES {
         return Err(format!("{field} exceeds {MAX_INPUT_BYTES} byte limit"));
@@ -332,7 +329,6 @@ pub(crate) fn check_input_size(value: &str, field: &str) -> Result<(), String> {
 }
 
 /// Clamp a limit value to the allowed range `[1, MAX_LIMIT]`.
-#[allow(dead_code)]
 pub(crate) fn clamp_limit(limit: Option<u32>) -> u32 {
     limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
 }
@@ -342,7 +338,6 @@ pub(crate) fn clamp_limit(limit: Option<u32>) -> u32 {
 /// Uses `floor_char_boundary` (stable since Rust 1.82) to avoid
 /// panicking on multi-byte character boundaries. Tries to break
 /// at a word boundary for readability.
-#[allow(dead_code)]
 pub(crate) fn snippet(body: &str, max_bytes: usize) -> String {
     if body.len() <= max_bytes {
         return body.to_owned();
@@ -355,13 +350,11 @@ pub(crate) fn snippet(body: &str, max_bytes: usize) -> String {
 }
 
 /// Rough token estimate: ~4 characters per token for English text.
-#[allow(dead_code)]
 pub(crate) fn estimate_tokens(text: &str) -> u32 {
     (text.len() as u32).div_ceil(4)
 }
 
 /// Encode a `PaginationCursor` to a URL-safe base64 string.
-#[allow(dead_code)]
 pub(crate) fn encode_cursor(cursor: &cm_core::PaginationCursor) -> String {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     let json = serde_json::to_string(cursor).expect("cursor serialization");
@@ -369,7 +362,6 @@ pub(crate) fn encode_cursor(cursor: &cm_core::PaginationCursor) -> String {
 }
 
 /// Decode a URL-safe base64 string to a `PaginationCursor`.
-#[allow(dead_code)]
 pub(crate) fn decode_cursor(encoded: &str) -> Result<cm_core::PaginationCursor, String> {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     let bytes = URL_SAFE_NO_PAD
@@ -379,7 +371,6 @@ pub(crate) fn decode_cursor(encoded: &str) -> Result<cm_core::PaginationCursor, 
 }
 
 /// Serialize a JSON value to a pretty-printed string for the response.
-#[allow(dead_code)]
 pub(crate) fn json_response(value: Value) -> Result<String, String> {
     serde_json::to_string_pretty(&value).map_err(|e| format!("[json] {e}"))
 }
@@ -389,7 +380,6 @@ pub(crate) fn json_response(value: Value) -> Result<String, String> {
 /// When `cx_store` or `cx_deposit` receives a scope path that does not
 /// exist, this function creates the full scope chain automatically. This
 /// prevents agents from needing to manage scope creation separately.
-#[allow(dead_code)]
 pub(crate) fn ensure_scope_chain(store: &CmStore, path: &ScopePath) -> Result<(), String> {
     use cm_core::{ContextStore, NewScope};
 
