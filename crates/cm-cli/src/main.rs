@@ -1,4 +1,4 @@
-use cm_cli::mcp;
+use cm_cli::{cli, mcp};
 
 use anyhow::Result;
 use clap::{ColorChoice, Parser, Subcommand};
@@ -30,10 +30,10 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli_args = Cli::parse();
 
     // Initialize tracing (stderr only, never stdout: MCP uses stdout)
-    let filter = if cli.verbose { "debug" } else { "info" };
+    let filter = if cli_args.verbose { "debug" } else { "info" };
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -42,9 +42,16 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    match &cli.command {
+    match &cli_args.command {
         Commands::Serve => cmd_serve().await,
-        Commands::Stats => cmd_stats().await,
+        Commands::Stats => {
+            let store = open_store().await?;
+            cli::cmd_stats(&store).await?;
+            cm_store::schema::wal_checkpoint(store.write_pool())
+                .await
+                .ok();
+            Ok(())
+        }
     }
 }
 
@@ -78,45 +85,5 @@ async fn cmd_serve() -> Result<()> {
         .await
         .ok();
 
-    Ok(())
-}
-
-async fn cmd_stats() -> Result<()> {
-    use cm_core::ContextStore;
-
-    let store = open_store().await?;
-    let stats = store.stats().map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    println!("context-matters v{}", env!("CARGO_PKG_VERSION"));
-    println!();
-    println!("Active entries:     {}", stats.active_entries);
-    println!("Superseded entries: {}", stats.superseded_entries);
-    println!("Scopes:             {}", stats.scopes);
-    println!("Relations:          {}", stats.relations);
-    println!("Database size:      {} bytes", stats.db_size_bytes);
-
-    if !stats.entries_by_kind.is_empty() {
-        println!();
-        println!("By kind:");
-        let mut kinds: Vec<_> = stats.entries_by_kind.iter().collect();
-        kinds.sort_by(|a, b| b.1.cmp(a.1));
-        for (kind, count) in kinds {
-            println!("  {kind:15} {count}");
-        }
-    }
-
-    if !stats.entries_by_scope.is_empty() {
-        println!();
-        println!("By scope:");
-        let mut scopes: Vec<_> = stats.entries_by_scope.iter().collect();
-        scopes.sort_by_key(|(path, _)| (*path).clone());
-        for (scope, count) in scopes {
-            println!("  {scope:40} {count}");
-        }
-    }
-
-    cm_store::schema::wal_checkpoint(store.write_pool())
-        .await
-        .ok();
     Ok(())
 }

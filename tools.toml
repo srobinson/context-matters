@@ -1,0 +1,375 @@
+# Single source of truth for all tool documentation.
+# build.rs reads this file and generates:
+#   src/mcp/generated_schema.rs  — MCP tool list JSON
+#   src/cli/generated_help.rs    — CLI help string constants
+#   templates/SKILL.md           — Claude Code skill documentation
+
+[skill]
+workflow = """
+## Context Management Workflow
+
+1. **Recall** — `cx_recall(query: "topic")` — search and retrieve context relevant to the current task.
+2. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
+3. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
+4. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
+5. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
+6. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
+7. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
+
+### Task Workflow
+
+```
+1. Receive task from user or orchestrator
+2. cx_recall(query: "summary of task", scope: "global/project:helioy/repo:nancyr")
+   → retrieve facts, decisions, preferences, feedback relevant to THIS task
+3. Work on the task
+4. cx_store(title: "...", body: "...", kind: "decision", scope_path: "global/project:helioy")
+   → persist reusable knowledge when discovered
+5. cx_deposit(exchanges: [...], summary: "...")
+   → preserve conversation at session end for continuity
+```
+
+Key: cx_recall is useful at ANY point during a session, not only after receiving the initial task.
+When the user corrects you, store it immediately as kind: "feedback" (highest recall priority).
+
+### Scope Model
+
+Scopes form a hierarchy: global > project > repo > session.
+Context at broader scopes is visible at narrower scopes (ancestor walk).
+
+```
+global                                          — cross-project knowledge
+global/project:helioy                           — project-level decisions
+global/project:helioy/repo:nancyr               — codebase-specific facts
+global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
+```
+
+### Two-Phase Retrieval
+
+cx_recall and cx_browse return metadata + snippet (first 200 chars of body).
+Use cx_get with returned IDs to fetch full body content.
+This keeps initial responses compact while allowing selective deep reads.
+"""
+
+# Tool order matches the MCP tools/list response order — do not reorder.
+
+[tools.cx_recall]
+cli_name        = "recall"
+mcp_description = "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body."
+cli_about       = "Search and retrieve context entries from the store.\n\nCombines FTS5 keyword search with hierarchical scope resolution. When no query is given, returns all entries visible at the target scope."
+
+[[tools.cx_recall.params]]
+name            = "query"
+type            = "string"
+mcp_description = "FTS5 search query. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Omit to return all entries at the target scope via ancestor walk."
+cli_help        = "FTS5 search query (prefix: rust*, phrase: \"scope path\", boolean: AND/OR/NOT)"
+cli_flag        = "query"
+
+[[tools.cx_recall.params]]
+name            = "scope"
+type            = "string"
+mcp_description = "Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:helioy/repo:nancyr' also searches 'global/project:helioy' and 'global'. Default: 'global'."
+cli_help        = "Scope path (retrieves from this scope and ancestors). Default: global"
+cli_flag        = "--scope"
+
+[[tools.cx_recall.params]]
+name            = "kinds"
+type            = "array"
+items_type      = "string"
+mcp_description = "Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pattern, observation."
+cli_help        = "Filter by entry kind (comma-separated). Valid: fact, decision, preference, lesson, reference, feedback, pattern, observation"
+cli_flag        = "--kinds"
+
+[[tools.cx_recall.params]]
+name            = "tags"
+type            = "array"
+items_type      = "string"
+mcp_description = "Filter to entries with any of these tags (OR logic)."
+cli_help        = "Filter by tag (comma-separated, OR logic)"
+cli_flag        = "--tags"
+
+[[tools.cx_recall.params]]
+name            = "limit"
+type            = "integer"
+mcp_description = "Maximum number of entries to return. Default: 20, max: 200."
+cli_help        = "Maximum number of results (default: 20, max: 200)"
+cli_flag        = "--limit"
+
+[[tools.cx_recall.params]]
+name            = "max_tokens"
+type            = "integer"
+mcp_description = "Maximum token budget for the response. Results are trimmed to fit within this budget, prioritizing higher-relevance entries. Uses ~4 chars/token estimation."
+cli_help        = "Maximum token budget for response (trims results to fit)"
+cli_flag        = "--max-tokens"
+
+[tools.cx_store]
+cli_name        = "store"
+mcp_description = "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash."
+cli_about       = "Store a context entry.\n\nCreates a new entry with title, body, kind, and optional metadata. Scope chain is auto-created if missing. Use --supersedes to replace an existing entry."
+
+[[tools.cx_store.params]]
+name            = "title"
+type            = "string"
+required        = true
+mcp_description = "Short summary of the entry. Displayed in search results and browse listings."
+cli_help        = "Entry title (short summary)"
+cli_flag        = "title"
+
+[[tools.cx_store.params]]
+name            = "body"
+type            = "string"
+required        = true
+mcp_description = "Full content body in markdown."
+cli_help        = "Entry body content (markdown)"
+cli_flag        = "body"
+
+[[tools.cx_store.params]]
+name            = "kind"
+type            = "string"
+required        = true
+enum            = ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]
+mcp_description = "Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rationale. preference: user/project preference. lesson: learned from experience. reference: pointer to external material. feedback: user correction (highest priority). pattern: recurring code/process pattern. observation: general-purpose note."
+cli_help        = "Entry kind: fact, decision, preference, lesson, reference, feedback, pattern, observation"
+cli_flag        = "--kind"
+
+[[tools.cx_store.params]]
+name            = "scope_path"
+type            = "string"
+mcp_description = "Target scope path. Auto-created with ancestor chain if it does not exist. Default: 'global'. Format: 'global', 'global/project:<id>', 'global/project:<id>/repo:<id>', 'global/project:<id>/repo:<id>/session:<id>'."
+cli_help        = "Target scope path (auto-created if missing). Default: global"
+cli_flag        = "--scope"
+
+[[tools.cx_store.params]]
+name            = "created_by"
+type            = "string"
+mcp_description = "Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolidation'. Default: 'agent:claude-code'."
+cli_help        = "Attribution (format: source_type:identifier). Default: agent:claude-code"
+cli_flag        = "--created-by"
+
+[[tools.cx_store.params]]
+name            = "tags"
+type            = "array"
+items_type      = "string"
+mcp_description = "Freeform tags for categorization and filtering."
+cli_help        = "Tags for categorization (comma-separated)"
+cli_flag        = "--tags"
+
+[[tools.cx_store.params]]
+name            = "confidence"
+type            = "string"
+enum            = ["high", "medium", "low"]
+mcp_description = "Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level."
+cli_help        = "Confidence level: high, medium, low"
+cli_flag        = "--confidence"
+
+[[tools.cx_store.params]]
+name            = "source"
+type            = "string"
+mcp_description = "Source URL or file path for reference entries."
+cli_help        = "Source URL or path (provenance)"
+cli_flag        = "--source"
+
+[[tools.cx_store.params]]
+name            = "expires_at"
+type            = "string"
+mcp_description = "ISO 8601 expiry timestamp. After this time the entry is considered stale. Stored but not enforced by the storage layer."
+cli_help        = "Expiry timestamp (ISO 8601). Entry is considered stale after this time"
+cli_flag        = "--expires-at"
+
+[[tools.cx_store.params]]
+name            = "priority"
+type            = "integer"
+mcp_description = "Numeric priority for manual ordering. Higher values surface first in recall results."
+cli_help        = "Numeric priority (higher = surfaces first)"
+cli_flag        = "--priority"
+
+[[tools.cx_store.params]]
+name            = "supersedes"
+type            = "string"
+mcp_description = "ID of an existing entry that this new entry replaces. The old entry is soft-deleted and linked via a 'supersedes' relation."
+cli_help        = "ID of entry to supersede (soft-deletes old, creates replacement)"
+cli_flag        = "--supersedes"
+
+[tools.cx_deposit]
+cli_name        = "deposit"
+mcp_description = "Batch-store conversation exchanges for future context. Each exchange (user/assistant pair) becomes an observation entry. Optional summary creates a linked observation with 'elaborates' relations to each exchange. All entries created in a single transaction. Maximum 50 exchanges per deposit."
+cli_about       = "Batch-store conversation exchanges.\n\nEach exchange becomes an observation entry. Provide an optional summary to create a linked summary entry."
+
+[[tools.cx_deposit.params]]
+name            = "exchanges"
+type            = "array"
+required        = true
+mcp_description = "Conversation exchanges to store. Each exchange has 'user' (user message) and 'assistant' (assistant response) fields. Maximum 50 exchanges per deposit."
+cli_help        = "JSON array of {user, assistant} exchange objects"
+cli_flag        = "exchanges"
+
+[[tools.cx_deposit.params]]
+name            = "summary"
+type            = "string"
+mcp_description = "Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates' relations."
+cli_help        = "Optional conversation summary (linked to exchanges)"
+cli_flag        = "--summary"
+
+[[tools.cx_deposit.params]]
+name            = "scope_path"
+type            = "string"
+mcp_description = "Target scope path. Auto-created if missing. Default: 'global'."
+cli_help        = "Target scope path (auto-created if missing). Default: global"
+cli_flag        = "--scope"
+
+[[tools.cx_deposit.params]]
+name            = "created_by"
+type            = "string"
+mcp_description = "Attribution string. Default: 'agent:claude-code'."
+cli_help        = "Attribution (format: source_type:identifier). Default: agent:claude-code"
+cli_flag        = "--created-by"
+
+[tools.cx_browse]
+cli_name        = "browse"
+mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
+cli_about       = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content."
+
+[[tools.cx_browse.params]]
+name            = "scope_path"
+type            = "string"
+mcp_description = "Filter to entries at this exact scope path (no ancestor walk). Omit to browse across all scopes."
+cli_help        = "Filter to exact scope path (no ancestor walk)"
+cli_flag        = "--scope"
+
+[[tools.cx_browse.params]]
+name            = "kind"
+type            = "string"
+enum            = ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]
+mcp_description = "Filter by entry kind."
+cli_help        = "Filter by kind: fact, decision, preference, lesson, reference, feedback, pattern, observation"
+cli_flag        = "--kind"
+
+[[tools.cx_browse.params]]
+name            = "tag"
+type            = "string"
+mcp_description = "Filter by tag. Entries must have at least one matching tag."
+cli_help        = "Filter by tag (entries must have this tag)"
+cli_flag        = "--tag"
+
+[[tools.cx_browse.params]]
+name            = "created_by"
+type            = "string"
+mcp_description = "Filter by creator attribution string."
+cli_help        = "Filter by creator (e.g. agent:claude-code, human:stuart)"
+cli_flag        = "--created-by"
+
+[[tools.cx_browse.params]]
+name            = "include_superseded"
+type            = "boolean"
+mcp_description = "Include superseded (inactive) entries in results. Default: false."
+cli_help        = "Include superseded/forgotten entries (default: false)"
+cli_flag        = "--include-superseded"
+
+[[tools.cx_browse.params]]
+name            = "limit"
+type            = "integer"
+mcp_description = "Maximum entries per page. Default: 20, max: 200."
+cli_help        = "Entries per page (default: 20, max: 200)"
+cli_flag        = "--limit"
+
+[[tools.cx_browse.params]]
+name            = "cursor"
+type            = "string"
+mcp_description = "Opaque pagination cursor from a previous cx_browse response. Pass next_cursor to fetch the next page."
+cli_help        = "Pagination cursor from previous response"
+cli_flag        = "--cursor"
+
+[tools.cx_get]
+cli_name        = "get"
+mcp_description = "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. IDs that do not exist are silently omitted. Maximum 100 IDs per request."
+cli_about       = "Fetch full entry content by ID.\n\nReturns complete entries including body. Use after cx_recall or cx_browse for full content."
+
+[[tools.cx_get.params]]
+name            = "ids"
+type            = "array"
+items_type      = "string"
+required        = true
+mcp_description = "Entry IDs to retrieve (UUIDv7 format). Maximum 100 per request. Missing IDs are silently omitted."
+cli_help        = "Entry IDs to retrieve (space-separated, max 100)"
+cli_flag        = "ids"
+
+[tools.cx_update]
+cli_name        = "update"
+mcp_description = "Partially update an existing entry. Only provided fields are modified. Changing body or kind recomputes content_hash and checks for duplicates. Scope migration is excluded; use cx_store with supersedes to move entries across scopes. At least one field must be provided."
+cli_about       = "Partially update an entry.\n\nOnly provided fields are modified. Changing body recomputes the content hash."
+
+[[tools.cx_update.params]]
+name            = "id"
+type            = "string"
+required        = true
+mcp_description = "ID of the entry to update."
+cli_help        = "Entry ID to update"
+cli_flag        = "id"
+
+[[tools.cx_update.params]]
+name            = "title"
+type            = "string"
+mcp_description = "New title. Omit to keep existing."
+cli_help        = "New title (omit to keep existing)"
+cli_flag        = "--title"
+
+[[tools.cx_update.params]]
+name            = "body"
+type            = "string"
+mcp_description = "New body content in markdown. Changing body recomputes content_hash and checks for duplicates. Omit to keep existing."
+cli_help        = "New body content (omit to keep existing). Recomputes content hash"
+cli_flag        = "--body"
+
+[[tools.cx_update.params]]
+name            = "kind"
+type            = "string"
+enum            = ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]
+mcp_description = "New kind classification. Changing kind recomputes content_hash. Omit to keep existing."
+cli_help        = "New kind (omit to keep existing). Recomputes content hash"
+cli_flag        = "--kind"
+
+[[tools.cx_update.params]]
+name            = "meta"
+type            = "object"
+mcp_description = "Replace metadata entirely. Provide the complete desired meta object with fields: tags (array), confidence (high/medium/low), source (string), expires_at (ISO 8601), priority (integer). Omit to keep existing metadata."
+cli_help        = "Replace metadata (JSON object with tags, confidence, source, expires_at, priority)"
+cli_flag        = "--meta"
+
+[tools.cx_forget]
+cli_name        = "forget"
+mcp_description = "Soft-delete entries by marking them as forgotten. Sets superseded_by to the entry's own ID, distinguishing forgotten entries from entries superseded by a replacement. Already-inactive entries are silently skipped. Maximum 100 IDs per request. Partial success is reported."
+cli_about       = "Soft-delete entries.\n\nMarks entries as forgotten (sets superseded_by to own ID). Already-inactive entries are skipped."
+
+[[tools.cx_forget.params]]
+name            = "ids"
+type            = "array"
+items_type      = "string"
+required        = true
+mcp_description = "Entry IDs to forget. Maximum 100 per request. Each ID is processed independently."
+cli_help        = "Entry IDs to forget (space-separated, max 100)"
+cli_flag        = "ids"
+
+[tools.cx_stats]
+cli_name        = "stats"
+mcp_description = "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind and by scope, database file size, and scope tree. No parameters. Diagnostic tool for understanding what context exists."
+cli_about       = "Show store statistics.\n\nDisplays entry counts by kind and scope, relation count, database size, and scope tree."
+
+[tools.cx_export]
+cli_name        = "export"
+mcp_description = "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree."
+cli_about       = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter to a subtree."
+
+[[tools.cx_export.params]]
+name            = "scope_path"
+type            = "string"
+mcp_description = "Filter export to a specific scope path and its descendants. Omit to export everything."
+cli_help        = "Filter to scope subtree (omit for full export)"
+cli_flag        = "--scope"
+
+[[tools.cx_export.params]]
+name            = "format"
+type            = "string"
+enum            = ["json"]
+mcp_description = "Export format. Currently only 'json' is supported. Default: 'json'."
+cli_help        = "Export format (currently only json). Default: json"
+cli_flag        = "--format"

@@ -40,10 +40,11 @@ pub(crate) const SNIPPET_LENGTH: usize = 200;
 const SERVER_INSTRUCTIONS: &str = "\
 You have a structured context store for persistent project knowledge across sessions.
 
-SESSION LIFECYCLE:
-1. RECALL: At session start, call cx_recall with a summary of the user's task or question. \
+TASK WORKFLOW:
+1. RECALL: After receiving a task, call cx_recall with a summary of what you are working on. \
    This returns relevant context entries (facts, decisions, preferences, lessons) from \
-   the current scope and all ancestor scopes. Use returned context silently.
+   the current scope and all ancestor scopes. Use returned context silently. \
+   cx_recall is useful at any point during a session, not only after the initial task.
 2. STORE: When you discover important facts, decisions, user preferences, lessons learned, \
    or recurring patterns, call cx_store to persist them. Classify entries by kind for \
    effective retrieval later.
@@ -51,7 +52,7 @@ SESSION LIFECYCLE:
    Feedback entries receive highest recall priority.
 
 TOOLS OVERVIEW:
-- cx_recall: Search and retrieve context. Primary retrieval tool. Call at session start.
+- cx_recall: Search and retrieve context. Primary retrieval tool. Call after receiving a task.
 - cx_store: Store a single context entry with structured metadata.
 - cx_deposit: Batch-store conversation exchanges for future reference.
 - cx_browse: List entries with filters and pagination. For inventory, not search.
@@ -261,9 +262,13 @@ impl McpServer {
             Ok(value) => Ok(json!({
                 "content": [{"type": "text", "text": value}]
             })),
+            // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
+            // any tool returns isError:true (Promise.all fail-fast, tracked at
+            // anthropics/claude-code#22264). Drop the flag; prefix with ERROR: so the
+            // LLM recognises failure from content alone. Revert when #22264 ships
+            // Promise.allSettled for MCP tools.
             Err(e) => Ok(json!({
-                "content": [{"type": "text", "text": format!("ERROR: {e}")}],
-                "isError": true
+                "content": [{"type": "text", "text": format!("ERROR: {e}")}]
             })),
         }
     }
