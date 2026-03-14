@@ -260,12 +260,15 @@ mod tests {
         .await
         .unwrap();
 
-        // FTS search should find the entry
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT title FROM entries_fts WHERE entries_fts MATCH 'ownership'")
-                .fetch_all(&rp)
-                .await
-                .unwrap();
+        // FTS search should find the entry (contentless FTS requires join)
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT e.title FROM entries e \
+                 JOIN entries_fts f ON e.rowid = f.rowid \
+                 WHERE f.entries_fts MATCH 'ownership'",
+        )
+        .fetch_all(&rp)
+        .await
+        .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, "Rust ownership");
 
@@ -291,17 +294,22 @@ mod tests {
             .await
             .unwrap();
 
-        // New content should be findable
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT title FROM entries_fts WHERE entries_fts MATCH 'borrowing'")
-                .fetch_all(&rp)
-                .await
-                .unwrap();
+        // New content should be findable (contentless FTS requires join)
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT e.title FROM entries e \
+                 JOIN entries_fts f ON e.rowid = f.rowid \
+                 WHERE f.entries_fts MATCH 'borrowing'",
+        )
+        .fetch_all(&rp)
+        .await
+        .unwrap();
         assert_eq!(rows.len(), 1);
 
         // Old content should not be findable
         let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT title FROM entries_fts WHERE entries_fts MATCH '\"Old body content\"'",
+            "SELECT e.title FROM entries e \
+             JOIN entries_fts f ON e.rowid = f.rowid \
+             WHERE f.entries_fts MATCH '\"Old body content\"'",
         )
         .fetch_all(&rp)
         .await
@@ -329,11 +337,14 @@ mod tests {
             .await
             .unwrap();
 
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT title FROM entries_fts WHERE entries_fts MATCH 'vanish'")
-                .fetch_all(&rp)
-                .await
-                .unwrap();
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT e.title FROM entries e \
+                 JOIN entries_fts f ON e.rowid = f.rowid \
+                 WHERE f.entries_fts MATCH 'vanish'",
+        )
+        .fetch_all(&rp)
+        .await
+        .unwrap();
         assert!(rows.is_empty(), "deleted entry should be removed from FTS");
 
         wp.close().await;

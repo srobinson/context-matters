@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use cm_core::{
     CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation, NewEntry,
     NewScope, PagedResult, PaginationCursor, RelationKind, Scope, ScopeKind, ScopePath, StoreStats,
-    UpdateEntry,
+    TagCount, UpdateEntry,
 };
 use sqlx::Row;
 use sqlx::sqlite::SqlitePool;
@@ -1037,6 +1037,27 @@ impl ContextStore for CmStore {
                     entries_by_scope.insert(sp, cnt as u64);
                 }
 
+                // Breakdown by tag
+                let tag_rows = sqlx::query(
+                    "SELECT j.value AS tag, COUNT(*) AS cnt \
+                     FROM entries e, json_each(json_extract(e.meta, '$.tags')) j \
+                     WHERE e.superseded_by IS NULL \
+                       AND e.meta IS NOT NULL \
+                     GROUP BY j.value \
+                     ORDER BY cnt DESC",
+                )
+                .fetch_all(pool)
+                .await
+                .map_err(map_db_err)?;
+
+                let entries_by_tag: Vec<TagCount> = tag_rows
+                    .iter()
+                    .map(|row| TagCount {
+                        tag: row.get("tag"),
+                        count: row.get::<i64, _>("cnt") as u64,
+                    })
+                    .collect();
+
                 // DB file size (0 for in-memory)
                 let page_count_row = sqlx::query("PRAGMA page_count")
                     .fetch_one(pool)
@@ -1057,6 +1078,7 @@ impl ContextStore for CmStore {
                     relations: relations as u64,
                     entries_by_kind,
                     entries_by_scope,
+                    entries_by_tag,
                     db_size_bytes: (page_count * page_size) as u64,
                 })
             })

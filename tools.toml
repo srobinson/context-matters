@@ -199,8 +199,8 @@ cli_about       = "Batch-store conversation exchanges.\n\nEach exchange becomes 
 name            = "exchanges"
 type            = "array"
 required        = true
-mcp_description = "Conversation exchanges to store. Each exchange has 'user' (user message) and 'assistant' (assistant response) fields. Maximum 50 exchanges per deposit."
-cli_help        = "JSON array of {user, assistant} exchange objects"
+mcp_description = "Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optional 'title' (explicit title, max 80 bytes; auto-generated from user message snippet if omitted). Maximum 50 exchanges per deposit."
+cli_help        = "JSON array of {user, assistant, title?} exchange objects"
 cli_flag        = "exchanges"
 
 [[tools.cx_deposit.params]]
@@ -351,8 +351,16 @@ cli_flag        = "ids"
 
 [tools.cx_stats]
 cli_name        = "stats"
-mcp_description = "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind and by scope, database file size, and scope tree. No parameters. Diagnostic tool for understanding what context exists."
-cli_about       = "Show store statistics.\n\nDisplays entry counts by kind and scope, relation count, database size, and scope tree."
+mcp_description = "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists."
+cli_about       = "Show store statistics.\n\nDisplays entry counts by kind, scope, and tag, relation count, database size, and scope tree."
+
+[[tools.cx_stats.params]]
+name            = "tag_sort"
+type            = "string"
+enum            = ["name", "count"]
+mcp_description = "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first."
+cli_help        = "Tag sort order: name (alphabetical, default) or count (most used first)"
+cli_flag        = "--tag-sort"
 
 [tools.cx_export]
 cli_name        = "export"

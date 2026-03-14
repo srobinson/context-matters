@@ -112,7 +112,7 @@ Batch-store conversation exchanges for future context. Each exchange (user/assis
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `exchanges` | array<object> | yes | Conversation exchanges to store. Each exchange has 'user' (user message) and 'assistant' (assistant response) fields.... |
+| `exchanges` | array<object> | yes | Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optio... |
 | `summary` | string | no | Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates'... |
 | `scope_path` | string | no | Target scope path. Auto-created if missing. Default: 'global'. |
 | `created_by` | string | no | Attribution string. Default: 'agent:claude-code'. |
@@ -161,7 +161,11 @@ Soft-delete entries by marking them as forgotten. Sets superseded_by to the entr
 
 ### `cx_stats`
 
-View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind and by scope, database file size, and scope tree. No parameters. Diagnostic tool for understanding what context exists.
+View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tag_sort` | enum: name \| count | no | Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first. |
 
 ### `cx_export`
 

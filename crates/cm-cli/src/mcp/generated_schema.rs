@@ -129,7 +129,7 @@ serde_json::from_str(r##"{
             "type": "string"
           },
           "exchanges": {
-            "description": "Conversation exchanges to store. Each exchange has 'user' (user message) and 'assistant' (assistant response) fields. Maximum 50 exchanges per deposit.",
+            "description": "Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optional 'title' (explicit title, max 80 bytes; auto-generated from user message snippet if omitted). Maximum 50 exchanges per deposit.",
             "items": {
               "properties": {
                 "assistant": {
@@ -291,9 +291,18 @@ serde_json::from_str(r##"{
       "name": "cx_forget"
     },
     {
-      "description": "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind and by scope, database file size, and scope tree. No parameters. Diagnostic tool for understanding what context exists.",
+      "description": "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists.",
       "inputSchema": {
-        "properties": {},
+        "properties": {
+          "tag_sort": {
+            "description": "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first.",
+            "enum": [
+              "name",
+              "count"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "name": "cx_stats"
