@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/srobinson/context-matters/compare/v0.1.4...v0.1.5) (2026-03-14)
+
+
+### Features
+
+* add tags to FTS5 index and cx_stats, per-exchange deposit titles ([#6](https://github.com/srobinson/context-matters/issues/6)) ([cca001a](https://github.com/srobinson/context-matters/commit/cca001a301245b5dbe59484400c35936d8599bc2))
+
 ## [0.1.4](https://github.com/srobinson/context-matters/compare/v0.1.3...v0.1.4) (2026-03-14)
 
 
