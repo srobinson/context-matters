@@ -562,6 +562,16 @@ impl ContextStore for CmStore {
     }
 
     fn update_entry(&self, id: Uuid, update: UpdateEntry) -> Result<Entry, CmError> {
+        // Validate non-empty title/body if provided, matching create_entry's invariant
+        if let Some(ref title) = update.title
+            && title.trim().is_empty() {
+                return Err(CmError::Validation("title cannot be empty".to_owned()));
+            }
+        if let Some(ref body) = update.body
+            && body.trim().is_empty() {
+                return Err(CmError::Validation("body cannot be empty".to_owned()));
+            }
+
         let id_str = id.to_string();
         let pool = &self.write_pool;
 
@@ -640,7 +650,25 @@ impl ContextStore for CmStore {
     }
 
     fn supersede_entry(&self, old_id: Uuid, new_entry: NewEntry) -> Result<Entry, CmError> {
+        // Validate upfront, matching create_entry's contract
+        if new_entry.title.trim().is_empty() {
+            return Err(CmError::Validation("title cannot be empty".to_owned()));
+        }
+        if new_entry.body.trim().is_empty() {
+            return Err(CmError::Validation("body cannot be empty".to_owned()));
+        }
+
         let old_id_str = old_id.to_string();
+        let new_id = Uuid::now_v7();
+        let content_hash = new_entry.content_hash();
+        let meta_json = new_entry
+            .meta
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let scope_str = new_entry.scope_path.as_str().to_owned();
+        let kind_str = new_entry.kind.as_str().to_owned();
+        let new_id_str = new_id.to_string();
         let pool = &self.write_pool;
 
         tokio::task::block_in_place(|| {
@@ -656,15 +684,48 @@ impl ContextStore for CmStore {
                     return Err(CmError::EntryNotFound(old_id));
                 }
 
-                // Create the new entry (validates, dedup checks, inserts)
-                let created = self.create_entry(new_entry)?;
-                let new_id_str = created.id.to_string();
+                // Dedup check for the new entry's content
+                dedup::check_duplicate(pool, &content_hash, None).await?;
 
-                // Set superseded_by on old entry
+                let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+                // Wrap all three mutations in a transaction for atomicity
+                let mut tx = pool
+                    .begin()
+                    .await
+                    .map_err(|e| CmError::Database(e.to_string()))?;
+
+                // Insert the new entry
+                sqlx::query(
+                    "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, meta, created_by, created_at, updated_at) \
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(&new_id_str)
+                .bind(&scope_str)
+                .bind(&kind_str)
+                .bind(&new_entry.title)
+                .bind(&new_entry.body)
+                .bind(&content_hash)
+                .bind(&meta_json)
+                .bind(&new_entry.created_by)
+                .bind(&now)
+                .bind(&now)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    if let sqlx::Error::Database(ref db_err) = e
+                        && db_err.message().contains("FOREIGN KEY constraint failed")
+                    {
+                        return CmError::ScopeNotFound(scope_str.clone());
+                    }
+                    map_db_err(e)
+                })?;
+
+                // Mark old entry as superseded
                 sqlx::query("UPDATE entries SET superseded_by = ? WHERE id = ?")
                     .bind(&new_id_str)
                     .bind(&old_id_str)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await
                     .map_err(map_db_err)?;
 
@@ -674,11 +735,22 @@ impl ContextStore for CmStore {
                 )
                 .bind(&new_id_str)
                 .bind(&old_id_str)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await
                 .map_err(map_db_err)?;
 
-                Ok(created)
+                tx.commit()
+                    .await
+                    .map_err(|e| CmError::Database(e.to_string()))?;
+
+                // Fetch the created entry (outside transaction, already committed)
+                let row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+                    .bind(&new_id_str)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(map_db_err)?;
+
+                parse_entry(&row)
             })
         })
     }
