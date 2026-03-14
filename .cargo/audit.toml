@@ -1,0 +1,5 @@
+[advisories]
+# rsa appears in Cargo.lock as an orphan from sqlx's weak optional dependency
+# (sqlx tls-rustls feature). It is never compiled into this binary.
+# Suppressed pending fix for https://github.com/rust-lang/cargo/issues/10801
+ignore = ["RUSTSEC-2023-0071"]
