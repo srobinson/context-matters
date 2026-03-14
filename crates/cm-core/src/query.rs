@@ -131,10 +131,23 @@ impl FtsQuery {
     }
 }
 
-/// Sanitize a single word for FTS5: keep alphanumeric, hyphens, asterisk.
+/// Sanitize a single word for FTS5: keep alphanumeric and `*` (prefix queries).
+///
+/// All non-alphanumeric characters (except `*`) are replaced with spaces to
+/// match the unicode61 tokenizer's behavior, which treats hyphens, dots,
+/// underscores, slashes, colons, dashes, and all other punctuation as token
+/// separators. Without this, characters like `-` become FTS5's NOT operator,
+/// `:` becomes the column filter operator, and various Unicode dashes
+/// (en dash, em dash, minus sign) cause syntax errors.
 fn sanitize_word(word: &str) -> String {
     word.chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '*' || *c == '_')
+        .map(|c| {
+            if c.is_alphanumeric() || c == '*' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect()
 }
 
@@ -199,15 +212,22 @@ fn sanitize_fts_input(input: &str) -> String {
 }
 
 /// Return sanitized words from a non-quoted segment as individual strings.
+///
+/// Each input word is sanitized (hyphens become spaces), then the result
+/// is re-split on whitespace to flatten multi-word expansions into
+/// separate search terms.
 fn sanitize_unquoted_words(segment: &str) -> Vec<String> {
     segment
         .split_whitespace()
-        .map(|w| {
+        .flat_map(|w| {
             let stripped = w.replace('"', "");
             if stripped == "AND" || stripped == "OR" || stripped == "NOT" {
-                stripped
+                vec![stripped]
             } else {
                 sanitize_word(&stripped)
+                    .split_whitespace()
+                    .map(String::from)
+                    .collect::<Vec<_>>()
             }
         })
         .filter(|w| !w.is_empty())
@@ -268,9 +288,9 @@ mod tests {
 
     #[test]
     fn fts_query_balanced_quotes_sanitizes_outside() {
-        // Parens are FTS5 grouping syntax and should be stripped from non-quoted portions
+        // Parens are FTS5 grouping syntax and become spaces in non-quoted portions
         let q = FtsQuery::new("\"hello world\" AND foo(bar)");
-        assert_eq!(q.as_str(), "\"hello world\" AND foobar");
+        assert_eq!(q.as_str(), "\"hello world\" AND foo bar");
     }
 
     #[test]
@@ -283,6 +303,27 @@ mod tests {
     fn fts_query_strips_carets_outside_quotes() {
         let q = FtsQuery::new("\"keep this\" ^remove");
         assert_eq!(q.as_str(), "\"keep this\" remove");
+    }
+
+    #[test]
+    fn fts_query_hyphen_becomes_space() {
+        // Hyphens must not reach FTS5 as the NOT operator.
+        // "tools-toml" should become "tools toml" (implicit AND).
+        let q = FtsQuery::new("tools-toml");
+        assert_eq!(q.as_str(), "tools toml");
+    }
+
+    #[test]
+    fn fts_query_multiple_hyphens() {
+        let q = FtsQuery::new("my-cool-tool");
+        assert_eq!(q.as_str(), "my cool tool");
+    }
+
+    #[test]
+    fn fts_query_hyphen_in_phrase_preserved() {
+        // Inside quoted phrases, hyphens should be preserved (tokenizer handles them)
+        let q = FtsQuery::new("\"tools-toml\"");
+        assert_eq!(q.as_str(), "\"tools-toml\"");
     }
 
     #[test]
