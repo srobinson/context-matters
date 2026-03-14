@@ -70,7 +70,7 @@ async fn cmd_stats() -> Result<()> {
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
         let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler");
         let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler");
         tokio::select! {
@@ -80,8 +80,6 @@ async fn shutdown_signal() {
     }
     #[cfg(not(unix))]
     {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("ctrl-c handler");
+        tokio::signal::ctrl_c().await.expect("ctrl-c handler");
     }
 }
