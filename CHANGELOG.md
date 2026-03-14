@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/srobinson/context-matters/compare/v0.1.2...v0.1.3) (2026-03-14)
+
+
+### Bug Fixes
+
+* restructure npm scoped package layout and add Windows build target ([27f137c](https://github.com/srobinson/context-matters/commit/27f137cef89db167419b74db7d630294e50faf2e))
+
 ## [0.1.2](https://github.com/srobinson/context-matters/compare/v0.1.1...v0.1.2) (2026-03-14)
 
 
