@@ -1,0 +1,26 @@
+{
+  "name": "@context-matters/cli",
+  "version": "0.1.1",
+  "description": "Structured context store for AI agents - MCP server with SQLite backend",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srobinson/context-matters"
+  },
+  "homepage": "https://github.com/srobinson/context-matters",
+  "keywords": [
+    "mcp",
+    "context",
+    "ai",
+    "claude",
+    "agent",
+    "sqlite",
+    "mcp-server"
+  ],
+  "dependencies": {
+    "context-matters": "0.1.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

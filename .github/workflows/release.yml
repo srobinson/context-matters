@@ -134,3 +134,4 @@ jobs:
             fi
           }
           publish npm/context-matters
+          publish npm/@context-matters/cli
