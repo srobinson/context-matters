@@ -6,6 +6,7 @@ license.workspace = true
 description = "SQLite persistence layer for context-matters"
 
 [dependencies]
+blake3 = { workspace = true }
 cm-core = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
