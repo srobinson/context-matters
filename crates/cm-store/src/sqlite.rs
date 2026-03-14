@@ -564,13 +564,15 @@ impl ContextStore for CmStore {
     fn update_entry(&self, id: Uuid, update: UpdateEntry) -> Result<Entry, CmError> {
         // Validate non-empty title/body if provided, matching create_entry's invariant
         if let Some(ref title) = update.title
-            && title.trim().is_empty() {
-                return Err(CmError::Validation("title cannot be empty".to_owned()));
-            }
+            && title.trim().is_empty()
+        {
+            return Err(CmError::Validation("title cannot be empty".to_owned()));
+        }
         if let Some(ref body) = update.body
-            && body.trim().is_empty() {
-                return Err(CmError::Validation("body cannot be empty".to_owned()));
-            }
+            && body.trim().is_empty()
+        {
+            return Err(CmError::Validation("body cannot be empty".to_owned()));
+        }
 
         let id_str = id.to_string();
         let pool = &self.write_pool;

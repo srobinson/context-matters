@@ -187,7 +187,7 @@ impl McpServer {
 
         let result = match request.method.as_str() {
             "initialize" => self.handle_initialize(),
-            "notifications/initialized" => return None,
+            _ if request.method.starts_with("notifications/") => return None,
             "tools/list" => Ok(schema::tool_list()),
             "tools/call" => self.handle_tool_call(&request.params).await,
             "ping" => Ok(json!({})),
@@ -222,9 +222,9 @@ impl McpServer {
             },
             "serverInfo": {
                 "name": "cm",
-                "version": env!("CARGO_PKG_VERSION"),
-                "instructions": SERVER_INSTRUCTIONS
-            }
+                "version": env!("CARGO_PKG_VERSION")
+            },
+            "instructions": SERVER_INSTRUCTIONS
         }))
     }
 
@@ -343,11 +343,11 @@ pub(crate) fn clamp_limit(limit: Option<u32>) -> u32 {
 /// panicking on multi-byte character boundaries. Tries to break
 /// at a word boundary for readability.
 #[allow(dead_code)]
-pub(crate) fn snippet(body: &str, max_chars: usize) -> String {
-    if body.len() <= max_chars {
+pub(crate) fn snippet(body: &str, max_bytes: usize) -> String {
+    if body.len() <= max_bytes {
         return body.to_owned();
     }
-    let end = body.floor_char_boundary(max_chars);
+    let end = body.floor_char_boundary(max_bytes);
     match body[..end].rfind(' ') {
         Some(pos) => format!("{}...", &body[..pos]),
         None => format!("{}...", &body[..end]),
