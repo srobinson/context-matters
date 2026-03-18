@@ -48,6 +48,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Testing
+insta = { version = "1", features = ["json", "redactions"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

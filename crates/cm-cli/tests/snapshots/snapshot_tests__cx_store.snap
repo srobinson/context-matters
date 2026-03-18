@@ -1,0 +1,15 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 91
+expression: resp
+---
+{
+  "content_hash": "[redacted]",
+  "created_at": "[redacted]",
+  "id": "[redacted]",
+  "kind": "decision",
+  "message": "Entry stored.",
+  "scope_path": "global",
+  "superseded": null,
+  "title": "Architecture decision"
+}
