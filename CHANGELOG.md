@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/srobinson/context-matters/compare/v0.1.5...v0.1.6) (2026-03-18)
+
+
+### Features
+
+* migrate to native async traits and add comprehensive test infrastructure ([#8](https://github.com/srobinson/context-matters/issues/8)) ([ebe6214](https://github.com/srobinson/context-matters/commit/ebe6214038fae6c9cb322a3c7d9bca1fd4453af3))
+
 ## [0.1.5](https://github.com/srobinson/context-matters/compare/v0.1.4...v0.1.5) (2026-03-14)
 
 
