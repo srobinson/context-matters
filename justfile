@@ -5,7 +5,11 @@ build:
     cargo build --workspace
 
 test:
-    cargo test --workspace
+    cargo nextest run --workspace
+
+# Run doctests (nextest doesn't support doctests)
+test-doc:
+    cargo test --workspace --doc
 
 fmt:
     cargo fmt --all
