@@ -1,7 +1,6 @@
 //! Handler for the `cx_recall` tool.
 
 use cm_core::{ContextStore, Entry, EntryKind, ScopePath};
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -37,7 +36,7 @@ struct CxRecallParams {
     max_tokens: Option<u32>,
 }
 
-pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxRecallParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -75,6 +74,7 @@ pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
     let entries = match &params.query {
         Some(query) => store
             .search(query, scope_path.as_ref(), fetch_limit)
+            .await
             .map_err(cm_err_to_string)?,
         None => {
             // Without a query, resolve_context walks ancestors from the given scope.
@@ -82,6 +82,7 @@ pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
             match &scope_path {
                 Some(sp) => store
                     .resolve_context(sp, &kind_filters, fetch_limit)
+                    .await
                     .map_err(cm_err_to_string)?,
                 None => {
                     let filter = cm_core::EntryFilter {
@@ -96,7 +97,7 @@ pub fn cx_recall(store: &CmStore, args: &Value) -> Result<String, String> {
                         },
                         ..Default::default()
                     };
-                    let paged = store.browse(filter).map_err(cm_err_to_string)?;
+                    let paged = store.browse(filter).await.map_err(cm_err_to_string)?;
                     paged.items
                 }
             }

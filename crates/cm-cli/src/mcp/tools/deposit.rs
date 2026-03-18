@@ -1,7 +1,6 @@
 //! Handler for the `cx_deposit` tool.
 
 use cm_core::{ContextStore, EntryKind, EntryMeta, NewEntry, RelationKind, ScopePath};
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -41,7 +40,7 @@ struct Exchange {
     title: Option<String>,
 }
 
-pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxDepositParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -71,7 +70,7 @@ pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
         ScopePath::parse(&params.scope_path).map_err(|e| cm_err_to_string(e.into()))?;
 
     // Auto-create scope chain
-    ensure_scope_chain(store, &scope_path)?;
+    ensure_scope_chain(store, &scope_path).await?;
 
     let mut entry_ids = Vec::with_capacity(params.exchanges.len());
 
@@ -95,7 +94,10 @@ pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
             }),
         };
 
-        let entry = store.create_entry(new_entry).map_err(cm_err_to_string)?;
+        let entry = store
+            .create_entry(new_entry)
+            .await
+            .map_err(cm_err_to_string)?;
         entry_ids.push(entry.id);
     }
 
@@ -117,6 +119,7 @@ pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
 
         let entry = store
             .create_entry(summary_entry)
+            .await
             .map_err(cm_err_to_string)?;
         let sid = entry.id;
 
@@ -124,6 +127,7 @@ pub fn cx_deposit(store: &CmStore, args: &Value) -> Result<String, String> {
         for &exchange_id in &entry_ids {
             store
                 .create_relation(sid, exchange_id, RelationKind::Elaborates)
+                .await
                 .map_err(cm_err_to_string)?;
         }
 

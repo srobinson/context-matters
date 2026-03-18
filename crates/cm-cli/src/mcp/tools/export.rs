@@ -1,7 +1,6 @@
 //! Handler for the `cx_export` tool.
 
 use cm_core::{ContextStore, ScopePath};
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -22,7 +21,7 @@ fn default_format() -> String {
     "json".to_owned()
 }
 
-pub fn cx_export(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxExportParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -40,9 +39,10 @@ pub fn cx_export(store: &CmStore, args: &Value) -> Result<String, String> {
 
     let entries = store
         .export(scope_path.as_ref())
+        .await
         .map_err(cm_err_to_string)?;
 
-    let all_scopes = store.list_scopes(None).map_err(cm_err_to_string)?;
+    let all_scopes = store.list_scopes(None).await.map_err(cm_err_to_string)?;
 
     // Filter scopes by prefix if scope_path is specified
     let scopes: Vec<_> = match &scope_path {

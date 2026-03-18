@@ -1,7 +1,6 @@
 //! Handler for the `cx_forget` tool.
 
 use cm_core::ContextStore;
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -13,7 +12,7 @@ struct CxForgetParams {
     ids: Vec<String>,
 }
 
-pub fn cx_forget(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxForgetParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -40,13 +39,13 @@ pub fn cx_forget(store: &CmStore, args: &Value) -> Result<String, String> {
 
     for &id in &uuids {
         // Check current state
-        match store.get_entry(id) {
+        match store.get_entry(id).await {
             Ok(entry) => {
                 if entry.superseded_by.is_some() {
                     already_inactive += 1;
                     details.push(json!({"id": id.to_string(), "status": "already_inactive"}));
                 } else {
-                    match store.forget_entry(id) {
+                    match store.forget_entry(id).await {
                         Ok(()) => {
                             forgotten += 1;
                             details.push(json!({"id": id.to_string(), "status": "forgotten"}));

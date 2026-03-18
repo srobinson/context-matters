@@ -10,8 +10,7 @@ pub mod tools;
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
-use cm_core::{CmError, ScopePath};
-use cm_store::CmStore;
+use cm_core::{CmError, ContextStore, ScopePath};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -111,20 +110,20 @@ pub struct JsonRpcError {
 // ── McpServer ─────────────────────────────────────────────────────
 
 /// Manual JSON-RPC over stdio MCP server for context-matters.
-pub struct McpServer {
-    store: Arc<CmStore>,
+pub struct McpServer<S: ContextStore> {
+    store: Arc<S>,
 }
 
-impl McpServer {
+impl<S: ContextStore> McpServer<S> {
     /// Construct a new MCP server wrapping the given store.
-    pub fn new(store: CmStore) -> Self {
+    pub fn new(store: S) -> Self {
         Self {
             store: Arc::new(store),
         }
     }
 
     /// Access the underlying store (for WAL checkpoint on shutdown, etc.).
-    pub fn store(&self) -> &CmStore {
+    pub fn store(&self) -> &S {
         &self.store
     }
 
@@ -246,15 +245,15 @@ impl McpServer {
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
         let result = match tool_name {
-            "cx_recall" => tools::cx_recall(&self.store, &arguments),
-            "cx_store" => tools::cx_store(&self.store, &arguments),
-            "cx_deposit" => tools::cx_deposit(&self.store, &arguments),
-            "cx_browse" => tools::cx_browse(&self.store, &arguments),
-            "cx_get" => tools::cx_get(&self.store, &arguments),
-            "cx_update" => tools::cx_update(&self.store, &arguments),
-            "cx_forget" => tools::cx_forget(&self.store, &arguments),
-            "cx_stats" => tools::cx_stats(&self.store, &arguments),
-            "cx_export" => tools::cx_export(&self.store, &arguments),
+            "cx_recall" => tools::cx_recall(&*self.store, &arguments).await,
+            "cx_store" => tools::cx_store(&*self.store, &arguments).await,
+            "cx_deposit" => tools::cx_deposit(&*self.store, &arguments).await,
+            "cx_browse" => tools::cx_browse(&*self.store, &arguments).await,
+            "cx_get" => tools::cx_get(&*self.store, &arguments).await,
+            "cx_update" => tools::cx_update(&*self.store, &arguments).await,
+            "cx_forget" => tools::cx_forget(&*self.store, &arguments).await,
+            "cx_stats" => tools::cx_stats(&*self.store, &arguments).await,
+            "cx_export" => tools::cx_export(&*self.store, &arguments).await,
             _ => Err(format!("Unknown tool: {tool_name}")),
         };
 
@@ -385,15 +384,18 @@ pub(crate) fn json_response(value: Value) -> Result<String, String> {
 /// When `cx_store` or `cx_deposit` receives a scope path that does not
 /// exist, this function creates the full scope chain automatically. This
 /// prevents agents from needing to manage scope creation separately.
-pub(crate) fn ensure_scope_chain(store: &CmStore, path: &ScopePath) -> Result<(), String> {
-    use cm_core::{ContextStore, NewScope};
+pub(crate) async fn ensure_scope_chain(
+    store: &impl ContextStore,
+    path: &ScopePath,
+) -> Result<(), String> {
+    use cm_core::NewScope;
 
     let ancestors: Vec<&str> = path.ancestors().collect();
 
     // Walk from root (last) to leaf (first)
     for ancestor_str in ancestors.into_iter().rev() {
         let ancestor = ScopePath::parse(ancestor_str).map_err(|e| cm_err_to_string(e.into()))?;
-        match store.get_scope(&ancestor) {
+        match store.get_scope(&ancestor).await {
             Ok(_) => continue,
             Err(CmError::ScopeNotFound(_)) => {
                 // Derive label from the last segment
@@ -409,7 +411,10 @@ pub(crate) fn ensure_scope_chain(store: &CmStore, path: &ScopePath) -> Result<()
                     label,
                     meta: None,
                 };
-                store.create_scope(new_scope).map_err(cm_err_to_string)?;
+                store
+                    .create_scope(new_scope)
+                    .await
+                    .map_err(cm_err_to_string)?;
             }
             Err(e) => return Err(cm_err_to_string(e)),
         }

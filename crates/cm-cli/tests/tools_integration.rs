@@ -23,13 +23,14 @@ async fn test_store() -> (CmStore, tempfile::TempDir) {
 }
 
 /// Create the global scope in the store.
-fn create_global(store: &CmStore) {
+async fn create_global(store: &CmStore) {
     store
         .create_scope(NewScope {
             path: ScopePath::parse("global").unwrap(),
             label: "Global".to_owned(),
             meta: None,
         })
+        .await
         .unwrap();
 }
 
@@ -38,7 +39,7 @@ fn create_global(store: &CmStore) {
 #[tokio::test(flavor = "multi_thread")]
 async fn store_creates_entry_at_global_scope() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let result = tools::cx_store(
         &store,
@@ -47,7 +48,8 @@ async fn store_creates_entry_at_global_scope() {
             "body": "This is a test fact body.",
             "kind": "fact"
         }),
-    );
+    )
+    .await;
 
     let text = result.unwrap();
     let resp: Value = serde_json::from_str(&text).unwrap();
@@ -60,7 +62,7 @@ async fn store_creates_entry_at_global_scope() {
 #[tokio::test(flavor = "multi_thread")]
 async fn store_auto_creates_scope_chain() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let result = tools::cx_store(
         &store,
@@ -70,7 +72,8 @@ async fn store_auto_creates_scope_chain() {
             "kind": "decision",
             "scope_path": "global/project:helioy/repo:nancyr"
         }),
-    );
+    )
+    .await;
 
     let text = result.unwrap();
     let resp: Value = serde_json::from_str(&text).unwrap();
@@ -79,6 +82,7 @@ async fn store_auto_creates_scope_chain() {
     // Verify ancestor scopes were created
     let project_scope = store
         .get_scope(&ScopePath::parse("global/project:helioy").unwrap())
+        .await
         .unwrap();
     assert_eq!(project_scope.label, "helioy");
 }
@@ -86,7 +90,7 @@ async fn store_auto_creates_scope_chain() {
 #[tokio::test(flavor = "multi_thread")]
 async fn store_with_supersedes() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r1 = tools::cx_store(
         &store,
@@ -96,6 +100,7 @@ async fn store_with_supersedes() {
             "kind": "decision"
         }),
     )
+    .await
     .unwrap();
     let resp1: Value = serde_json::from_str(&r1).unwrap();
     let old_id = resp1["id"].as_str().unwrap();
@@ -109,6 +114,7 @@ async fn store_with_supersedes() {
             "supersedes": old_id
         }),
     )
+    .await
     .unwrap();
     let resp2: Value = serde_json::from_str(&r2).unwrap();
     assert_eq!(resp2["superseded"], old_id);
@@ -118,7 +124,7 @@ async fn store_with_supersedes() {
 #[tokio::test(flavor = "multi_thread")]
 async fn store_rejects_empty_title() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let result = tools::cx_store(
         &store,
@@ -127,7 +133,8 @@ async fn store_rejects_empty_title() {
             "body": "Some body",
             "kind": "fact"
         }),
-    );
+    )
+    .await;
     assert!(result.is_err() || result.unwrap().contains("empty"));
 }
 
@@ -142,7 +149,8 @@ async fn store_rejects_invalid_kind() {
             "body": "Test body",
             "kind": "bogus"
         }),
-    );
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid kind"));
 }
@@ -159,7 +167,8 @@ async fn store_rejects_invalid_scope_path() {
             "kind": "fact",
             "scope_path": "not/valid"
         }),
-    );
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid scope_path"));
 }
@@ -167,7 +176,7 @@ async fn store_rejects_invalid_scope_path() {
 #[tokio::test(flavor = "multi_thread")]
 async fn store_detects_duplicate_content() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let args = json!({
         "title": "Dup test",
@@ -175,8 +184,8 @@ async fn store_detects_duplicate_content() {
         "kind": "fact"
     });
 
-    tools::cx_store(&store, &args).unwrap();
-    let result = tools::cx_store(&store, &args);
+    tools::cx_store(&store, &args).await.unwrap();
+    let result = tools::cx_store(&store, &args).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Duplicate content"));
 }
@@ -186,7 +195,7 @@ async fn store_detects_duplicate_content() {
 #[tokio::test(flavor = "multi_thread")]
 async fn recall_with_query_searches_fts() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     tools::cx_store(
         &store,
@@ -196,6 +205,7 @@ async fn recall_with_query_searches_fts() {
             "kind": "reference"
         }),
     )
+    .await
     .unwrap();
 
     let result = tools::cx_recall(
@@ -204,6 +214,7 @@ async fn recall_with_query_searches_fts() {
             "query": "sqlx migrate"
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert!(resp["returned"].as_u64().unwrap() >= 1);
@@ -216,7 +227,7 @@ async fn recall_with_query_searches_fts() {
 #[tokio::test(flavor = "multi_thread")]
 async fn recall_without_query_uses_scope_resolution() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     tools::cx_store(
         &store,
@@ -226,6 +237,7 @@ async fn recall_without_query_uses_scope_resolution() {
             "kind": "preference"
         }),
     )
+    .await
     .unwrap();
 
     tools::cx_store(
@@ -237,6 +249,7 @@ async fn recall_without_query_uses_scope_resolution() {
             "scope_path": "global/project:helioy"
         }),
     )
+    .await
     .unwrap();
 
     let result = tools::cx_recall(
@@ -245,6 +258,7 @@ async fn recall_without_query_uses_scope_resolution() {
             "scope": "global/project:helioy"
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     // Should return both project-level and global entries
@@ -256,17 +270,19 @@ async fn recall_without_query_uses_scope_resolution() {
 #[tokio::test(flavor = "multi_thread")]
 async fn recall_filters_by_kinds() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     tools::cx_store(
         &store,
         &json!({"title": "A fact", "body": "Fact body.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     tools::cx_store(
         &store,
         &json!({"title": "A decision", "body": "Decision body.", "kind": "decision"}),
     )
+    .await
     .unwrap();
 
     let result = tools::cx_recall(
@@ -275,6 +291,7 @@ async fn recall_filters_by_kinds() {
             "kinds": ["fact"]
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     for entry in resp["results"].as_array().unwrap() {
@@ -285,7 +302,7 @@ async fn recall_filters_by_kinds() {
 #[tokio::test(flavor = "multi_thread")]
 async fn recall_respects_max_tokens_budget() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     // Create several entries
     for i in 0..10 {
@@ -297,6 +314,7 @@ async fn recall_respects_max_tokens_budget() {
                 "kind": "fact"
             }),
         )
+        .await
         .unwrap();
     }
 
@@ -306,6 +324,7 @@ async fn recall_respects_max_tokens_budget() {
             "max_tokens": 50
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     // With a very small budget, should return fewer than all 10
@@ -318,7 +337,7 @@ async fn recall_respects_max_tokens_budget() {
 #[tokio::test(flavor = "multi_thread")]
 async fn get_returns_full_body() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r = tools::cx_store(
         &store,
@@ -328,11 +347,12 @@ async fn get_returns_full_body() {
             "kind": "fact"
         }),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
 
-    let result = tools::cx_get(&store, &json!({"ids": [id]})).unwrap();
+    let result = tools::cx_get(&store, &json!({"ids": [id]})).await.unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["found"], 1);
     assert_eq!(resp["missing"], 0);
@@ -349,7 +369,9 @@ async fn get_reports_missing_ids() {
     let (store, _dir) = test_store().await;
 
     let fake_id = "01950000-0000-7000-8000-000000000000";
-    let result = tools::cx_get(&store, &json!({"ids": [fake_id]})).unwrap();
+    let result = tools::cx_get(&store, &json!({"ids": [fake_id]}))
+        .await
+        .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["found"], 0);
     assert_eq!(resp["missing"], 1);
@@ -358,7 +380,7 @@ async fn get_reports_missing_ids() {
 #[tokio::test(flavor = "multi_thread")]
 async fn get_rejects_empty_ids() {
     let (store, _dir) = test_store().await;
-    let result = tools::cx_get(&store, &json!({"ids": []}));
+    let result = tools::cx_get(&store, &json!({"ids": []})).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("cannot be empty"));
 }
@@ -366,7 +388,7 @@ async fn get_rejects_empty_ids() {
 #[tokio::test(flavor = "multi_thread")]
 async fn get_rejects_invalid_uuid() {
     let (store, _dir) = test_store().await;
-    let result = tools::cx_get(&store, &json!({"ids": ["not-a-uuid"]}));
+    let result = tools::cx_get(&store, &json!({"ids": ["not-a-uuid"]})).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid UUID"));
 }
@@ -376,7 +398,7 @@ async fn get_rejects_invalid_uuid() {
 #[tokio::test(flavor = "multi_thread")]
 async fn browse_returns_paginated_results() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     for i in 0..5 {
         tools::cx_store(
@@ -387,10 +409,13 @@ async fn browse_returns_paginated_results() {
                 "kind": "fact"
             }),
         )
+        .await
         .unwrap();
     }
 
-    let result = tools::cx_browse(&store, &json!({"limit": 2})).unwrap();
+    let result = tools::cx_browse(&store, &json!({"limit": 2}))
+        .await
+        .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["entries"].as_array().unwrap().len(), 2);
     assert_eq!(resp["total"], 5);
@@ -399,7 +424,9 @@ async fn browse_returns_paginated_results() {
 
     // Fetch next page
     let cursor = resp["next_cursor"].as_str().unwrap();
-    let result2 = tools::cx_browse(&store, &json!({"limit": 2, "cursor": cursor})).unwrap();
+    let result2 = tools::cx_browse(&store, &json!({"limit": 2, "cursor": cursor}))
+        .await
+        .unwrap();
     let resp2: Value = serde_json::from_str(&result2).unwrap();
     assert_eq!(resp2["entries"].as_array().unwrap().len(), 2);
 }
@@ -407,20 +434,24 @@ async fn browse_returns_paginated_results() {
 #[tokio::test(flavor = "multi_thread")]
 async fn browse_filters_by_kind() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     tools::cx_store(
         &store,
         &json!({"title": "A fact", "body": "Fact.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     tools::cx_store(
         &store,
         &json!({"title": "A lesson", "body": "Lesson.", "kind": "lesson"}),
     )
+    .await
     .unwrap();
 
-    let result = tools::cx_browse(&store, &json!({"kind": "lesson"})).unwrap();
+    let result = tools::cx_browse(&store, &json!({"kind": "lesson"}))
+        .await
+        .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["total"], 1);
     assert_eq!(resp["entries"][0]["kind"], "lesson");
@@ -431,12 +462,13 @@ async fn browse_filters_by_kind() {
 #[tokio::test(flavor = "multi_thread")]
 async fn update_changes_title_and_body() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r = tools::cx_store(
         &store,
         &json!({"title": "Original", "body": "Original body.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
@@ -449,6 +481,7 @@ async fn update_changes_title_and_body() {
             "body": "Updated body content."
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["entry"]["title"], "Updated title");
@@ -461,7 +494,8 @@ async fn update_rejects_no_fields() {
     let result = tools::cx_update(
         &store,
         &json!({"id": "01950000-0000-7000-8000-000000000000"}),
-    );
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("at least one field"));
 }
@@ -471,23 +505,26 @@ async fn update_rejects_no_fields() {
 #[tokio::test(flavor = "multi_thread")]
 async fn forget_soft_deletes_entry() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r = tools::cx_store(
         &store,
         &json!({"title": "To forget", "body": "Will be forgotten.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
 
-    let result = tools::cx_forget(&store, &json!({"ids": [id]})).unwrap();
+    let result = tools::cx_forget(&store, &json!({"ids": [id]}))
+        .await
+        .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["forgotten"], 1);
     assert_eq!(resp["already_inactive"], 0);
 
     // Verify excluded from recall
-    let recall = tools::cx_recall(&store, &json!({})).unwrap();
+    let recall = tools::cx_recall(&store, &json!({})).await.unwrap();
     let recall_resp: Value = serde_json::from_str(&recall).unwrap();
     let ids: Vec<&str> = recall_resp["results"]
         .as_array()
@@ -501,18 +538,23 @@ async fn forget_soft_deletes_entry() {
 #[tokio::test(flavor = "multi_thread")]
 async fn forget_reports_already_inactive() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r = tools::cx_store(
         &store,
         &json!({"title": "Double forget", "body": "Body.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
 
-    tools::cx_forget(&store, &json!({"ids": [id]})).unwrap();
-    let result = tools::cx_forget(&store, &json!({"ids": [id]})).unwrap();
+    tools::cx_forget(&store, &json!({"ids": [id]}))
+        .await
+        .unwrap();
+    let result = tools::cx_forget(&store, &json!({"ids": [id]}))
+        .await
+        .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["forgotten"], 0);
     assert_eq!(resp["already_inactive"], 1);
@@ -526,6 +568,7 @@ async fn forget_reports_not_found() {
         &store,
         &json!({"ids": ["01950000-0000-7000-8000-000000000000"]}),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["not_found"], 1);
@@ -536,7 +579,7 @@ async fn forget_reports_not_found() {
 #[tokio::test(flavor = "multi_thread")]
 async fn deposit_creates_exchange_entries() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let result = tools::cx_deposit(
         &store,
@@ -547,6 +590,7 @@ async fn deposit_creates_exchange_entries() {
             ]
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["deposited"], 2);
@@ -557,7 +601,7 @@ async fn deposit_creates_exchange_entries() {
 #[tokio::test(flavor = "multi_thread")]
 async fn deposit_with_summary_creates_relations() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let result = tools::cx_deposit(
         &store,
@@ -568,6 +612,7 @@ async fn deposit_with_summary_creates_relations() {
             "summary": "Discussed Rust programming language basics."
         }),
     )
+    .await
     .unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["deposited"], 1);
@@ -578,7 +623,7 @@ async fn deposit_with_summary_creates_relations() {
 #[tokio::test(flavor = "multi_thread")]
 async fn deposit_rejects_empty_exchanges() {
     let (store, _dir) = test_store().await;
-    let result = tools::cx_deposit(&store, &json!({"exchanges": []}));
+    let result = tools::cx_deposit(&store, &json!({"exchanges": []})).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("cannot be empty"));
 }
@@ -588,25 +633,28 @@ async fn deposit_rejects_empty_exchanges() {
 #[tokio::test(flavor = "multi_thread")]
 async fn stats_returns_correct_counts() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     tools::cx_store(
         &store,
         &json!({"title": "Fact 1", "body": "Body 1.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     tools::cx_store(
         &store,
         &json!({"title": "Fact 2", "body": "Body 2.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     tools::cx_store(
         &store,
         &json!({"title": "Decision 1", "body": "Body 3.", "kind": "decision"}),
     )
+    .await
     .unwrap();
 
-    let result = tools::cx_stats(&store, &json!({})).unwrap();
+    let result = tools::cx_stats(&store, &json!({})).await.unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["active_entries"], 3);
     assert_eq!(resp["entries_by_kind"]["fact"], 2);
@@ -619,15 +667,16 @@ async fn stats_returns_correct_counts() {
 #[tokio::test(flavor = "multi_thread")]
 async fn export_returns_all_entries() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     tools::cx_store(
         &store,
         &json!({"title": "Export test", "body": "Body.", "kind": "fact"}),
     )
+    .await
     .unwrap();
 
-    let result = tools::cx_export(&store, &json!({})).unwrap();
+    let result = tools::cx_export(&store, &json!({})).await.unwrap();
     let resp: Value = serde_json::from_str(&result).unwrap();
     assert_eq!(resp["count"], 1);
     assert!(resp["exported_at"].as_str().is_some());
@@ -637,7 +686,7 @@ async fn export_returns_all_entries() {
 #[tokio::test(flavor = "multi_thread")]
 async fn export_rejects_unsupported_format() {
     let (store, _dir) = test_store().await;
-    let result = tools::cx_export(&store, &json!({"format": "csv"}));
+    let result = tools::cx_export(&store, &json!({"format": "csv"})).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Unsupported export format"));
 }
@@ -647,7 +696,7 @@ async fn export_rejects_unsupported_format() {
 #[tokio::test(flavor = "multi_thread")]
 async fn e2e_store_recall_get_flow() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     // Store
     let r = tools::cx_store(
@@ -659,17 +708,20 @@ async fn e2e_store_recall_get_flow() {
             "tags": ["testing", "e2e"]
         }),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
 
     // Recall by query (use a term without hyphens to avoid FTS5 parsing issues)
-    let recall = tools::cx_recall(&store, &json!({"query": "verification"})).unwrap();
+    let recall = tools::cx_recall(&store, &json!({"query": "verification"}))
+        .await
+        .unwrap();
     let recall_resp: Value = serde_json::from_str(&recall).unwrap();
     assert!(recall_resp["returned"].as_u64().unwrap() >= 1);
 
     // Get full content
-    let get = tools::cx_get(&store, &json!({"ids": [id]})).unwrap();
+    let get = tools::cx_get(&store, &json!({"ids": [id]})).await.unwrap();
     let get_resp: Value = serde_json::from_str(&get).unwrap();
     assert_eq!(get_resp["found"], 1);
     assert!(
@@ -683,12 +735,13 @@ async fn e2e_store_recall_get_flow() {
 #[tokio::test(flavor = "multi_thread")]
 async fn e2e_store_update_verify() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r = tools::cx_store(
         &store,
         &json!({"title": "Before update", "body": "Original.", "kind": "fact"}),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
@@ -697,9 +750,10 @@ async fn e2e_store_update_verify() {
         &store,
         &json!({"id": id, "title": "After update", "body": "Modified."}),
     )
+    .await
     .unwrap();
 
-    let get = tools::cx_get(&store, &json!({"ids": [id]})).unwrap();
+    let get = tools::cx_get(&store, &json!({"ids": [id]})).await.unwrap();
     let resp: Value = serde_json::from_str(&get).unwrap();
     assert_eq!(resp["entries"][0]["title"], "After update");
     assert_eq!(resp["entries"][0]["body"], "Modified.");
@@ -708,20 +762,23 @@ async fn e2e_store_update_verify() {
 #[tokio::test(flavor = "multi_thread")]
 async fn e2e_store_forget_exclusion() {
     let (store, _dir) = test_store().await;
-    create_global(&store);
+    create_global(&store).await;
 
     let r = tools::cx_store(
         &store,
         &json!({"title": "Will vanish", "body": "Gone soon.", "kind": "observation"}),
     )
+    .await
     .unwrap();
     let stored: Value = serde_json::from_str(&r).unwrap();
     let id = stored["id"].as_str().unwrap();
 
-    tools::cx_forget(&store, &json!({"ids": [id]})).unwrap();
+    tools::cx_forget(&store, &json!({"ids": [id]}))
+        .await
+        .unwrap();
 
     // Browse should not include it by default
-    let browse = tools::cx_browse(&store, &json!({})).unwrap();
+    let browse = tools::cx_browse(&store, &json!({})).await.unwrap();
     let resp: Value = serde_json::from_str(&browse).unwrap();
     let ids: Vec<&str> = resp["entries"]
         .as_array()
@@ -732,7 +789,9 @@ async fn e2e_store_forget_exclusion() {
     assert!(!ids.contains(&id));
 
     // Browse with include_superseded should include it
-    let browse2 = tools::cx_browse(&store, &json!({"include_superseded": true})).unwrap();
+    let browse2 = tools::cx_browse(&store, &json!({"include_superseded": true}))
+        .await
+        .unwrap();
     let resp2: Value = serde_json::from_str(&browse2).unwrap();
     let ids2: Vec<&str> = resp2["entries"]
         .as_array()

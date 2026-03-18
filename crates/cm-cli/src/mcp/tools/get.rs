@@ -1,7 +1,6 @@
 //! Handler for the `cx_get` tool.
 
 use cm_core::ContextStore;
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -15,7 +14,7 @@ struct CxGetParams {
     ids: Vec<String>,
 }
 
-pub fn cx_get(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_get(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxGetParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -35,7 +34,7 @@ pub fn cx_get(store: &CmStore, args: &Value) -> Result<String, String> {
         .map(|s| uuid::Uuid::parse_str(s).map_err(|_| format!("Invalid UUID format: '{s}'")))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let entries = store.get_entries(&uuids).map_err(cm_err_to_string)?;
+    let entries = store.get_entries(&uuids).await.map_err(cm_err_to_string)?;
     let found = entries.len();
     let missing = uuids.len() - found;
 

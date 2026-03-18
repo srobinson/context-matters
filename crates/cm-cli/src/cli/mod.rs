@@ -5,11 +5,10 @@ pub mod generated_help;
 
 use anyhow::Result;
 use cm_core::ContextStore;
-use cm_store::CmStore;
 
 /// Display store statistics on stdout.
-pub async fn cmd_stats(store: &CmStore) -> Result<()> {
-    let stats = store.stats().map_err(|e| anyhow::anyhow!("{e}"))?;
+pub async fn cmd_stats(store: &impl ContextStore) -> Result<()> {
+    let stats = store.stats().await.map_err(|e| anyhow::anyhow!("{e}"))?;
 
     println!("context-matters v{}", env!("CARGO_PKG_VERSION"));
     println!();

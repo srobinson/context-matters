@@ -1,7 +1,6 @@
 //! Handler for the `cx_browse` tool.
 
 use cm_core::{ContextStore, EntryFilter, EntryKind, Pagination, ScopePath};
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -40,7 +39,7 @@ struct CxBrowseParams {
     cursor: Option<String>,
 }
 
-pub fn cx_browse(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxBrowseParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -70,7 +69,7 @@ pub fn cx_browse(store: &CmStore, args: &Value) -> Result<String, String> {
         pagination: Pagination { limit, cursor },
     };
 
-    let result = store.browse(filter).map_err(cm_err_to_string)?;
+    let result = store.browse(filter).await.map_err(cm_err_to_string)?;
 
     let entries: Vec<Value> = result.items.iter().map(entry_to_browse_json).collect();
 
