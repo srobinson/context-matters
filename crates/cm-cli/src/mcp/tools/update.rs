@@ -1,7 +1,6 @@
 //! Handler for the `cx_update` tool.
 
 use cm_core::{ContextStore, EntryKind, EntryMeta, UpdateEntry};
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -45,7 +44,7 @@ struct CxMetaInput {
     priority: Option<i32>,
 }
 
-pub fn cx_update(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxUpdateParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -111,7 +110,10 @@ pub fn cx_update(store: &CmStore, args: &Value) -> Result<String, String> {
         meta,
     };
 
-    let entry = store.update_entry(id, update).map_err(cm_err_to_string)?;
+    let entry = store
+        .update_entry(id, update)
+        .await
+        .map_err(cm_err_to_string)?;
 
     let response = json!({
         "entry": {

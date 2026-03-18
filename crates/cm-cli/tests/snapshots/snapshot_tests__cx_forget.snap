@@ -1,0 +1,17 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 202
+expression: resp
+---
+{
+  "already_inactive": 0,
+  "details": [
+    {
+      "id": "[redacted]",
+      "status": "forgotten"
+    }
+  ],
+  "forgotten": 1,
+  "message": "Forgot 1 entries.",
+  "not_found": 0
+}

@@ -1,12 +1,11 @@
 //! Handler for the `cx_stats` tool.
 
 use cm_core::ContextStore;
-use cm_store::CmStore;
 use serde_json::{Value, json};
 
 use crate::mcp::{cm_err_to_string, json_response};
 
-pub fn cx_stats(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_stats(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let tag_sort = args
         .get("tag_sort")
         .and_then(Value::as_str)
@@ -18,8 +17,8 @@ pub fn cx_stats(store: &CmStore, args: &Value) -> Result<String, String> {
         ));
     }
 
-    let stats = store.stats().map_err(cm_err_to_string)?;
-    let scopes = store.list_scopes(None).map_err(cm_err_to_string)?;
+    let stats = store.stats().await.map_err(cm_err_to_string)?;
+    let scopes = store.list_scopes(None).await.map_err(cm_err_to_string)?;
 
     let scope_tree: Vec<Value> = scopes
         .iter()

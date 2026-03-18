@@ -1,0 +1,25 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 117
+expression: resp
+---
+{
+  "results": [
+    {
+      "confidence": "high",
+      "created_by": "agent:claude-code",
+      "id": "[redacted]",
+      "kind": "fact",
+      "scope_path": "global",
+      "snippet": "This is a test fact body for snapshot testing.",
+      "tags": [
+        "test-tag"
+      ],
+      "title": "Test fact",
+      "updated_at": "[redacted]"
+    }
+  ],
+  "returned": 1,
+  "scope_chain": [],
+  "token_estimate": 70
+}

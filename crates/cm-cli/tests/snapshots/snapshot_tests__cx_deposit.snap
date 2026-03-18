@@ -1,0 +1,11 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 232
+expression: resp
+---
+{
+  "deposited": 1,
+  "entry_ids": "[redacted]",
+  "message": "Deposited 1 exchanges with summary.",
+  "summary_id": "[redacted]"
+}

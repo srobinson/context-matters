@@ -1,0 +1,32 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 270
+expression: resp
+---
+{
+  "active_entries": 1,
+  "db_size_bytes": "[redacted]",
+  "entries_by_kind": {
+    "fact": 1
+  },
+  "entries_by_scope": {
+    "global": 1
+  },
+  "entries_by_tag": [
+    {
+      "count": 1,
+      "tag": "test-tag"
+    }
+  ],
+  "relations": 0,
+  "scope_tree": [
+    {
+      "entry_count": 1,
+      "kind": "global",
+      "label": "Global",
+      "path": "global"
+    }
+  ],
+  "scopes": 1,
+  "superseded_entries": 0
+}

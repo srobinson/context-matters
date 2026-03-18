@@ -1,0 +1,29 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 135
+expression: resp
+---
+{
+  "entries": [
+    {
+      "body": "This is a test fact body for snapshot testing.",
+      "content_hash": "[redacted]",
+      "created_at": "[redacted]",
+      "created_by": "agent:claude-code",
+      "id": "[redacted]",
+      "kind": "fact",
+      "meta": {
+        "confidence": "high",
+        "tags": [
+          "test-tag"
+        ]
+      },
+      "scope_path": "global",
+      "superseded_by": null,
+      "title": "Test fact",
+      "updated_at": "[redacted]"
+    }
+  ],
+  "found": 1,
+  "missing": 0
+}

@@ -1,0 +1,16 @@
+---
+source: crates/cm-cli/tests/snapshot_tests.rs
+assertion_line: 182
+expression: resp
+---
+{
+  "entry": {
+    "content_hash": "[redacted]",
+    "id": "[redacted]",
+    "kind": "fact",
+    "scope_path": "global",
+    "title": "Updated title",
+    "updated_at": "[redacted]"
+  },
+  "message": "Entry updated."
+}

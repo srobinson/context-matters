@@ -1,7 +1,6 @@
 //! Handler for the `cx_store` tool.
 
 use cm_core::{ContextStore, EntryKind, EntryMeta, NewEntry, ScopePath};
-use cm_store::CmStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -54,7 +53,7 @@ struct CxStoreParams {
     supersedes: Option<String>,
 }
 
-pub fn cx_store(store: &CmStore, args: &Value) -> Result<String, String> {
+pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let params: CxStoreParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -84,7 +83,7 @@ pub fn cx_store(store: &CmStore, args: &Value) -> Result<String, String> {
     };
 
     // Auto-create scope chain if needed
-    ensure_scope_chain(store, &scope_path)?;
+    ensure_scope_chain(store, &scope_path).await?;
 
     // Build metadata
     let meta = if !params.tags.is_empty()
@@ -121,11 +120,15 @@ pub fn cx_store(store: &CmStore, args: &Value) -> Result<String, String> {
                 .map_err(|_| format!("Invalid supersedes ID: '{id_str}'. Expected a UUID."))?;
             let entry = store
                 .supersede_entry(old_id, new_entry)
+                .await
                 .map_err(cm_err_to_string)?;
             (entry, Some(old_id))
         }
         None => {
-            let entry = store.create_entry(new_entry).map_err(cm_err_to_string)?;
+            let entry = store
+                .create_entry(new_entry)
+                .await
+                .map_err(cm_err_to_string)?;
             (entry, None)
         }
     };
