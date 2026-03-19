@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/srobinson/context-matters/compare/v0.1.6...v0.1.7) (2026-03-19)
+
+
+### Features
+
+* add mutation history infrastructure to cm-store ([#10](https://github.com/srobinson/context-matters/issues/10)) ([4ab747c](https://github.com/srobinson/context-matters/commit/4ab747c3663ed8f23f1fa122420ca216759b5b4b))
+
 ## [0.1.6](https://github.com/srobinson/context-matters/compare/v0.1.5...v0.1.6) (2026-03-18)
 
 
