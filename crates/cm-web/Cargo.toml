@@ -1,0 +1,27 @@
+[package]
+name = "cm-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Web monitoring interface for context-matters"
+
+[[bin]]
+name = "cm-web"
+path = "src/main.rs"
+
+[dependencies]
+cm-cli = { workspace = true }
+cm-core = { workspace = true }
+cm-store = { workspace = true }
+
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+open = "5"

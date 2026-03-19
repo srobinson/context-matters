@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::error::{CmError, ScopePathError};
 
@@ -9,7 +10,8 @@ use crate::error::{CmError, ScopePathError};
 ///
 /// Ordering is significant: scopes must appear in hierarchical order
 /// within a path (global < project < repo < session).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeKind {
     Global = 0,
@@ -95,7 +97,8 @@ fn is_valid_identifier(s: &str) -> bool {
 /// assert_eq!(path.leaf_kind(), ScopeKind::Repo);
 /// assert_eq!(path.depth(), 3);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export, as = "String")]
 #[serde(try_from = "String", into = "String")]
 pub struct ScopePath(String);
 
@@ -243,7 +246,8 @@ impl AsRef<str> for ScopePath {
 /// Scopes define the hierarchy that entries belong to.
 /// They must be created top-down: a scope's `parent_path`
 /// must already exist before the scope can be created.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Scope {
     /// The full scope path, which is also the primary key.
     pub path: ScopePath,
@@ -272,7 +276,8 @@ pub struct Scope {
 ///
 /// The `path` must be valid per `ScopePath` rules. If `parent_path` is
 /// `Some`, the referenced scope must already exist.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct NewScope {
     /// Full scope path (becomes the primary key).
     pub path: ScopePath,
@@ -311,7 +316,8 @@ impl NewScope {
 /// Each kind carries distinct semantic weight during recall.
 /// `Feedback` entries receive highest priority
 /// because they represent direct user corrections.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum EntryKind {
     Fact,
@@ -370,7 +376,8 @@ impl std::str::FromStr for EntryKind {
 ///
 /// Stored in the `meta` JSONB column. Affects recall priority:
 /// `High` entries surface before `Low` entries at the same scope level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum Confidence {
     High,
@@ -385,7 +392,8 @@ pub enum Confidence {
 /// The `extra` field captures any additional keys present in the JSON
 /// that are not part of the known schema, providing forward-compatible
 /// extensibility without schema changes.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct EntryMeta {
     /// Freeform tags for categorization and filtering.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -411,6 +419,7 @@ pub struct EntryMeta {
 
     /// Forward-compatible extension fields.
     #[serde(flatten)]
+    #[ts(skip)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -421,7 +430,8 @@ pub struct EntryMeta {
 /// This type represents a row from the `entries` table with all columns populated.
 /// Construct new entries via `NewEntry`; the store assigns `id`, `content_hash`,
 /// `created_at`, `updated_at`, and `superseded_by`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Entry {
     /// UUIDv7 identifier. Time-sortable, stored as lowercase hex TEXT.
     pub id: uuid::Uuid,
@@ -466,7 +476,8 @@ pub struct Entry {
 ///
 /// The caller provides scope, kind, title, body, created_by, and optional metadata.
 /// The store generates `id` (UUIDv7), `content_hash` (BLAKE3), and timestamps.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct NewEntry {
     /// Target scope path. Must reference an existing scope.
     pub scope_path: ScopePath,
@@ -510,7 +521,8 @@ impl NewEntry {
 ///
 /// Only fields set to `Some` are applied. `None` fields remain unchanged.
 /// The `content_hash` is recomputed by the store if `body` or `kind` changes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct UpdateEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -533,7 +545,8 @@ pub struct UpdateEntry {
 /// to `target_id`. The composite primary key is
 /// `(source_id, target_id, relation)`, allowing multiple
 /// distinct relation types between the same pair.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationKind {
     /// Source replaces target (target should have `superseded_by` set).
@@ -587,7 +600,8 @@ impl std::str::FromStr for RelationKind {
 ///
 /// Corresponds to a row in the `entry_relations` table.
 /// Relations cascade-delete when either entry is removed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct EntryRelation {
     pub source_id: uuid::Uuid,
     pub target_id: uuid::Uuid,
@@ -602,7 +616,8 @@ pub struct EntryRelation {
 /// The `cursor` field is an opaque page token produced by the store.
 /// Callers must not parse or construct cursors; pass the `next_cursor`
 /// from a previous `PagedResult` to fetch the next page.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Pagination {
     /// Maximum number of entries to return.
     pub limit: u32,
@@ -627,8 +642,9 @@ impl Default for Pagination {
 ///
 /// If `next_cursor` is `Some`, more results are available.
 /// Pass it as `pagination.cursor` on the next request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PagedResult<T> {
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PagedResult<T: TS> {
     /// The items on this page.
     pub items: Vec<T>,
 
@@ -647,7 +663,8 @@ pub struct PagedResult<T> {
 /// Each variant produces a deterministic total order with `id` as the
 /// final tiebreaker. `Recent` (default) matches the legacy
 /// `ORDER BY updated_at DESC, id DESC` behavior.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum BrowseSort {
     /// Most recently updated first (`updated_at DESC, id DESC`).
@@ -676,7 +693,8 @@ pub enum BrowseSort {
 /// All fields are optional. When multiple fields are set,
 /// they combine with AND semantics. An empty filter returns
 /// all active entries (where `superseded_by IS NULL`).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct EntryFilter {
     /// Filter to a specific scope path (exact match, no ancestor walk).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -710,7 +728,8 @@ pub struct EntryFilter {
 // ── TagCount ───────────────────────────────────────────────────────
 
 /// A tag with its usage count across active entries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct TagCount {
     pub tag: String,
     pub count: u64,
@@ -719,7 +738,8 @@ pub struct TagCount {
 // ── StoreStats ─────────────────────────────────────────────────────
 
 /// Aggregate statistics about the context store.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct StoreStats {
     /// Total number of active entries (superseded_by IS NULL).
     pub active_entries: u64,
@@ -749,7 +769,8 @@ pub struct StoreStats {
 // ── MutationSource ─────────────────────────────────────────────────
 
 /// Identifies where a write operation originated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum MutationSource {
     /// MCP server tool handler (cx_store, cx_update, cx_forget, cx_deposit).
@@ -802,7 +823,8 @@ impl std::str::FromStr for MutationSource {
 /// Carries the originating source of a write operation. Extensible
 /// for future fields (correlation_id, session_id, actor) without
 /// breaking the trait signature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TS)]
+#[ts(export)]
 pub struct WriteContext {
     pub source: MutationSource,
 }
@@ -816,7 +838,8 @@ impl WriteContext {
 // ── MutationAction ────────────────────────────────────────────────
 
 /// Classifies the kind of mutation performed on an entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum MutationAction {
     /// New entry created.
@@ -868,7 +891,8 @@ impl std::str::FromStr for MutationAction {
 ///
 /// Written by cm-store in the same transaction as the write operation.
 /// Snapshots are full JSON serializations of the `Entry` at that point in time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct MutationRecord {
     /// UUIDv7 identifier for this mutation record.
     pub id: uuid::Uuid,
