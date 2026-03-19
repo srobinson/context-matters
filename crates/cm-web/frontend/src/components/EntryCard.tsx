@@ -195,7 +195,7 @@ function ExpandedContent({
       onClick={(e) => e.stopPropagation()}
     >
       {/* Full markdown body */}
-      <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none font-mono text-xs leading-relaxed [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs [&_a]:text-muted-foreground [&_a]:underline">
+      <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none font-mono text-xs leading-relaxed [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:border [&_pre]:border-border [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs [&_a]:text-muted-foreground [&_a]:underline dark:[&_code]:text-foreground/80">
         <Markdown>{detail.body}</Markdown>
       </div>
 
@@ -353,9 +353,9 @@ export function EntryCard({
   return (
     <article
       className={cn(
-        "group rounded-lg border border-border bg-card p-4 transition-all duration-200 hover:border-border/80 hover:bg-accent/30",
+        "group rounded-lg border border-border bg-card p-4 transition-all duration-200 hover:border-border/80 hover:bg-accent/30 dark:hover:bg-accent/20",
         isForgotten && "opacity-40",
-        isExpanded && "ring-1 ring-ring/20",
+        isExpanded && "ring-1 ring-ring/20 dark:ring-ring/30",
         className,
       )}
     >

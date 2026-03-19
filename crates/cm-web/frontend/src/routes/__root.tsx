@@ -8,7 +8,7 @@ export const rootRoute = createRootRoute({
 function RootLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 dark:bg-background/80 dark:supports-backdrop-filter:bg-background/50">
         <div className="flex h-12 items-center justify-between px-6">
           <div className="flex items-center gap-6">
             <span className="font-mono text-sm font-semibold tracking-tighter text-foreground">

@@ -53,7 +53,7 @@ function ActivityRow({ entry }: { entry: Entry }) {
     <Link
       to="/feed"
       search={{ sort: "recent" as const }}
-      className="flex items-center gap-2.5 rounded-md border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-accent/30"
+      className="flex items-center gap-2.5 rounded-md border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-accent/30 dark:hover:bg-accent/20"
     >
       <KindBadge kind={entry.kind} />
       <div className="min-w-0 flex-1">

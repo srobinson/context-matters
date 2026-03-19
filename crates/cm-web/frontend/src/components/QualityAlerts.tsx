@@ -52,8 +52,8 @@ export function QualityAlerts({ stats }: { stats: Stats }) {
   const totalCount = alerts.reduce((sum, a) => sum + a.count, 0);
 
   return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 flex items-start gap-2.5">
-      <TriangleAlert className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-3 flex items-start gap-2.5">
+      <TriangleAlert className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400 mt-0.5" />
       <div className="font-mono text-xs text-foreground">
         <span className="font-medium">{totalCount} entries need attention</span>
         <span className="text-muted-foreground">
