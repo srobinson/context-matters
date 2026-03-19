@@ -15,7 +15,9 @@ use crate::AppState;
 use crate::api::error::ApiError;
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/entries", get(browse))
+    Router::new()
+        .route("/entries", get(browse))
+        .route("/entries/search", get(search))
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +65,69 @@ async fn browse(
 
     let result = state.store.browse(filter).await?;
     Ok(Json(result))
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchQuery {
+    #[serde(rename = "query")]
+    q: String,
+    scope_path: Option<String>,
+    kind: Option<String>,
+    tag: Option<String>,
+    limit: Option<u32>,
+}
+
+async fn search(
+    State(state): State<Arc<AppState>>,
+    Query(sq): Query<SearchQuery>,
+) -> Result<Json<PagedResult<Entry>>, ApiError> {
+    if sq.q.is_empty() {
+        return Err(ApiError(cm_core::CmError::Validation(
+            "query parameter is required".to_owned(),
+        )));
+    }
+
+    let scope_path = sq
+        .scope_path
+        .map(|s| ScopePath::parse(&s))
+        .transpose()
+        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+
+    let kind_filter = sq.kind.map(|k| parse_entry_kind(&k)).transpose()?;
+    let tag_filter = sq.tag;
+
+    let has_post_filter = kind_filter.is_some() || tag_filter.is_some();
+    let limit = sq.limit.unwrap_or(20).clamp(1, 200);
+    let fetch_limit = if has_post_filter {
+        limit.saturating_mul(3).min(200)
+    } else {
+        limit
+    };
+
+    let mut entries = state
+        .store
+        .search(&sq.q, scope_path.as_ref(), fetch_limit)
+        .await?;
+
+    if let Some(kind) = kind_filter {
+        entries.retain(|e| e.kind == kind);
+    }
+    if let Some(ref tag) = tag_filter {
+        entries.retain(|e| {
+            e.meta
+                .as_ref()
+                .is_some_and(|m| m.tags.iter().any(|t| t == tag))
+        });
+    }
+
+    entries.truncate(limit as usize);
+    let total = entries.len() as u64;
+
+    Ok(Json(PagedResult {
+        items: entries,
+        total,
+        next_cursor: None,
+    }))
 }
 
 fn parse_entry_kind(s: &str) -> Result<EntryKind, ApiError> {
