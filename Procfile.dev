@@ -1,0 +1,2 @@
+backend: cargo run -p cm-web -- --verbose
+frontend: cd crates/cm-web/frontend && npm run dev

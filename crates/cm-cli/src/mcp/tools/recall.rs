@@ -63,7 +63,7 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
     // Fetch more than requested when post-filtering, to compensate for filtered-out entries
     let has_post_filter = !kind_filters.is_empty() || !params.tags.is_empty();
     let fetch_limit = if has_post_filter {
-        limit.saturating_mul(3).min(crate::mcp::MAX_LIMIT)
+        limit.saturating_mul(3).min(crate::shared::MAX_LIMIT)
     } else {
         limit
     };

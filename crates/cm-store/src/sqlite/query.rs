@@ -1,8 +1,9 @@
 //! Read-only query operations: resolve_context, search, browse.
 
-use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, PaginationCursor, ScopePath};
+use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath};
 
 use super::CmStore;
+use super::cursor::{append_cursor_conditions, decode_cursor, encode_cursor, order_by_clause};
 use super::parse::{map_db_err, parse_entry};
 
 impl CmStore {
@@ -125,6 +126,7 @@ impl CmStore {
         filter: EntryFilter,
     ) -> Result<PagedResult<Entry>, CmError> {
         let pool = &self.read_pool;
+        let sort = filter.sort;
 
         let mut conditions = Vec::new();
         let mut bind_values: Vec<String> = Vec::new();
@@ -154,16 +156,10 @@ impl CmStore {
             bind_values.push(format!("%\"{tag}\"%"));
         }
 
-        // Cursor-based pagination
-        if let Some(ref cursor) = filter.pagination.cursor {
-            conditions.push("(updated_at < ? OR (updated_at = ? AND id < ?))".to_owned());
-            let ts = cursor
-                .updated_at
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
-            bind_values.push(ts.clone());
-            bind_values.push(ts);
-            bind_values.push(cursor.id.to_string());
+        // Cursor-based keyset pagination
+        if let Some(ref cursor_str) = filter.pagination.cursor {
+            let cursor = decode_cursor(cursor_str, sort)?;
+            append_cursor_conditions(&cursor, sort, &mut conditions, &mut bind_values);
         }
 
         let where_clause = if conditions.is_empty() {
@@ -211,11 +207,8 @@ impl CmStore {
 
         // Fetch query with limit + 1 to detect next page
         let fetch_limit = filter.pagination.limit as i64 + 1;
-        let data_sql = format!(
-            "SELECT * FROM entries {where_clause} \
-             ORDER BY updated_at DESC, id DESC \
-             LIMIT ?",
-        );
+        let order = order_by_clause(sort);
+        let data_sql = format!("SELECT * FROM entries {where_clause} {order} LIMIT ?");
         let mut data_q = sqlx::query(&data_sql);
         for v in &bind_values {
             data_q = data_q.bind(v);
@@ -237,10 +230,7 @@ impl CmStore {
         }
 
         let next_cursor = if has_more {
-            items.last().map(|last| PaginationCursor {
-                updated_at: last.updated_at,
-                id: last.id,
-            })
+            items.last().map(|last| encode_cursor(last, sort))
         } else {
             None
         };

@@ -1,0 +1,176 @@
+import { useCallback, useMemo, useState } from "react";
+import { createRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { Download } from "lucide-react";
+import { rootRoute } from "./__root";
+import { useStats } from "@/api/hooks";
+import { api, type Stats } from "@/api/client";
+import { QualityAlerts } from "@/components/QualityAlerts";
+import { RecentActivity } from "@/components/RecentActivity";
+import { ScopeTree } from "@/components/ScopeTree";
+import { StatCard } from "@/components/composed/StatCard";
+
+export const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: DashboardPage,
+});
+
+function computeQualityScore(stats: Stats): number {
+  const total = stats.active_entries;
+  if (total === 0) return 100;
+
+  const tagged = total - stats.quality.untagged_count;
+  const nonStale = total - stats.quality.stale_count;
+  return Math.round((tagged / total) * 50 + (nonStale / total) * 50);
+}
+
+function DashboardPage() {
+  const { data: stats, isLoading, isError, error } = useStats();
+
+  const qualityScore = useMemo(
+    () => (stats ? computeQualityScore(stats) : null),
+    [stats],
+  );
+
+  const agentSummary = useMemo(() => {
+    if (!stats?.active_agents) return null;
+    const count = stats.active_agents.length;
+    if (count === 0) return "none";
+    const names = stats.active_agents
+      .slice(0, 3)
+      .map((a) => {
+        const parts = a.created_by.split(":");
+        return parts.length > 1 ? parts.slice(1).join(":") : a.created_by;
+      })
+      .join(", ");
+    if (count > 3) return `${names} +${count - 3}`;
+    return names;
+  }, [stats]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <DashboardHeader />
+        <div className="grid grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-lg border border-border bg-card p-4 h-[88px]"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <DashboardHeader />
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">
+            Failed to load stats: {error.message}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  return (
+    <div className="space-y-6">
+      <DashboardHeader />
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard
+          label="active entries"
+          value={stats.active_entries}
+          detail={`${stats.superseded_entries} forgotten`}
+        />
+        <StatCard
+          label="today"
+          value={stats.entries_today}
+          detail={`${stats.entries_this_week} this week`}
+        />
+        <StatCard
+          label="agents"
+          value={stats.active_agents.length}
+          detail={agentSummary ?? undefined}
+        />
+        <StatCard
+          label="quality"
+          value={`${qualityScore}%`}
+          detail={qualityDetail(stats)}
+        />
+      </div>
+
+      <QualityAlerts stats={stats} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <RecentActivity />
+        </div>
+        <div className="lg:col-span-2">
+          <ScopeTree stats={stats} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardHeader() {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const blob = await api.export();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cm-export-${timestamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded");
+    } catch {
+      toast.error("Export failed");
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-lg font-medium tracking-tight">Dashboard</h2>
+        <span className="font-mono text-xs text-muted-foreground">
+          system overview
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={handleExport}
+        disabled={isExporting}
+        className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+      >
+        <Download className="h-3 w-3" />
+        {isExporting ? "exporting..." : "export"}
+      </button>
+    </div>
+  );
+}
+
+function qualityDetail(stats: Stats): string {
+  const issues: string[] = [];
+  if (stats.quality.untagged_count > 0) {
+    issues.push(`${stats.quality.untagged_count} untagged`);
+  }
+  if (stats.quality.stale_count > 0) {
+    issues.push(`${stats.quality.stale_count} stale`);
+  }
+  if (issues.length === 0) return "all clear";
+  return issues.join(", ");
+}

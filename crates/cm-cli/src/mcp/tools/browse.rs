@@ -4,7 +4,7 @@ use cm_core::{ContextStore, EntryFilter, EntryKind, Pagination, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{clamp_limit, cm_err_to_string, decode_cursor, encode_cursor, json_response};
+use crate::mcp::{clamp_limit, cm_err_to_string, json_response};
 
 use super::entry_to_browse_json;
 
@@ -53,11 +53,6 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String
         None => None,
     };
 
-    let cursor = match &params.cursor {
-        Some(c) => Some(decode_cursor(c)?),
-        None => None,
-    };
-
     let limit = clamp_limit(params.limit);
 
     let filter = EntryFilter {
@@ -66,20 +61,23 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String
         tag: params.tag,
         created_by: params.created_by,
         include_superseded: params.include_superseded,
-        pagination: Pagination { limit, cursor },
+        pagination: Pagination {
+            limit,
+            cursor: params.cursor,
+        },
+        ..Default::default()
     };
 
     let result = store.browse(filter).await.map_err(cm_err_to_string)?;
 
     let entries: Vec<Value> = result.items.iter().map(entry_to_browse_json).collect();
 
-    let next_cursor = result.next_cursor.as_ref().map(encode_cursor);
-    let has_more = next_cursor.is_some();
+    let has_more = result.next_cursor.is_some();
 
     let response = json!({
         "entries": entries,
         "total": result.total,
-        "next_cursor": next_cursor,
+        "next_cursor": result.next_cursor,
         "has_more": has_more,
     });
 

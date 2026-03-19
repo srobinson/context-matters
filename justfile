@@ -35,6 +35,14 @@ serve-dev:
 serve-debug:
     CM_LOG_LEVEL=debug cargo run -p cm-cli -- serve --verbose
 
+# Start cm-web (backend + frontend dev server)
+web:
+    overmind start -f Procfile.dev
+
+# Regenerate TypeScript types from cm-core via ts-rs
+gen-types:
+    cargo test -p cm-core export_bindings_ 2>/dev/null; true
+
 # Regenerate sqlx offline query cache (commit .sqlx/ after running)
 sqlx-prepare:
     cargo sqlx prepare --workspace
