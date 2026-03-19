@@ -374,3 +374,50 @@ fn confidence_serde() {
     let c: Confidence = serde_json::from_str(json).unwrap();
     assert_eq!(c, Confidence::Medium);
 }
+
+// ── Mutation types ─────────────────────────────────────────────────
+
+#[test]
+fn write_context_construction() {
+    for source in [
+        MutationSource::Mcp,
+        MutationSource::Cli,
+        MutationSource::Web,
+        MutationSource::Helix,
+    ] {
+        let ctx = WriteContext::new(source);
+        assert_eq!(ctx.source, source);
+    }
+}
+
+#[test]
+fn mutation_source_serde() {
+    let cases = [
+        (MutationSource::Mcp, "\"mcp\""),
+        (MutationSource::Cli, "\"cli\""),
+        (MutationSource::Web, "\"web\""),
+        (MutationSource::Helix, "\"helix\""),
+    ];
+    for (variant, expected_json) in cases {
+        let json = serde_json::to_string(&variant).unwrap();
+        assert_eq!(json, expected_json);
+        let back: MutationSource = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, variant);
+    }
+}
+
+#[test]
+fn mutation_action_serde() {
+    let cases = [
+        (MutationAction::Create, "\"create\""),
+        (MutationAction::Update, "\"update\""),
+        (MutationAction::Forget, "\"forget\""),
+        (MutationAction::Supersede, "\"supersede\""),
+    ];
+    for (variant, expected_json) in cases {
+        let json = serde_json::to_string(&variant).unwrap();
+        assert_eq!(json, expected_json);
+        let back: MutationAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, variant);
+    }
+}

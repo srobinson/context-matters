@@ -1,6 +1,6 @@
 //! Handler for the `cx_forget` tool.
 
-use cm_core::ContextStore;
+use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -13,6 +13,8 @@ struct CxForgetParams {
 }
 
 pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+    let ctx = WriteContext::new(MutationSource::Mcp);
+
     let params: CxForgetParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -45,7 +47,7 @@ pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String
                     already_inactive += 1;
                     details.push(json!({"id": id.to_string(), "status": "already_inactive"}));
                 } else {
-                    match store.forget_entry(id).await {
+                    match store.forget_entry(id, &ctx).await {
                         Ok(()) => {
                             forgotten += 1;
                             details.push(json!({"id": id.to_string(), "status": "forgotten"}));

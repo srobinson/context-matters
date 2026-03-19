@@ -1,6 +1,9 @@
 //! Handler for the `cx_deposit` tool.
 
-use cm_core::{ContextStore, EntryKind, EntryMeta, NewEntry, RelationKind, ScopePath};
+use cm_core::{
+    ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, RelationKind, ScopePath,
+    WriteContext,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -41,6 +44,8 @@ struct Exchange {
 }
 
 pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+    let ctx = WriteContext::new(MutationSource::Mcp);
+
     let params: CxDepositParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -70,7 +75,7 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<Strin
         ScopePath::parse(&params.scope_path).map_err(|e| cm_err_to_string(e.into()))?;
 
     // Auto-create scope chain
-    ensure_scope_chain(store, &scope_path).await?;
+    ensure_scope_chain(store, &scope_path, &ctx).await?;
 
     let mut entry_ids = Vec::with_capacity(params.exchanges.len());
 
@@ -95,7 +100,7 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<Strin
         };
 
         let entry = store
-            .create_entry(new_entry)
+            .create_entry(new_entry, &ctx)
             .await
             .map_err(cm_err_to_string)?;
         entry_ids.push(entry.id);
@@ -118,7 +123,7 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<Strin
         };
 
         let entry = store
-            .create_entry(summary_entry)
+            .create_entry(summary_entry, &ctx)
             .await
             .map_err(cm_err_to_string)?;
         let sid = entry.id;
@@ -126,7 +131,7 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<Strin
         // Link summary to each exchange via elaborates relation
         for &exchange_id in &entry_ids {
             store
-                .create_relation(sid, exchange_id, RelationKind::Elaborates)
+                .create_relation(sid, exchange_id, RelationKind::Elaborates, &ctx)
                 .await
                 .map_err(cm_err_to_string)?;
         }
