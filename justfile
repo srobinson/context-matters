@@ -7,7 +7,7 @@ build:
 release:
     cargo build --workspace --release
 
-install: release
+install: release web-install
     cargo install --path crates/cm-cli
 
 test:
@@ -35,8 +35,12 @@ serve-dev:
 serve-debug:
     CM_LOG_LEVEL=debug cargo run -p cm-cli -- serve --verbose
 
+# Install frontend dependencies
+web-install:
+    cd crates/cm-web/frontend && npm install
+
 # Start cm-web (backend + frontend dev server)
-web:
+web: web-install
     overmind start -f Procfile.dev
 
 # Regenerate TypeScript types from cm-core via ts-rs
