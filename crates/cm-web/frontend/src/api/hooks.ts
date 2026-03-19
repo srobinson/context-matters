@@ -115,6 +115,18 @@ export function useUpdateEntry() {
   });
 }
 
+export function useMergeEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ oldId, newEntry }: { oldId: string; newEntry: NewEntry }) =>
+      api.entries.merge(oldId, newEntry),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+    },
+  });
+}
+
 export function useForgetEntry() {
   const queryClient = useQueryClient();
   return useMutation({

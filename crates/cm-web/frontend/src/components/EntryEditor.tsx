@@ -3,8 +3,8 @@ import Markdown from "react-markdown";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { EntryMeta } from "@/api/generated/EntryMeta";
-import type { EntryDetail } from "@/api/client";
-import { useUpdateEntry, useStats } from "@/api/hooks";
+import type { Stats, EntryDetail } from "@/api/client";
+import { useUpdateEntry, useMergeEntry, useStats } from "@/api/hooks";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -51,11 +51,15 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
   const [tagInput, setTagInput] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [pendingScope, setPendingScope] = useState<string | null>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const updateEntry = useUpdateEntry();
+  const mergeEntry = useMergeEntry();
   const { data: stats } = useStats();
+
+  const scopeOptions = useMemo(() => buildScopeOptions(stats), [stats]);
 
   const existingTags = useMemo(() => {
     if (!stats?.entries_by_tag) return [];
@@ -79,6 +83,8 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
     JSON.stringify(tags) !== JSON.stringify(entry.meta?.tags ?? []) ||
     (confidence === "none" ? null : confidence) !==
       (entry.meta?.confidence ?? null);
+
+  const isMutating = updateEntry.isPending || mergeEntry.isPending;
 
   const handleAddTag = useCallback(
     (tag: string) => {
@@ -133,6 +139,55 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
       { onSuccess: onSaved },
     );
   }, [entry, title, body, kind, tags, confidence, updateEntry, onSaved]);
+
+  const handleScopeChange = useCallback(
+    (newScope: string) => {
+      if (newScope !== entry.scope_path) {
+        setPendingScope(newScope);
+      }
+    },
+    [entry.scope_path],
+  );
+
+  const handleScopeConfirm = useCallback(() => {
+    if (!pendingScope) return;
+
+    const meta: EntryMeta = {
+      ...entry.meta,
+      tags: tags.length > 0 ? tags : undefined,
+      confidence: confidence === "none" ? null : confidence,
+    };
+
+    mergeEntry.mutate(
+      {
+        oldId: entry.id,
+        newEntry: {
+          scope_path: pendingScope,
+          kind,
+          title,
+          body,
+          created_by: entry.created_by,
+          meta,
+        },
+      },
+      {
+        onSuccess: () => {
+          setPendingScope(null);
+          onSaved();
+        },
+      },
+    );
+  }, [
+    pendingScope,
+    entry,
+    kind,
+    title,
+    body,
+    tags,
+    confidence,
+    mergeEntry,
+    onSaved,
+  ]);
 
   return (
     <div
@@ -220,6 +275,74 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         </div>
       </div>
 
+      {/* Scope */}
+      <div className="space-y-1">
+        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+          scope
+        </label>
+        <Select
+          value={entry.scope_path}
+          onValueChange={handleScopeChange}
+        >
+          <SelectTrigger className="h-7 w-full font-mono text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {scopeOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+                {opt.count != null && (
+                  <span className="ml-1 text-muted-foreground/60">
+                    ({opt.count})
+                  </span>
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Scope change confirmation */}
+      {pendingScope && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+          <p className="font-mono text-xs text-foreground">
+            Move entry to a different scope?
+          </p>
+          <p className="font-mono text-[11px] text-muted-foreground">
+            <span className="line-through">{entry.scope_path}</span>
+            {" \u2192 "}
+            <span className="font-medium text-foreground">{pendingScope}</span>
+          </p>
+          <p className="font-mono text-[10px] text-muted-foreground/80">
+            This creates a new entry at the target scope and supersedes the
+            original. The operation cannot be undone.
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleScopeConfirm}
+              disabled={mergeEntry.isPending}
+              className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-mono text-xs text-foreground transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              {mergeEntry.isPending ? "moving..." : "confirm move"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingScope(null)}
+              disabled={mergeEntry.isPending}
+              className="font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              cancel
+            </button>
+            {mergeEntry.isError && (
+              <span className="font-mono text-xs text-destructive">
+                {mergeEntry.error.message}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tags */}
       <div className="space-y-1">
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
@@ -252,7 +375,6 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               }}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => {
-                // Delay to allow click on suggestion
                 setTimeout(() => setShowSuggestions(false), 150);
               }}
               onKeyDown={handleTagKeyDown}
@@ -296,7 +418,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         <button
           type="button"
           onClick={handleSave}
-          disabled={!hasChanges || updateEntry.isPending}
+          disabled={!hasChanges || isMutating}
           className="rounded-md border border-border bg-foreground px-3 py-1.5 font-mono text-xs text-background transition-colors hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {updateEntry.isPending ? "saving..." : "save"}
@@ -304,7 +426,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         <button
           type="button"
           onClick={onCancel}
-          disabled={updateEntry.isPending}
+          disabled={isMutating}
           className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
           cancel
@@ -317,4 +439,13 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
       </div>
     </div>
   );
+}
+
+function buildScopeOptions(stats: Stats | undefined) {
+  if (!stats?.scope_tree) return [];
+  return stats.scope_tree.map((node) => ({
+    value: node.path,
+    label: node.path,
+    count: node.entry_count,
+  }));
 }

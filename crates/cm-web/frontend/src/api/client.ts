@@ -187,10 +187,10 @@ export const api = {
       });
     },
 
-    merge(sourceIds: string[], targetId: string): Promise<Entry> {
+    merge(oldId: string, newEntry: NewEntry): Promise<Entry> {
       return apiFetch("/entries/merge", {
         method: "POST",
-        body: JSON.stringify({ source_ids: sourceIds, target_id: targetId }),
+        body: JSON.stringify({ old_id: oldId, new_entry: newEntry }),
       });
     },
   },
