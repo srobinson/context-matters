@@ -85,7 +85,7 @@ function FacetSelect({
       <SelectTrigger className="h-7 w-auto min-w-[100px] gap-1 rounded-md border-border bg-muted px-2 font-mono text-xs text-muted-foreground">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="min-w-[var(--radix-select-trigger-width)] w-auto max-w-[min(500px,90vw)]">
         <SelectItem value="__all__">All</SelectItem>
         {options.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
