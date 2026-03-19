@@ -1,11 +1,23 @@
 import { useState, useCallback } from "react";
 import Markdown from "react-markdown";
+import { toast } from "sonner";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryRelation } from "@/api/generated/EntryRelation";
-import { useEntry } from "@/api/hooks";
+import { useEntry, useForgetEntry } from "@/api/hooks";
 import { EntryEditor } from "./EntryEditor";
 import { KindBadge } from "./KindBadge";
 import { QualityBadge, getQualityIssues } from "./QualityBadge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -118,14 +130,31 @@ function RelationsList({
   );
 }
 
-function ExpandedContent({ entryId }: { entryId: string }) {
+function ExpandedContent({
+  entryId,
+  onForgotten,
+}: {
+  entryId: string;
+  onForgotten?: () => void;
+}) {
   const { data: detail, isLoading, refetch } = useEntry(entryId);
   const [isEditing, setIsEditing] = useState(false);
+  const forgetEntry = useForgetEntry();
 
   const handleEditSaved = useCallback(() => {
     setIsEditing(false);
     refetch();
   }, [refetch]);
+
+  const handleForget = useCallback(() => {
+    if (!detail) return;
+    forgetEntry.mutate(detail.id, {
+      onSuccess: () => {
+        toast.success(`Forgotten "${detail.title}"`);
+        onForgotten?.();
+      },
+    });
+  }, [detail, forgetEntry, onForgotten]);
 
   if (isLoading || !detail) {
     return (
@@ -236,12 +265,40 @@ function ExpandedContent({ entryId }: { entryId: string }) {
         >
           edit
         </button>
-        <button
-          type="button"
-          className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 font-mono text-xs text-destructive transition-colors hover:bg-destructive/10"
-        >
-          forget
-        </button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <button
+              type="button"
+              disabled={forgetEntry.isPending}
+              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5 font-mono text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+            >
+              {forgetEntry.isPending ? "forgetting..." : "forget"}
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-mono text-sm">
+                Forget this entry?
+              </AlertDialogTitle>
+              <AlertDialogDescription className="font-mono text-xs">
+                &ldquo;{detail.title}&rdquo; will be marked as forgotten. It
+                will no longer appear in recall results but can still be viewed
+                with the &ldquo;show forgotten&rdquo; filter.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="font-mono text-xs">
+                cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleForget}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-mono text-xs"
+              >
+                forget
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
@@ -265,8 +322,8 @@ export function EntryCard({
   return (
     <article
       className={cn(
-        "group rounded-lg border border-border bg-card p-4 transition-colors hover:border-border/80 hover:bg-accent/30",
-        isForgotten && "opacity-50",
+        "group rounded-lg border border-border bg-card p-4 transition-all duration-200 hover:border-border/80 hover:bg-accent/30",
+        isForgotten && "opacity-40",
         isExpanded && "ring-1 ring-ring/20",
         className,
       )}
@@ -329,7 +386,9 @@ export function EntryCard({
       </div>
 
       {/* Expanded content */}
-      {isExpanded && <ExpandedContent entryId={entry.id} />}
+      {isExpanded && (
+        <ExpandedContent entryId={entry.id} onForgotten={onToggle} />
+      )}
     </article>
   );
 }
