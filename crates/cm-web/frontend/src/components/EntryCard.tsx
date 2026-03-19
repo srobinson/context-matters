@@ -1,7 +1,9 @@
+import { useState, useCallback } from "react";
 import Markdown from "react-markdown";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryRelation } from "@/api/generated/EntryRelation";
 import { useEntry } from "@/api/hooks";
+import { EntryEditor } from "./EntryEditor";
 import { KindBadge } from "./KindBadge";
 import { QualityBadge, getQualityIssues } from "./QualityBadge";
 import { timeAgo } from "@/lib/time";
@@ -117,11 +119,27 @@ function RelationsList({
 }
 
 function ExpandedContent({ entryId }: { entryId: string }) {
-  const { data: detail, isLoading } = useEntry(entryId);
+  const { data: detail, isLoading, refetch } = useEntry(entryId);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const handleEditSaved = useCallback(() => {
+    setIsEditing(false);
+    refetch();
+  }, [refetch]);
 
   if (isLoading || !detail) {
     return (
       <div className="pt-3 text-xs text-muted-foreground">Loading...</div>
+    );
+  }
+
+  if (isEditing) {
+    return (
+      <EntryEditor
+        entry={detail}
+        onCancel={() => setIsEditing(false)}
+        onSaved={handleEditSaved}
+      />
     );
   }
 
@@ -209,10 +227,11 @@ function ExpandedContent({ entryId }: { entryId: string }) {
         </div>
       )}
 
-      {/* Action buttons (stubs for ALP-1530 curation) */}
+      {/* Action buttons */}
       <div className="flex gap-2 pt-1">
         <button
           type="button"
+          onClick={() => setIsEditing(true)}
           className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           edit
