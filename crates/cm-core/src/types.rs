@@ -597,28 +597,19 @@ pub struct EntryRelation {
 
 // ── Pagination ─────────────────────────────────────────────────────
 
-/// Composite cursor for deterministic pagination.
+/// Cursor-based pagination.
 ///
-/// Uses `(updated_at, id)` to avoid skipping entries when multiple
-/// entries share the same `updated_at` timestamp.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaginationCursor {
-    pub updated_at: DateTime<Utc>,
-    pub id: uuid::Uuid,
-}
-
-/// Cursor-based pagination using `(updated_at, id)` ordering.
-///
-/// Results are ordered by `updated_at DESC, id DESC` (most recently
-/// modified first, with UUID tiebreaker for deterministic ordering).
+/// The `cursor` field is an opaque page token produced by the store.
+/// Callers must not parse or construct cursors; pass the `next_cursor`
+/// from a previous `PagedResult` to fetch the next page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pagination {
     /// Maximum number of entries to return.
     pub limit: u32,
 
-    /// Cursor for the next page.
+    /// Opaque cursor from a previous `PagedResult::next_cursor`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cursor: Option<PaginationCursor>,
+    pub cursor: Option<String>,
 }
 
 impl Default for Pagination {
@@ -644,9 +635,38 @@ pub struct PagedResult<T> {
     /// Total count of matching entries (across all pages).
     pub total: u64,
 
-    /// Cursor for the next page, if more results exist.
+    /// Opaque cursor for the next page, if more results exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<PaginationCursor>,
+    pub next_cursor: Option<String>,
+}
+
+// ── BrowseSort ─────────────────────────────────────────────────────
+
+/// Sort order for browse queries.
+///
+/// Each variant produces a deterministic total order with `id` as the
+/// final tiebreaker. `Recent` (default) matches the legacy
+/// `ORDER BY updated_at DESC, id DESC` behavior.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowseSort {
+    /// Most recently updated first (`updated_at DESC, id DESC`).
+    #[default]
+    Recent,
+    /// Least recently updated first (`updated_at ASC, id ASC`).
+    Oldest,
+    /// Title ascending, case-insensitive (`title ASC, id ASC`).
+    TitleAsc,
+    /// Title descending, case-insensitive (`title DESC, id DESC`).
+    TitleDesc,
+    /// Scope path ascending (`scope_path ASC, id ASC`).
+    ScopeAsc,
+    /// Scope path descending (`scope_path DESC, id DESC`).
+    ScopeDesc,
+    /// Kind ascending (`kind ASC, id ASC`).
+    KindAsc,
+    /// Kind descending (`kind DESC, id DESC`).
+    KindDesc,
 }
 
 // ── EntryFilter ────────────────────────────────────────────────────
@@ -677,6 +697,10 @@ pub struct EntryFilter {
     /// If true, include superseded (inactive) entries. Default: false.
     #[serde(default)]
     pub include_superseded: bool,
+
+    /// Sort order. Default: `Recent` (most recently updated first).
+    #[serde(default)]
+    pub sort: BrowseSort,
 
     /// Pagination parameters.
     #[serde(default)]

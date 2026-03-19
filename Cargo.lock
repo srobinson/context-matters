@@ -309,6 +309,7 @@ name = "cm-store"
 version = "0.1.7"
 dependencies = [
  "anyhow",
+ "base64",
  "blake3",
  "chrono",
  "cm-core",

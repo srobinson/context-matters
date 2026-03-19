@@ -358,22 +358,6 @@ pub(crate) fn estimate_tokens(text: &str) -> u32 {
     (text.len() as u32).div_ceil(4)
 }
 
-/// Encode a `PaginationCursor` to a URL-safe base64 string.
-pub(crate) fn encode_cursor(cursor: &cm_core::PaginationCursor) -> String {
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-    let json = serde_json::to_string(cursor).expect("cursor serialization");
-    URL_SAFE_NO_PAD.encode(json.as_bytes())
-}
-
-/// Decode a URL-safe base64 string to a `PaginationCursor`.
-pub(crate) fn decode_cursor(encoded: &str) -> Result<cm_core::PaginationCursor, String> {
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-    let bytes = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|_| "Invalid cursor format".to_owned())?;
-    serde_json::from_slice(&bytes).map_err(|_| "Invalid cursor format".to_owned())
-}
-
 /// Serialize a JSON value to a pretty-printed string for the response.
 pub(crate) fn json_response(value: Value) -> Result<String, String> {
     serde_json::to_string_pretty(&value).map_err(|e| format!("[json] {e}"))
@@ -477,22 +461,6 @@ mod tests {
     fn check_input_size_rejects_large() {
         let big = "x".repeat(MAX_INPUT_BYTES + 1);
         assert!(check_input_size(&big, "body").is_err());
-    }
-
-    #[test]
-    fn cursor_roundtrip() {
-        let cursor = cm_core::PaginationCursor {
-            updated_at: chrono::Utc::now(),
-            id: uuid::Uuid::now_v7(),
-        };
-        let encoded = encode_cursor(&cursor);
-        let decoded = decode_cursor(&encoded).unwrap();
-        assert_eq!(decoded.id, cursor.id);
-    }
-
-    #[test]
-    fn decode_cursor_rejects_garbage() {
-        assert!(decode_cursor("not-valid-base64!@#").is_err());
     }
 
     #[test]

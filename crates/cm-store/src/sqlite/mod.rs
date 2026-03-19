@@ -15,6 +15,7 @@
 //! - `aggregate` - Stats, export, mutation history queries
 
 mod aggregate;
+mod cursor;
 mod entry;
 mod mutation;
 pub(crate) mod parse;
