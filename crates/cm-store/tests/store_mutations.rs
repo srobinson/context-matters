@@ -393,3 +393,84 @@ fn mutation_action_roundtrip() {
         assert_eq!(v.to_string(), s);
     }
 }
+
+// ── Regression: content_hash consistency under concurrent updates ──
+
+/// Verify that overlapping update_entry calls on the same entry always
+/// leave content_hash consistent with the committed row content.
+///
+/// Before the fix, hash derivation happened outside the transaction,
+/// so a concurrent writer could cause the stored hash to reflect stale
+/// pre-transaction content (TOCTOU race).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_updates_preserve_content_hash_invariant() {
+    use std::sync::Arc;
+
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    let store = Arc::new(store);
+
+    let entry = store
+        .create_entry(
+            new_entry("global", EntryKind::Fact, "Race target", "original body"),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let id = entry.id;
+
+    // Spawn two concurrent updates with different body values.
+    // SQLite serializes writes, but the bug was that hash derivation
+    // happened before the transaction, reading stale pre-tx state.
+    let s1 = Arc::clone(&store);
+    let s2 = Arc::clone(&store);
+
+    let h1 = tokio::spawn(async move {
+        s1.update_entry(
+            id,
+            cm_core::UpdateEntry {
+                body: Some("body from writer A".to_owned()),
+                ..Default::default()
+            },
+            &test_ctx(),
+        )
+        .await
+    });
+
+    let h2 = tokio::spawn(async move {
+        s2.update_entry(
+            id,
+            cm_core::UpdateEntry {
+                body: Some("body from writer B".to_owned()),
+                ..Default::default()
+            },
+            &test_ctx(),
+        )
+        .await
+    });
+
+    let (r1, r2) = tokio::join!(h1, h2);
+    r1.unwrap().unwrap();
+    r2.unwrap().unwrap();
+
+    // After both updates, fetch the committed row and verify the hash
+    // matches the actual (scope, kind, body) triple.
+    let final_entry = store.get_entry(id).await.unwrap();
+
+    let expected_hash = {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(final_entry.scope_path.as_str().as_bytes());
+        hasher.update(b"\0");
+        hasher.update(final_entry.kind.as_str().as_bytes());
+        hasher.update(b"\0");
+        hasher.update(final_entry.body.as_bytes());
+        hasher.finalize().to_hex().to_string()
+    };
+
+    assert_eq!(
+        final_entry.content_hash, expected_hash,
+        "content_hash must match committed (scope, kind, body); \
+         a mismatch indicates hash was derived from stale pre-transaction state"
+    );
+}

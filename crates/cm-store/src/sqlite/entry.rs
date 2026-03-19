@@ -173,17 +173,26 @@ impl CmStore {
         let id_str = id.to_string();
         let pool = &self.write_pool;
 
-        // Fetch current entry to compute hash (pre-transaction read on write pool)
+        // All reads, hash derivation, dedup checks, and writes happen inside
+        // one transaction to prevent TOCTOU races where a concurrent writer
+        // could modify the entry between the initial read and the UPDATE.
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| CmError::Database(e.to_string()))?;
+
+        // Fetch current entry inside transaction (before snapshot + hash source)
         let current_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
             .bind(&id_str)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(map_db_err)?
             .ok_or(CmError::EntryNotFound(id))?;
 
         let current = parse_entry(&current_row)?;
+        let before = entry_snapshot(&current)?;
 
-        // Check dedup if body or kind changed
+        // Compute hash from in-transaction state
         let new_hash = dedup::recompute_hash_for_update(
             current.scope_path.as_str(),
             current.kind.as_str(),
@@ -192,8 +201,9 @@ impl CmStore {
             update.body.as_deref(),
         );
 
+        // Dedup check inside transaction
         if let Some(ref hash) = new_hash {
-            dedup::check_duplicate(pool, hash, Some(&id_str)).await?;
+            dedup::check_duplicate(&mut *tx, hash, Some(&id_str)).await?;
         }
 
         // Build dynamic UPDATE
@@ -222,24 +232,9 @@ impl CmStore {
         }
 
         if sets.is_empty() {
-            // No-op: no mutation record needed
+            // No-op: no mutation record needed, rollback implicit on drop
             return Ok(current);
         }
-
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| CmError::Database(e.to_string()))?;
-
-        // Re-fetch inside transaction for accurate before snapshot
-        let before_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
-            .bind(&id_str)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(map_db_err)?;
-
-        let before_entry = parse_entry(&before_row)?;
-        let before = entry_snapshot(&before_entry)?;
 
         let sql = format!("UPDATE entries SET {} WHERE id = ?", sets.join(", "));
         let mut q = sqlx::query(&sql);

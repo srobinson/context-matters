@@ -5,7 +5,6 @@
 //! inserts and by the update path to revalidate after body/kind changes.
 
 use cm_core::CmError;
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
 /// Check if an active entry with the given content hash exists.
@@ -15,11 +14,17 @@ use uuid::Uuid;
 ///
 /// Superseded entries (those with `superseded_by IS NOT NULL`) are excluded
 /// from the check, allowing re-insertion of previously superseded content.
-pub async fn check_duplicate(
-    pool: &SqlitePool,
+///
+/// Generic over the executor so it works against both a pool (for pre-tx
+/// checks in create/supersede) and a transaction (for in-tx checks in update).
+pub async fn check_duplicate<'e, E>(
+    executor: E,
     content_hash: &str,
     exclude_id: Option<&str>,
-) -> Result<(), CmError> {
+) -> Result<(), CmError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let existing: Option<(String,)> = if let Some(id) = exclude_id {
         // On update: exclude the entry being updated from the check
         sqlx::query_as(
@@ -29,7 +34,7 @@ pub async fn check_duplicate(
         )
         .bind(content_hash)
         .bind(id)
-        .fetch_optional(pool)
+        .fetch_optional(executor)
         .await
         .map_err(|e| CmError::Internal(e.to_string()))?
     } else {
@@ -40,7 +45,7 @@ pub async fn check_duplicate(
              LIMIT 1",
         )
         .bind(content_hash)
-        .fetch_optional(pool)
+        .fetch_optional(executor)
         .await
         .map_err(|e| CmError::Internal(e.to_string()))?
     };
@@ -84,6 +89,7 @@ pub fn recompute_hash_for_update(
 mod tests {
     use super::*;
     use crate::schema::{create_pools, run_migrations};
+    use sqlx::SqlitePool;
 
     const ID1: &str = "0193a5e0-7b1a-7000-8000-000000000001";
     const ID2: &str = "0193a5e0-7b1a-7000-8000-000000000002";
