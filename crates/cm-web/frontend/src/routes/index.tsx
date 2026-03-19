@@ -4,6 +4,7 @@ import { rootRoute } from "./__root";
 import { useStats } from "@/api/hooks";
 import type { Stats } from "@/api/client";
 import { QualityAlerts } from "@/components/QualityAlerts";
+import { RecentActivity } from "@/components/RecentActivity";
 import { StatCard } from "@/components/StatCard";
 
 export const indexRoute = createRoute({
@@ -103,6 +104,15 @@ function DashboardPage() {
       </div>
 
       <QualityAlerts stats={stats} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <RecentActivity />
+        </div>
+        <div className="lg:col-span-2">
+          {/* ScopeTree placeholder (ALP-1576) */}
+        </div>
+      </div>
     </div>
   );
 }
