@@ -44,6 +44,14 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --kind-fact: oklch(0.65 0.15 250);
+  --kind-decision: oklch(0.6 0.2 310);
+  --kind-preference: oklch(0.65 0.18 170);
+  --kind-lesson: oklch(0.65 0.15 55);
+  --kind-reference: oklch(0.55 0.12 230);
+  --kind-feedback: oklch(0.6 0.2 25);
+  --kind-pattern: oklch(0.6 0.15 290);
+  --kind-observation: oklch(0.6 0.1 200);
 }
 
 .dark {
@@ -78,6 +86,14 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --kind-fact: oklch(0.7 0.12 250);
+  --kind-decision: oklch(0.7 0.18 310);
+  --kind-preference: oklch(0.7 0.15 170);
+  --kind-lesson: oklch(0.7 0.12 55);
+  --kind-reference: oklch(0.6 0.1 230);
+  --kind-feedback: oklch(0.7 0.18 25);
+  --kind-pattern: oklch(0.7 0.12 290);
+  --kind-observation: oklch(0.65 0.08 200);
 }
 
 @theme inline {
@@ -123,6 +139,14 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --color-kind-fact: var(--kind-fact);
+  --color-kind-decision: var(--kind-decision);
+  --color-kind-preference: var(--kind-preference);
+  --color-kind-lesson: var(--kind-lesson);
+  --color-kind-reference: var(--kind-reference);
+  --color-kind-feedback: var(--kind-feedback);
+  --color-kind-pattern: var(--kind-pattern);
+  --color-kind-observation: var(--kind-observation);
 }
 
 @layer base {
