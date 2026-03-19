@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::response::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cm_core::{
-    BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, PagedResult,
-    Pagination, ScopePath,
+    BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationSource,
+    NewEntry, PagedResult, Pagination, ScopePath, WriteContext,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -18,7 +19,7 @@ use crate::api::error::ApiError;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/entries", get(browse))
+        .route("/entries", get(browse).post(create_entry))
         .route("/entries/search", get(search))
         .route("/entries/{id}", get(get_entry))
 }
@@ -162,6 +163,15 @@ async fn get_entry(
         relations_from,
         relations_to,
     }))
+}
+
+async fn create_entry(
+    State(state): State<Arc<AppState>>,
+    Json(new_entry): Json<NewEntry>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ctx = WriteContext::new(MutationSource::Web);
+    let entry = state.store.create_entry(new_entry, &ctx).await?;
+    Ok((StatusCode::CREATED, Json(entry)))
 }
 
 fn parse_entry_kind(s: &str) -> Result<EntryKind, ApiError> {
