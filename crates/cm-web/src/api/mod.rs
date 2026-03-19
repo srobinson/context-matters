@@ -2,6 +2,7 @@
 
 mod entries;
 mod error;
+mod export;
 mod mutations;
 mod stats;
 
@@ -18,5 +19,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .merge(entries::router())
         .route("/stats", get(stats::get_stats))
         .route("/mutations", get(mutations::list_mutations))
+        .route("/export", get(export::export))
         .with_state(state)
 }
