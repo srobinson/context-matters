@@ -1,6 +1,6 @@
 {
   "name": "context-matters",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Structured context store for AI agents - MCP server with SQLite backend",
   "license": "MIT",
   "repository": {

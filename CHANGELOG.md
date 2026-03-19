@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/srobinson/context-matters/compare/v0.1.7...v0.1.8) (2026-03-19)
+
+
+### Bug Fixes
+
+* update Cargo.lock for v0.1.7 and sync lockfile in release workflow ([09439e3](https://github.com/srobinson/context-matters/commit/09439e3973f00f3988f6ccc0c25467c3c07b69fc))
+
 ## [0.1.7](https://github.com/srobinson/context-matters/compare/v0.1.6...v0.1.7) (2026-03-19)
 
 
