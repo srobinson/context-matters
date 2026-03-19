@@ -21,6 +21,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/entries", get(browse).post(create_entry))
         .route("/entries/search", get(search))
+        .route("/entries/merge", axum::routing::post(merge_entry))
         .route(
             "/entries/{id}",
             get(get_entry).patch(update_entry).delete(forget_entry),
@@ -183,6 +184,25 @@ async fn forget_entry(
     let ctx = WriteContext::new(MutationSource::Web);
     state.store.forget_entry(uuid, &ctx).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct MergeRequest {
+    old_id: String,
+    new_entry: NewEntry,
+}
+
+async fn merge_entry(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<MergeRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let old_uuid = parse_uuid(&body.old_id)?;
+    let ctx = WriteContext::new(MutationSource::Web);
+    let entry = state
+        .store
+        .supersede_entry(old_uuid, body.new_entry, &ctx)
+        .await?;
+    Ok((StatusCode::CREATED, Json(entry)))
 }
 
 async fn create_entry(
