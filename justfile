@@ -4,6 +4,12 @@ default:
 build:
     cargo build --workspace
 
+release:
+    cargo build --workspace --release
+
+install: release
+    cargo install --path crates/cm-cli
+
 test:
     cargo nextest run --workspace
 
@@ -21,9 +27,6 @@ check: fmt clippy
 
 check-pedantic:
     cargo clippy -p cm-core --all-targets -- -W clippy::pedantic -D warnings
-
-install:
-    cargo install --path crates/cm-cli
 
 serve-dev:
     cargo run -p cm-cli -- serve
