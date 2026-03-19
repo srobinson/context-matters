@@ -1,5 +1,6 @@
 import type { Entry } from "./generated/Entry";
 import type { EntryKind } from "./generated/EntryKind";
+import type { EntryRelation } from "./generated/EntryRelation";
 import type { BrowseSort } from "./generated/BrowseSort";
 import type { MutationRecord } from "./generated/MutationRecord";
 import type { NewEntry } from "./generated/NewEntry";
@@ -84,6 +85,13 @@ export type Stats = Omit<
   db_size_bytes: number;
 };
 
+// --- Entry detail (GET /entries/:id response) ---
+
+export type EntryDetail = Entry & {
+  relations_from: EntryRelation[];
+  relations_to: EntryRelation[];
+};
+
 // --- Param types ---
 
 export interface BrowseParams {
@@ -144,7 +152,7 @@ export const api = {
       );
     },
 
-    get(id: string): Promise<Entry> {
+    get(id: string): Promise<EntryDetail> {
       return apiFetch(`/entries/${encodeURIComponent(id)}`);
     },
 

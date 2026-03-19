@@ -7,6 +7,7 @@ import {
 import {
   api,
   type BrowseParams,
+  type EntryDetail,
   type SearchParams,
   type MutationListParams,
   type PagedResponse,
@@ -49,7 +50,7 @@ export function useEntries(
 
 export function useEntry(
   id: string,
-  options?: Partial<UseQueryOptions<Entry>>,
+  options?: Partial<UseQueryOptions<EntryDetail>>,
 ) {
   return useQuery({
     queryKey: queryKeys.entries.detail(id),
