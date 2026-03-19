@@ -6,11 +6,12 @@ import type { EntryKind } from "@/api/generated/EntryKind";
 import { useEntries, useSearch } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
+import { NewEntryEditor } from "@/components/NewEntryEditor";
 import { SortSelect } from "@/components/SortSelect";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
-import { Search, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 
 export type FeedSearch = {
   scope_path?: string;
@@ -51,6 +52,7 @@ function FeedPage() {
 
   const navigate = useNavigate({ from: "/feed" });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showNewEntry, setShowNewEntry] = useState(false);
   const [searchInput, setSearchInput] = useState(q ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   const debouncedQuery = useDebounce(searchInput, 300);
@@ -159,13 +161,24 @@ function FeedPage() {
             />
           )}
         </div>
-        {entries.length > 0 && (
-          <span className="font-mono text-xs text-muted-foreground">
-            {entries.length}
-            {totalCount > entries.length && ` / ${totalCount}`}
-            {isSearching ? " results" : " entries"}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {entries.length > 0 && (
+            <span className="font-mono text-xs text-muted-foreground">
+              {entries.length}
+              {totalCount > entries.length && ` / ${totalCount}`}
+              {isSearching ? " results" : " entries"}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowNewEntry(true)}
+            disabled={showNewEntry}
+            className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            <Plus className="h-3 w-3" />
+            new
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -222,7 +235,14 @@ function FeedPage() {
         </div>
       )}
 
-      {!isLoading && entries.length === 0 && !isError && (
+      {showNewEntry && (
+        <NewEntryEditor
+          onCancel={() => setShowNewEntry(false)}
+          onCreated={() => setShowNewEntry(false)}
+        />
+      )}
+
+      {!isLoading && entries.length === 0 && !isError && !showNewEntry && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
             {isSearching
