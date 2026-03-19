@@ -68,15 +68,14 @@ export function useStats(options?: Partial<UseQueryOptions<Stats>>) {
   });
 }
 
-export function useSearch(
-  params: SearchParams,
-  options?: Partial<UseQueryOptions<PagedResponse<Entry>>>,
-) {
-  return useQuery({
+export function useSearch(params: Omit<SearchParams, "cursor">) {
+  return useInfiniteQuery({
     queryKey: queryKeys.entries.search(params),
-    queryFn: () => api.entries.search(params),
+    queryFn: ({ pageParam }) =>
+      api.entries.search({ ...params, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: !!params.query,
-    ...options,
   });
 }
 

@@ -1,13 +1,16 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import { useEntries } from "@/api/hooks";
+import { useEntries, useSearch } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { SortSelect } from "@/components/SortSelect";
+import { Input } from "@/components/ui/input";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
+import { Search, X } from "lucide-react";
 
 export type FeedSearch = {
   scope_path?: string;
@@ -16,6 +19,7 @@ export type FeedSearch = {
   created_by?: string;
   sort?: BrowseSort;
   show_forgotten?: boolean;
+  q?: string;
 };
 
 export const feedRoute = createRoute({
@@ -36,16 +40,36 @@ export const feedRoute = createRoute({
     show_forgotten:
       search["show_forgotten"] === true ||
       search["show_forgotten"] === "true",
+    q: typeof search["q"] === "string" && search["q"] ? search["q"] : undefined,
   }),
   component: FeedPage,
 });
 
 function FeedPage() {
-  const { sort, kind, scope_path, tag, created_by, show_forgotten } =
+  const { sort, kind, scope_path, tag, created_by, show_forgotten, q } =
     feedRoute.useSearch();
 
   const navigate = useNavigate({ from: "/feed" });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState(q ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debouncedQuery = useDebounce(searchInput, 300);
+
+  const isSearching = !!debouncedQuery;
+
+  // Sync debounced query to URL
+  useEffect(() => {
+    const urlQ = q ?? "";
+    if (debouncedQuery !== urlQ) {
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          q: debouncedQuery || undefined,
+        }),
+        replace: true,
+      });
+    }
+  }, [debouncedQuery, q, navigate]);
 
   const handleSortChange = useCallback(
     (newSort: BrowseSort) => {
@@ -68,15 +92,13 @@ function FeedPage() {
     [navigate],
   );
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useEntries({
+  const handleClearSearch = useCallback(() => {
+    setSearchInput("");
+    inputRef.current?.focus();
+  }, []);
+
+  // Browse query (used when not searching)
+  const browseQuery = useEntries({
     sort: sort ?? "recent",
     kind,
     scope_path,
@@ -85,6 +107,27 @@ function FeedPage() {
     include_superseded: show_forgotten,
     limit: 30,
   });
+
+  // Search query (used when searching)
+  const searchQuery = useSearch({
+    query: debouncedQuery ?? "",
+    scope_path,
+    kind,
+    tag,
+    limit: 30,
+  });
+
+  const activeQuery = isSearching ? searchQuery : browseQuery;
+
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = activeQuery;
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -109,42 +152,83 @@ function FeedPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-medium tracking-tight">Feed</h2>
-          <SortSelect
-            value={sort ?? "recent"}
-            onChange={handleSortChange}
-          />
+          {!isSearching && (
+            <SortSelect
+              value={sort ?? "recent"}
+              onChange={handleSortChange}
+            />
+          )}
         </div>
         {entries.length > 0 && (
           <span className="font-mono text-xs text-muted-foreground">
             {entries.length}
             {totalCount > entries.length && ` / ${totalCount}`}
-            {" entries"}
+            {isSearching ? " results" : " entries"}
           </span>
         )}
       </div>
 
-      <FilterBar
-        filters={{ scope_path, kind, tag, created_by, show_forgotten }}
-        onChange={handleFilterChange}
-      />
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          ref={inputRef}
+          type="text"
+          placeholder="Search entries (FTS5)..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="pl-8 pr-8 font-mono text-xs"
+        />
+        {searchInput && (
+          <button
+            type="button"
+            onClick={handleClearSearch}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {!isSearching && (
+        <FilterBar
+          filters={{ scope_path, kind, tag, created_by, show_forgotten }}
+          onChange={handleFilterChange}
+        />
+      )}
+
+      {isSearching && (scope_path || kind || tag) && (
+        <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+          <span>Searching within:</span>
+          {scope_path && <span className="rounded-md border border-border bg-muted px-1.5 py-0.5">scope:{scope_path}</span>}
+          {kind && <span className="rounded-md border border-border bg-muted px-1.5 py-0.5">kind:{kind}</span>}
+          {tag && <span className="rounded-md border border-border bg-muted px-1.5 py-0.5">tag:{tag}</span>}
+        </div>
+      )}
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">Loading entries...</p>
+          <p className="text-sm text-muted-foreground">
+            {isSearching ? "Searching..." : "Loading entries..."}
+          </p>
         </div>
       )}
 
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">
-            Failed to load entries: {error.message}
+            {isSearching ? "Search failed" : "Failed to load entries"}:{" "}
+            {error.message}
           </p>
         </div>
       )}
 
       {!isLoading && entries.length === 0 && !isError && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">No entries found.</p>
+          <p className="text-sm text-muted-foreground">
+            {isSearching
+              ? `No results for "${debouncedQuery}".`
+              : "No entries found."}
+          </p>
         </div>
       )}
 
