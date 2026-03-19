@@ -1,5 +1,6 @@
 import {
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useQueryClient,
   type UseQueryOptions,
@@ -37,14 +38,13 @@ export const queryKeys = {
 
 // --- Query hooks ---
 
-export function useEntries(
-  params: BrowseParams = {},
-  options?: Partial<UseQueryOptions<PagedResponse<Entry>>>,
-) {
-  return useQuery({
+export function useEntries(params: Omit<BrowseParams, "cursor"> = {}) {
+  return useInfiniteQuery({
     queryKey: queryKeys.entries.browse(params),
-    queryFn: () => api.entries.browse(params),
-    ...options,
+    queryFn: ({ pageParam }) =>
+      api.entries.browse({ ...params, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 }
 

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createRoute } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useEntries } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
+import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 
 export type FeedSearch = {
   scope_path?: string;
@@ -43,15 +44,41 @@ function FeedPage() {
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error } = useEntries({
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useEntries({
     sort: sort ?? "recent",
     kind,
     scope_path,
     tag,
     created_by,
     include_superseded: show_forgotten,
-    limit: 50,
+    limit: 30,
   });
+
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const sentinelRef = useIntersectionObserver(
+    handleLoadMore,
+    !!hasNextPage && !isFetchingNextPage,
+  );
+
+  const entries = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data],
+  );
+
+  const totalCount = data?.pages[0]?.total ?? 0;
 
   const activeFilters: string[] = [
     kind ? `kind:${kind}` : "",
@@ -70,10 +97,10 @@ function FeedPage() {
             {sort ?? "recent"}
           </span>
         </div>
-        {data && (
+        {entries.length > 0 && (
           <span className="font-mono text-xs text-muted-foreground">
-            {data.items.length}
-            {data.total > data.items.length && ` / ${data.total}`}
+            {entries.length}
+            {totalCount > entries.length && ` / ${totalCount}`}
             {" entries"}
           </span>
         )}
@@ -106,15 +133,15 @@ function FeedPage() {
         </div>
       )}
 
-      {data && data.items.length === 0 && (
+      {!isLoading && entries.length === 0 && !isError && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">No entries found.</p>
         </div>
       )}
 
-      {data && data.items.length > 0 && (
+      {entries.length > 0 && (
         <div className="space-y-2">
-          {data.items.map((entry) => (
+          {entries.map((entry) => (
             <EntryCard
               key={entry.id}
               entry={entry}
@@ -126,6 +153,17 @@ function FeedPage() {
               }
             />
           ))}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+
+          {isFetchingNextPage && (
+            <div className="py-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Loading more...
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
