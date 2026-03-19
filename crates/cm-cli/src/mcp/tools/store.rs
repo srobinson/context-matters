@@ -1,6 +1,8 @@
 //! Handler for the `cx_store` tool.
 
-use cm_core::{ContextStore, EntryKind, EntryMeta, NewEntry, ScopePath};
+use cm_core::{
+    ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, ScopePath, WriteContext,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -54,6 +56,8 @@ struct CxStoreParams {
 }
 
 pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+    let ctx = WriteContext::new(MutationSource::Mcp);
+
     let params: CxStoreParams =
         serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
 
@@ -83,7 +87,7 @@ pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String,
     };
 
     // Auto-create scope chain if needed
-    ensure_scope_chain(store, &scope_path).await?;
+    ensure_scope_chain(store, &scope_path, &ctx).await?;
 
     // Build metadata
     let meta = if !params.tags.is_empty()
@@ -119,14 +123,14 @@ pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String,
             let old_id = uuid::Uuid::parse_str(id_str)
                 .map_err(|_| format!("Invalid supersedes ID: '{id_str}'. Expected a UUID."))?;
             let entry = store
-                .supersede_entry(old_id, new_entry)
+                .supersede_entry(old_id, new_entry, &ctx)
                 .await
                 .map_err(cm_err_to_string)?;
             (entry, Some(old_id))
         }
         None => {
             let entry = store
-                .create_entry(new_entry)
+                .create_entry(new_entry, &ctx)
                 .await
                 .map_err(cm_err_to_string)?;
             (entry, None)

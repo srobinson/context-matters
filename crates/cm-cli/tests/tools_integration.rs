@@ -4,7 +4,7 @@
 //! and exercises tool handlers through the public `tools::cx_*` functions.
 //! This validates the full stack: JSON params -> tool handler -> ContextStore -> SQLite.
 
-use cm_core::{ContextStore, NewScope, ScopePath};
+use cm_core::{ContextStore, MutationSource, NewScope, ScopePath, WriteContext};
 use cm_store::{CmStore, schema};
 use serde_json::{Value, json};
 
@@ -25,11 +25,14 @@ async fn test_store() -> (CmStore, tempfile::TempDir) {
 /// Create the global scope in the store.
 async fn create_global(store: &CmStore) {
     store
-        .create_scope(NewScope {
-            path: ScopePath::parse("global").unwrap(),
-            label: "Global".to_owned(),
-            meta: None,
-        })
+        .create_scope(
+            NewScope {
+                path: ScopePath::parse("global").unwrap(),
+                label: "Global".to_owned(),
+                meta: None,
+            },
+            &WriteContext::new(MutationSource::Mcp),
+        )
         .await
         .unwrap();
 }

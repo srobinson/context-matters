@@ -1,6 +1,6 @@
 //! Handler for the `cx_update` tool.
 
-use cm_core::{ContextStore, EntryKind, EntryMeta, UpdateEntry};
+use cm_core::{ContextStore, EntryKind, EntryMeta, MutationSource, UpdateEntry, WriteContext};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -110,8 +110,10 @@ pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<String
         meta,
     };
 
+    let ctx = WriteContext::new(MutationSource::Mcp);
+
     let entry = store
-        .update_entry(id, update)
+        .update_entry(id, update, &ctx)
         .await
         .map_err(cm_err_to_string)?;
 

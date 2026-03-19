@@ -13,7 +13,7 @@ pub use error::{CmError, ScopePathError};
 pub use query::{FtsQuery, QueryBuilder};
 pub use store::ContextStore;
 pub use types::{
-    Confidence, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation, NewEntry, NewScope,
-    PagedResult, Pagination, PaginationCursor, RelationKind, Scope, ScopeKind, ScopePath,
-    StoreStats, TagCount, UpdateEntry,
+    Confidence, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation, MutationAction,
+    MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, Pagination, PaginationCursor,
+    RelationKind, Scope, ScopeKind, ScopePath, StoreStats, TagCount, UpdateEntry, WriteContext,
 };

@@ -10,7 +10,7 @@ pub mod tools;
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
-use cm_core::{CmError, ContextStore, ScopePath};
+use cm_core::{CmError, ContextStore, ScopePath, WriteContext};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -387,6 +387,7 @@ pub(crate) fn json_response(value: Value) -> Result<String, String> {
 pub(crate) async fn ensure_scope_chain(
     store: &impl ContextStore,
     path: &ScopePath,
+    ctx: &WriteContext,
 ) -> Result<(), String> {
     use cm_core::NewScope;
 
@@ -412,7 +413,7 @@ pub(crate) async fn ensure_scope_chain(
                     meta: None,
                 };
                 store
-                    .create_scope(new_scope)
+                    .create_scope(new_scope, ctx)
                     .await
                     .map_err(cm_err_to_string)?;
             }

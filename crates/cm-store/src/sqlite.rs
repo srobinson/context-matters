@@ -9,9 +9,9 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use cm_core::{
-    CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation, NewEntry,
-    NewScope, PagedResult, PaginationCursor, RelationKind, Scope, ScopeKind, ScopePath, StoreStats,
-    TagCount, UpdateEntry,
+    CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation, MutationAction,
+    MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, PaginationCursor,
+    RelationKind, Scope, ScopeKind, ScopePath, StoreStats, TagCount, UpdateEntry, WriteContext,
 };
 use sqlx::Row;
 use sqlx::sqlite::SqlitePool;
@@ -176,10 +176,75 @@ fn map_db_err(e: sqlx::Error) -> CmError {
     CmError::Database(e.to_string())
 }
 
+/// Serialize an Entry to a JSON Value for mutation snapshots.
+fn entry_snapshot(entry: &Entry) -> Result<serde_json::Value, CmError> {
+    Ok(serde_json::to_value(entry)?)
+}
+
+/// Insert a mutation record within an existing transaction.
+async fn insert_mutation(
+    executor: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
+    entry_id: &str,
+    action: MutationAction,
+    source: MutationSource,
+    before: Option<&serde_json::Value>,
+    after: Option<&serde_json::Value>,
+) -> Result<(), CmError> {
+    let id = Uuid::now_v7().to_string();
+    let action_str = action.as_str();
+    let source_str = source.as_str();
+    let before_json = before.map(|v| v.to_string());
+    let after_json = after.map(|v| v.to_string());
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    sqlx::query(
+        "INSERT INTO mutations (id, entry_id, action, source, timestamp, before_snapshot, after_snapshot) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(entry_id)
+    .bind(action_str)
+    .bind(source_str)
+    .bind(&now)
+    .bind(&before_json)
+    .bind(&after_json)
+    .execute(executor)
+    .await
+    .map_err(map_db_err)?;
+
+    Ok(())
+}
+
+fn parse_mutation(row: &sqlx::sqlite::SqliteRow) -> Result<MutationRecord, CmError> {
+    let id_str: String = row.get("id");
+    let entry_id_str: String = row.get("entry_id");
+    let action_str: String = row.get("action");
+    let source_str: String = row.get("source");
+    let timestamp_str: String = row.get("timestamp");
+    let before_str: Option<String> = row.get("before_snapshot");
+    let after_str: Option<String> = row.get("after_snapshot");
+
+    Ok(MutationRecord {
+        id: Uuid::parse_str(&id_str)
+            .map_err(|e| CmError::Internal(format!("invalid mutation id: {e}")))?,
+        entry_id: Uuid::parse_str(&entry_id_str)
+            .map_err(|e| CmError::Internal(format!("invalid entry_id: {e}")))?,
+        action: action_str.parse()?,
+        source: source_str.parse()?,
+        timestamp: parse_datetime(&timestamp_str)?,
+        before_snapshot: before_str.map(|s| serde_json::from_str(&s)).transpose()?,
+        after_snapshot: after_str.map(|s| serde_json::from_str(&s)).transpose()?,
+    })
+}
+
 // ── ContextStore implementation ────────────────────────────────────
 
 impl ContextStore for CmStore {
-    async fn create_entry(&self, new_entry: NewEntry) -> Result<Entry, CmError> {
+    async fn create_entry(
+        &self,
+        new_entry: NewEntry,
+        ctx: &WriteContext,
+    ) -> Result<Entry, CmError> {
         if new_entry.title.trim().is_empty() {
             return Err(CmError::Validation("title cannot be empty".to_owned()));
         }
@@ -204,6 +269,11 @@ impl ContextStore for CmStore {
 
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| CmError::Database(e.to_string()))?;
+
         sqlx::query(
             "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, meta, created_by, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -218,7 +288,7 @@ impl ContextStore for CmStore {
         .bind(&new_entry.created_by)
         .bind(&now)
         .bind(&now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(ref db_err) = e
@@ -228,14 +298,31 @@ impl ContextStore for CmStore {
             map_db_err(e)
         })?;
 
-        // Fetch and return the created entry
+        // Fetch the created entry within the transaction
         let row = sqlx::query("SELECT * FROM entries WHERE id = ?")
             .bind(&id_str)
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(map_db_err)?;
 
-        parse_entry(&row)
+        let entry = parse_entry(&row)?;
+        let after = entry_snapshot(&entry)?;
+
+        insert_mutation(
+            &mut *tx,
+            &id_str,
+            MutationAction::Create,
+            ctx.source,
+            None,
+            Some(&after),
+        )
+        .await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| CmError::Database(e.to_string()))?;
+
+        Ok(entry)
     }
 
     async fn get_entry(&self, id: Uuid) -> Result<Entry, CmError> {
@@ -533,7 +620,12 @@ impl ContextStore for CmStore {
         })
     }
 
-    async fn update_entry(&self, id: Uuid, update: UpdateEntry) -> Result<Entry, CmError> {
+    async fn update_entry(
+        &self,
+        id: Uuid,
+        update: UpdateEntry,
+        ctx: &WriteContext,
+    ) -> Result<Entry, CmError> {
         // Validate non-empty title/body if provided, matching create_entry's invariant
         if let Some(ref title) = update.title
             && title.trim().is_empty()
@@ -549,7 +641,7 @@ impl ContextStore for CmStore {
         let id_str = id.to_string();
         let pool = &self.write_pool;
 
-        // Fetch current entry
+        // Fetch current entry to compute hash (pre-transaction read on write pool)
         let current_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
             .bind(&id_str)
             .fetch_optional(pool)
@@ -598,8 +690,24 @@ impl ContextStore for CmStore {
         }
 
         if sets.is_empty() {
+            // No-op: no mutation record needed
             return Ok(current);
         }
+
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| CmError::Database(e.to_string()))?;
+
+        // Re-fetch inside transaction for accurate before snapshot
+        let before_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+            .bind(&id_str)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(map_db_err)?;
+
+        let before_entry = parse_entry(&before_row)?;
+        let before = entry_snapshot(&before_entry)?;
 
         let sql = format!("UPDATE entries SET {} WHERE id = ?", sets.join(", "));
         let mut q = sqlx::query(&sql);
@@ -607,19 +715,41 @@ impl ContextStore for CmStore {
             q = q.bind(v);
         }
         q = q.bind(&id_str);
-        q.execute(pool).await.map_err(map_db_err)?;
+        q.execute(&mut *tx).await.map_err(map_db_err)?;
 
-        // Fetch updated entry
+        // Fetch updated entry (after snapshot)
         let row = sqlx::query("SELECT * FROM entries WHERE id = ?")
             .bind(&id_str)
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(map_db_err)?;
 
-        parse_entry(&row)
+        let entry = parse_entry(&row)?;
+        let after = entry_snapshot(&entry)?;
+
+        insert_mutation(
+            &mut *tx,
+            &id_str,
+            MutationAction::Update,
+            ctx.source,
+            Some(&before),
+            Some(&after),
+        )
+        .await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| CmError::Database(e.to_string()))?;
+
+        Ok(entry)
     }
 
-    async fn supersede_entry(&self, old_id: Uuid, new_entry: NewEntry) -> Result<Entry, CmError> {
+    async fn supersede_entry(
+        &self,
+        old_id: Uuid,
+        new_entry: NewEntry,
+        ctx: &WriteContext,
+    ) -> Result<Entry, CmError> {
         // Validate upfront, matching create_entry's contract
         if new_entry.title.trim().is_empty() {
             return Err(CmError::Validation("title cannot be empty".to_owned()));
@@ -641,27 +771,26 @@ impl ContextStore for CmStore {
         let new_id_str = new_id.to_string();
         let pool = &self.write_pool;
 
-        // Verify old entry exists
-        let exists = sqlx::query("SELECT id FROM entries WHERE id = ?")
-            .bind(&old_id_str)
-            .fetch_optional(pool)
-            .await
-            .map_err(map_db_err)?;
-
-        if exists.is_none() {
-            return Err(CmError::EntryNotFound(old_id));
-        }
-
         // Dedup check for the new entry's content
         dedup::check_duplicate(pool, &content_hash, None).await?;
 
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
-        // Wrap all three mutations in a transaction for atomicity
         let mut tx = pool
             .begin()
             .await
             .map_err(|e| CmError::Database(e.to_string()))?;
+
+        // Fetch old entry inside the transaction (before snapshot)
+        let old_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+            .bind(&old_id_str)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_db_err)?
+            .ok_or(CmError::EntryNotFound(old_id))?;
+
+        let old_entry = parse_entry(&old_row)?;
+        let old_before = entry_snapshot(&old_entry)?;
 
         // Insert the new entry
         sqlx::query(
@@ -707,45 +836,115 @@ impl ContextStore for CmStore {
         .await
         .map_err(map_db_err)?;
 
+        // Fetch old entry again for after snapshot (now has superseded_by set)
+        let old_after_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+            .bind(&old_id_str)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(map_db_err)?;
+
+        let old_after_entry = parse_entry(&old_after_row)?;
+        let old_after = entry_snapshot(&old_after_entry)?;
+
+        // Fetch new entry for after snapshot
+        let new_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+            .bind(&new_id_str)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(map_db_err)?;
+
+        let new_entry_result = parse_entry(&new_row)?;
+        let new_after = entry_snapshot(&new_entry_result)?;
+
+        // Mutation 1: old entry superseded
+        insert_mutation(
+            &mut *tx,
+            &old_id_str,
+            MutationAction::Supersede,
+            ctx.source,
+            Some(&old_before),
+            Some(&old_after),
+        )
+        .await?;
+
+        // Mutation 2: new entry created
+        insert_mutation(
+            &mut *tx,
+            &new_id_str,
+            MutationAction::Create,
+            ctx.source,
+            None,
+            Some(&new_after),
+        )
+        .await?;
+
         tx.commit()
             .await
             .map_err(|e| CmError::Database(e.to_string()))?;
 
-        // Fetch the created entry (outside transaction, already committed)
-        let row = sqlx::query("SELECT * FROM entries WHERE id = ?")
-            .bind(&new_id_str)
-            .fetch_one(pool)
-            .await
-            .map_err(map_db_err)?;
-
-        parse_entry(&row)
+        Ok(new_entry_result)
     }
 
-    async fn forget_entry(&self, id: Uuid) -> Result<(), CmError> {
+    async fn forget_entry(&self, id: Uuid, ctx: &WriteContext) -> Result<(), CmError> {
         let id_str = id.to_string();
         let pool = &self.write_pool;
 
-        let result = sqlx::query(
-            "UPDATE entries SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
-        )
-        .bind(&id_str)
-        .bind(&id_str)
-        .execute(pool)
-        .await
-        .map_err(map_db_err)?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| CmError::Database(e.to_string()))?;
 
-        if result.rows_affected() == 0 {
-            // Check if entry exists at all
-            let exists = sqlx::query("SELECT id FROM entries WHERE id = ?")
+        // Fetch current entry inside transaction (before snapshot)
+        let row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+            .bind(&id_str)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_db_err)?;
+
+        match row {
+            None => return Err(CmError::EntryNotFound(id)),
+            Some(ref r) => {
+                let entry = parse_entry(r)?;
+                if entry.superseded_by.is_some() {
+                    // Already superseded/forgotten, no-op. No mutation record.
+                    return Ok(());
+                }
+
+                let before = entry_snapshot(&entry)?;
+
+                sqlx::query(
+                    "UPDATE entries SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
+                )
                 .bind(&id_str)
-                .fetch_optional(pool)
+                .bind(&id_str)
+                .execute(&mut *tx)
                 .await
                 .map_err(map_db_err)?;
 
-            if exists.is_none() {
-                return Err(CmError::EntryNotFound(id));
+                // Fetch after-state (now has superseded_by = self)
+                let after_row = sqlx::query("SELECT * FROM entries WHERE id = ?")
+                    .bind(&id_str)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(map_db_err)?;
+
+                let after_entry = parse_entry(&after_row)?;
+                let after = entry_snapshot(&after_entry)?;
+
+                insert_mutation(
+                    &mut *tx,
+                    &id_str,
+                    MutationAction::Forget,
+                    ctx.source,
+                    Some(&before),
+                    Some(&after),
+                )
+                .await?;
+
+                tx.commit()
+                    .await
+                    .map_err(|e| CmError::Database(e.to_string()))?;
             }
-            // Entry exists but already superseded, that is fine
         }
 
         Ok(())
@@ -756,6 +955,7 @@ impl ContextStore for CmStore {
         source_id: Uuid,
         target_id: Uuid,
         relation: RelationKind,
+        _ctx: &WriteContext,
     ) -> Result<EntryRelation, CmError> {
         let source_str = source_id.to_string();
         let target_str = target_id.to_string();
@@ -822,7 +1022,11 @@ impl ContextStore for CmStore {
         rows.iter().map(parse_relation).collect()
     }
 
-    async fn create_scope(&self, new_scope: NewScope) -> Result<Scope, CmError> {
+    async fn create_scope(
+        &self,
+        new_scope: NewScope,
+        _ctx: &WriteContext,
+    ) -> Result<Scope, CmError> {
         let path_str = new_scope.path.as_str().to_owned();
         let kind_str = new_scope.kind().as_str().to_owned();
         let parent = new_scope.parent_path();
@@ -1038,5 +1242,77 @@ impl ContextStore for CmStore {
         };
 
         rows.iter().map(parse_entry).collect()
+    }
+
+    async fn get_mutations(
+        &self,
+        entry_id: Uuid,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<MutationRecord>, CmError> {
+        let id_str = entry_id.to_string();
+        let clamped_limit = limit.clamp(1, 200);
+
+        let rows = sqlx::query(
+            "SELECT id, entry_id, action, source, timestamp, before_snapshot, after_snapshot \
+             FROM mutations WHERE entry_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+        )
+        .bind(&id_str)
+        .bind(clamped_limit)
+        .bind(offset)
+        .fetch_all(&self.read_pool)
+        .await
+        .map_err(map_db_err)?;
+
+        rows.iter().map(parse_mutation).collect()
+    }
+
+    async fn list_mutations(
+        &self,
+        entry_id: Option<Uuid>,
+        action: Option<MutationAction>,
+        source: Option<MutationSource>,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+        limit: u32,
+    ) -> Result<Vec<MutationRecord>, CmError> {
+        let mut sql = String::from(
+            "SELECT id, entry_id, action, source, timestamp, before_snapshot, after_snapshot \
+             FROM mutations WHERE 1=1",
+        );
+        let mut binds: Vec<String> = Vec::new();
+
+        if let Some(eid) = entry_id {
+            sql.push_str(" AND entry_id = ?");
+            binds.push(eid.to_string());
+        }
+        if let Some(a) = action {
+            sql.push_str(" AND action = ?");
+            binds.push(a.as_str().to_owned());
+        }
+        if let Some(s) = source {
+            sql.push_str(" AND source = ?");
+            binds.push(s.as_str().to_owned());
+        }
+        if let Some(s) = since {
+            sql.push_str(" AND timestamp >= ?");
+            binds.push(s.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+        }
+        if let Some(u) = until {
+            sql.push_str(" AND timestamp <= ?");
+            binds.push(u.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+        }
+
+        sql.push_str(" ORDER BY timestamp DESC LIMIT ?");
+        let clamped_limit = limit.clamp(1, 200);
+
+        let mut q = sqlx::query(&sql);
+        for b in &binds {
+            q = q.bind(b);
+        }
+        q = q.bind(clamped_limit);
+
+        let rows = q.fetch_all(&self.read_pool).await.map_err(map_db_err)?;
+        rows.iter().map(parse_mutation).collect()
     }
 }
