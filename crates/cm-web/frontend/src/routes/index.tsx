@@ -3,6 +3,7 @@ import { createRoute } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import { useStats } from "@/api/hooks";
 import type { Stats } from "@/api/client";
+import { QualityAlerts } from "@/components/QualityAlerts";
 import { StatCard } from "@/components/StatCard";
 
 export const indexRoute = createRoute({
@@ -100,6 +101,8 @@ function DashboardPage() {
           detail={qualityDetail(stats)}
         />
       </div>
+
+      <QualityAlerts stats={stats} />
     </div>
   );
 }
