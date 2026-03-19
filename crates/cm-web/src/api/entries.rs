@@ -21,7 +21,10 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/entries", get(browse).post(create_entry))
         .route("/entries/search", get(search))
-        .route("/entries/{id}", get(get_entry).patch(update_entry))
+        .route(
+            "/entries/{id}",
+            get(get_entry).patch(update_entry).delete(forget_entry),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -170,6 +173,16 @@ async fn update_entry(
     let ctx = WriteContext::new(MutationSource::Web);
     let entry = state.store.update_entry(uuid, update, &ctx).await?;
     Ok(Json(entry))
+}
+
+async fn forget_entry(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let uuid = parse_uuid(&id)?;
+    let ctx = WriteContext::new(MutationSource::Web);
+    state.store.forget_entry(uuid, &ctx).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn create_entry(
