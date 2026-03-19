@@ -26,6 +26,23 @@ jobs:
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.HELIOY_PAT }}
 
+      - name: Update Cargo.lock on release PR
+        if: steps.release.outputs.pr
+        env:
+          GH_TOKEN: ${{ secrets.HELIOY_PAT }}
+          PR_BRANCH: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+        run: |
+          git fetch origin "$PR_BRANCH"
+          git checkout "$PR_BRANCH"
+          cargo update --workspace
+          if git diff --quiet Cargo.lock; then
+            echo "Cargo.lock already up to date"
+          else
+            git add Cargo.lock
+            git commit -m "chore: update Cargo.lock"
+            git push origin "$PR_BRANCH"
+          fi
+
       - name: Auto-merge release PR
         if: steps.release.outputs.pr
         env:
