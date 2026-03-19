@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cm_core::{
     BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationSource,
-    NewEntry, PagedResult, Pagination, ScopePath, WriteContext,
+    NewEntry, PagedResult, Pagination, ScopePath, UpdateEntry, WriteContext,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -21,7 +21,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/entries", get(browse).post(create_entry))
         .route("/entries/search", get(search))
-        .route("/entries/{id}", get(get_entry))
+        .route("/entries/{id}", get(get_entry).patch(update_entry))
 }
 
 #[derive(Debug, Deserialize)]
@@ -146,11 +146,7 @@ async fn get_entry(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<EntryDetail>, ApiError> {
-    let uuid = Uuid::parse_str(&id).map_err(|_| {
-        ApiError(cm_core::CmError::Validation(format!(
-            "invalid UUID: '{id}'"
-        )))
-    })?;
+    let uuid = parse_uuid(&id)?;
 
     let entry = state.store.get_entry(uuid).await?;
     let (relations_from, relations_to) = tokio::try_join!(
@@ -165,6 +161,17 @@ async fn get_entry(
     }))
 }
 
+async fn update_entry(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(update): Json<UpdateEntry>,
+) -> Result<Json<Entry>, ApiError> {
+    let uuid = parse_uuid(&id)?;
+    let ctx = WriteContext::new(MutationSource::Web);
+    let entry = state.store.update_entry(uuid, update, &ctx).await?;
+    Ok(Json(entry))
+}
+
 async fn create_entry(
     State(state): State<Arc<AppState>>,
     Json(new_entry): Json<NewEntry>,
@@ -172,6 +179,11 @@ async fn create_entry(
     let ctx = WriteContext::new(MutationSource::Web);
     let entry = state.store.create_entry(new_entry, &ctx).await?;
     Ok((StatusCode::CREATED, Json(entry)))
+}
+
+fn parse_uuid(s: &str) -> Result<Uuid, ApiError> {
+    Uuid::parse_str(s)
+        .map_err(|_| ApiError(cm_core::CmError::Validation(format!("invalid UUID: '{s}'"))))
 }
 
 fn parse_entry_kind(s: &str) -> Result<EntryKind, ApiError> {
