@@ -5,8 +5,8 @@ import type { Entry } from "@/api/generated/Entry";
 import type { EntryRelation } from "@/api/generated/EntryRelation";
 import { useEntry, useForgetEntry } from "@/api/hooks";
 import { EntryEditor } from "./EntryEditor";
-import { KindBadge } from "./KindBadge";
-import { QualityBadge, getQualityIssues } from "./QualityBadge";
+import { KindBadge } from "./domain/KindBadge";
+import { QualityBadge, getQualityIssues } from "./domain/QualityBadge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -130,6 +130,18 @@ function RelationsList({
   );
 }
 
+function QualityBadges({ entry }: { entry: Entry }) {
+  const issues = getQualityIssues(entry);
+  if (issues.length === 0) return null;
+  return (
+    <div className="flex gap-1">
+      {issues.map((issue) => (
+        <QualityBadge key={issue} issue={issue} />
+      ))}
+    </div>
+  );
+}
+
 function ExpandedContent({
   entryId,
   onForgotten,
@@ -204,9 +216,12 @@ function ExpandedContent({
         </div>
       )}
 
+      {/* Quality badges */}
+      <QualityBadges entry={detail} />
+
       {/* Metadata grid */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
-        <MetadataRow label="kind" value={detail.kind} />
+        <MetadataRow label="kind" value={<KindBadge kind={detail.kind} />} />
         <MetadataRow label="scope" value={detail.scope_path} />
         <MetadataRow
           label="confidence"
@@ -315,8 +330,8 @@ export function EntryCard({
   onToggle?: () => void;
   className?: string;
 }) {
-  const qualityIssues = getQualityIssues(entry);
   const tags = entry.meta?.tags ?? [];
+  const hasQualityIssues = getQualityIssues(entry).length > 0;
   const isForgotten = entry.superseded_by != null;
 
   return (
@@ -370,16 +385,10 @@ export function EntryCard({
           {!isExpanded && <ContentPreview body={entry.body} />}
 
           {/* Row 4: tags + quality badges (compact only) */}
-          {!isExpanded && (tags.length > 0 || qualityIssues.length > 0) && (
+          {!isExpanded && (tags.length > 0 || hasQualityIssues) && (
             <div className="flex items-center gap-2 pt-0.5">
               <TagChips tags={tags} />
-              {qualityIssues.length > 0 && (
-                <div className="flex gap-1">
-                  {qualityIssues.map((issue) => (
-                    <QualityBadge key={issue} issue={issue} />
-                  ))}
-                </div>
-              )}
+              <QualityBadges entry={entry} />
             </div>
           )}
         </div>

@@ -2,7 +2,7 @@ import type { Entry } from "@/api/generated/Entry";
 import { isStale } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-type QualityIssue = "untagged" | "under-tagged" | "stale";
+export type QualityIssue = "untagged" | "under-tagged" | "stale";
 
 export function getQualityIssues(entry: Entry): QualityIssue[] {
   const issues: QualityIssue[] = [];

@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { Entry } from "@/api/generated/Entry";
 import { useEntries } from "@/api/hooks";
-import { KindBadge } from "./KindBadge";
+import { KindBadge } from "./domain/KindBadge";
 import { timeAgo } from "@/lib/time";
 
 export function RecentActivity() {
