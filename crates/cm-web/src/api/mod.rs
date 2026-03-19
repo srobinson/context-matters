@@ -2,6 +2,7 @@
 
 mod entries;
 mod error;
+mod mutations;
 mod stats;
 
 use std::sync::Arc;
@@ -16,5 +17,6 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .merge(entries::router())
         .route("/stats", get(stats::get_stats))
+        .route("/mutations", get(mutations::list_mutations))
         .with_state(state)
 }
