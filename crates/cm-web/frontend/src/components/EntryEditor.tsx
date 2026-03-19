@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X } from "lucide-react";
+import { DiffView } from "./DiffView";
 
 const ALL_KINDS: EntryKind[] = [
   "fact",
@@ -52,6 +53,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [pendingScope, setPendingScope] = useState<string | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -119,7 +121,11 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
     [tagInput, tags.length, handleAddTag],
   );
 
-  const handleSave = useCallback(() => {
+  const handleReviewChanges = useCallback(() => {
+    setShowDiff(true);
+  }, []);
+
+  const handleConfirmSave = useCallback(() => {
     const meta: EntryMeta = {
       ...entry.meta,
       tags: tags.length > 0 ? tags : undefined,
@@ -413,30 +419,36 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         </p>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!hasChanges || isMutating}
-          className="rounded-md border border-border bg-foreground px-3 py-1.5 font-mono text-xs text-background transition-colors hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {updateEntry.isPending ? "saving..." : "save"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isMutating}
-          className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-        >
-          cancel
-        </button>
-        {updateEntry.isError && (
-          <span className="font-mono text-xs text-destructive">
-            {updateEntry.error.message}
-          </span>
-        )}
-      </div>
+      {/* Actions / Diff view */}
+      {showDiff ? (
+        <DiffView
+          entry={entry}
+          edited={{ title, body, kind, tags, confidence }}
+          onConfirm={handleConfirmSave}
+          onBack={() => setShowDiff(false)}
+          isPending={updateEntry.isPending}
+          error={updateEntry.isError ? updateEntry.error.message : null}
+        />
+      ) : (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleReviewChanges}
+            disabled={!hasChanges || isMutating}
+            className="rounded-md border border-border bg-foreground px-3 py-1.5 font-mono text-xs text-background transition-colors hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            save
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isMutating}
+            className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
