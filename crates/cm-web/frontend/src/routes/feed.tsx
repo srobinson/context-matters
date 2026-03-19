@@ -3,15 +3,17 @@ import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
+import type { Entry } from "@/api/generated/Entry";
 import { useEntries, useSearch } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
+import { MergePanel } from "@/components/MergePanel";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
 import { SortSelect } from "@/components/domain/SortSelect";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
-import { Plus, Search, X } from "lucide-react";
+import { GitMerge, Plus, Search, X } from "lucide-react";
 
 export type FeedSearch = {
   scope_path?: string;
@@ -56,6 +58,8 @@ function FeedPage() {
   const [searchInput, setSearchInput] = useState(q ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   const debouncedQuery = useDebounce(searchInput, 300);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const isSearching = !!debouncedQuery;
 
@@ -97,6 +101,28 @@ function FeedPage() {
   const handleClearSearch = useCallback(() => {
     setSearchInput("");
     inputRef.current?.focus();
+  }, []);
+
+  const toggleMergeMode = useCallback(() => {
+    setMergeMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+    setExpandedId(null);
+  }, []);
+
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleMergeComplete = useCallback(() => {
+    setMergeMode(false);
+    setSelectedIds(new Set());
   }, []);
 
   // Browse query (used when not searching)
@@ -171,8 +197,20 @@ function FeedPage() {
           )}
           <button
             type="button"
+            onClick={toggleMergeMode}
+            className={`flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-xs transition-colors ${
+              mergeMode
+                ? "border-ring bg-accent text-foreground"
+                : "border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            <GitMerge className="h-3 w-3" />
+            {mergeMode ? "cancel merge" : "merge"}
+          </button>
+          <button
+            type="button"
             onClick={() => setShowNewEntry(true)}
-            disabled={showNewEntry}
+            disabled={showNewEntry || mergeMode}
             className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           >
             <Plus className="h-3 w-3" />
@@ -235,6 +273,30 @@ function FeedPage() {
         </div>
       )}
 
+      {mergeMode && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/50 px-3 py-2">
+            <span className="font-mono text-xs text-muted-foreground">
+              {selectedIds.size === 0
+                ? "Select entries to merge"
+                : `${selectedIds.size} selected`}
+            </span>
+            {selectedIds.size >= 2 && (
+              <span className="font-mono text-[10px] text-muted-foreground/60">
+                merge panel below
+              </span>
+            )}
+          </div>
+          {selectedIds.size >= 2 && (
+            <MergePanel
+              entries={entries.filter((e) => selectedIds.has(e.id))}
+              onComplete={handleMergeComplete}
+              onCancel={toggleMergeMode}
+            />
+          )}
+        </div>
+      )}
+
       {showNewEntry && (
         <NewEntryEditor
           onCancel={() => setShowNewEntry(false)}
@@ -255,16 +317,46 @@ function FeedPage() {
       {entries.length > 0 && (
         <div className="space-y-2">
           {entries.map((entry) => (
-            <EntryCard
-              key={entry.id}
-              entry={entry}
-              isExpanded={expandedId === entry.id}
-              onToggle={() =>
-                setExpandedId((prev) =>
-                  prev === entry.id ? null : entry.id,
-                )
-              }
-            />
+            <div key={entry.id} className="flex items-start gap-2">
+              {mergeMode && (
+                <button
+                  type="button"
+                  onClick={() => toggleSelection(entry.id)}
+                  className={`mt-4 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                    selectedIds.has(entry.id)
+                      ? "border-ring bg-foreground text-background"
+                      : "border-border bg-card hover:border-ring/50"
+                  }`}
+                  aria-label={`Select ${entry.title} for merge`}
+                >
+                  {selectedIds.has(entry.id) && (
+                    <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                      <path
+                        d="M2.5 6L5 8.5L9.5 3.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </button>
+              )}
+              <div className="min-w-0 flex-1">
+                <EntryCard
+                  entry={entry}
+                  isExpanded={!mergeMode && expandedId === entry.id}
+                  onToggle={
+                    mergeMode
+                      ? () => toggleSelection(entry.id)
+                      : () =>
+                          setExpandedId((prev) =>
+                            prev === entry.id ? null : entry.id,
+                          )
+                  }
+                />
+              </div>
+            </div>
           ))}
 
           <div ref={sentinelRef} className="h-1" />
