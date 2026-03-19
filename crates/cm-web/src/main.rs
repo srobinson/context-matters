@@ -7,6 +7,7 @@ use cm_store::CmStore;
 use rust_embed::Embed;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tower_http::trace::TraceLayer;
 
 mod api;
 
@@ -60,7 +61,27 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .nest("/api", api::router(state.clone()))
         .fallback(spa_handler)
-        .layer(tower_http::trace::TraceLayer::new_for_http());
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|req: &axum::http::Request<_>| {
+                    tracing::info_span!(
+                        "http",
+                        method = %req.method(),
+                        path = %req.uri().path(),
+                    )
+                })
+                .on_response(
+                    |resp: &axum::http::Response<_>,
+                     latency: std::time::Duration,
+                     _span: &tracing::Span| {
+                        tracing::info!(
+                            status = resp.status().as_u16(),
+                            latency_ms = latency.as_millis() as u64,
+                            "response"
+                        );
+                    },
+                ),
+        );
 
     let addr = format!("0.0.0.0:{}", cli.port);
     let listener = TcpListener::bind(&addr).await?;
@@ -89,23 +110,24 @@ async fn spa_handler(uri: Uri) -> Response {
 
     // Try exact file match first
     if !path.is_empty()
-        && let Some(file) = Assets::get(path) {
-            let cache = if path.starts_with("assets/") {
-                // Vite hashed assets: cache forever
-                "public, max-age=31536000, immutable"
-            } else {
-                "no-cache"
-            };
-            return (
-                StatusCode::OK,
-                [
-                    (header::CONTENT_TYPE, content_type(path)),
-                    (header::CACHE_CONTROL, cache.to_owned()),
-                ],
-                file.data.into_owned(),
-            )
-                .into_response();
-        }
+        && let Some(file) = Assets::get(path)
+    {
+        let cache = if path.starts_with("assets/") {
+            // Vite hashed assets: cache forever
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
+        };
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, content_type(path)),
+                (header::CACHE_CONTROL, cache.to_owned()),
+            ],
+            file.data.into_owned(),
+        )
+            .into_response();
+    }
 
     // SPA fallback: serve index.html for client-side routing
     match Assets::get("index.html") {

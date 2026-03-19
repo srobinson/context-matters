@@ -173,6 +173,7 @@ async fn update_entry(
     let uuid = parse_uuid(&id)?;
     let ctx = WriteContext::new(MutationSource::Web);
     let entry = state.store.update_entry(uuid, update, &ctx).await?;
+    tracing::info!(action = "update", entry_id = %entry.id, source = "web", "mutation");
     Ok(Json(entry))
 }
 
@@ -183,6 +184,7 @@ async fn forget_entry(
     let uuid = parse_uuid(&id)?;
     let ctx = WriteContext::new(MutationSource::Web);
     state.store.forget_entry(uuid, &ctx).await?;
+    tracing::info!(action = "forget", entry_id = %uuid, source = "web", "mutation");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -202,6 +204,7 @@ async fn merge_entry(
         .store
         .supersede_entry(old_uuid, body.new_entry, &ctx)
         .await?;
+    tracing::info!(action = "supersede", entry_id = %entry.id, old_id = %old_uuid, source = "web", "mutation");
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
@@ -211,6 +214,7 @@ async fn create_entry(
 ) -> Result<impl IntoResponse, ApiError> {
     let ctx = WriteContext::new(MutationSource::Web);
     let entry = state.store.create_entry(new_entry, &ctx).await?;
+    tracing::info!(action = "create", entry_id = %entry.id, source = "web", "mutation");
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
