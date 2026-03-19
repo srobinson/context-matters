@@ -127,6 +127,8 @@ export interface SearchParams {
 
 export interface MutationListParams {
   entry_id?: string;
+  source?: string;
+  action?: string;
   limit?: number;
   cursor?: string;
 }
@@ -206,6 +208,8 @@ export const api = {
       return apiFetch(
         `/mutations${toSearchParams({
           entry_id: params.entry_id,
+          source: params.source,
+          action: params.action,
           limit: params.limit,
           cursor: params.cursor,
         })}`,

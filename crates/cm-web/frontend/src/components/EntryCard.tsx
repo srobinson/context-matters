@@ -5,6 +5,7 @@ import type { Entry } from "@/api/generated/Entry";
 import type { EntryRelation } from "@/api/generated/EntryRelation";
 import { useEntry, useForgetEntry } from "@/api/hooks";
 import { EntryEditor } from "./EntryEditor";
+import { MutationHistory } from "./MutationHistory";
 import { KindBadge } from "./domain/KindBadge";
 import { QualityBadge, getQualityIssues } from "./domain/QualityBadge";
 import {
@@ -151,6 +152,7 @@ function ExpandedContent({
 }) {
   const { data: detail, isLoading, refetch } = useEntry(entryId);
   const [isEditing, setIsEditing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const forgetEntry = useForgetEntry();
 
   const handleEditSaved = useCallback(() => {
@@ -271,6 +273,9 @@ function ExpandedContent({
         </div>
       )}
 
+      {/* Mutation history */}
+      {showHistory && <MutationHistory entryId={detail.id} />}
+
       {/* Action buttons */}
       <div className="flex gap-2 pt-1">
         <button
@@ -279,6 +284,17 @@ function ExpandedContent({
           className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           edit
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowHistory((prev) => !prev)}
+          className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-colors ${
+            showHistory
+              ? "border-ring bg-accent text-foreground"
+              : "border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+          }`}
+        >
+          history
         </button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
