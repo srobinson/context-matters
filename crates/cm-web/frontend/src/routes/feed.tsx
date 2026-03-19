@@ -5,6 +5,7 @@ import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useEntries } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
+import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { SortSelect } from "@/components/SortSelect";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 
@@ -58,6 +59,15 @@ function FeedPage() {
     [navigate],
   );
 
+  const handleFilterChange = useCallback(
+    (update: Partial<FilterState>) => {
+      navigate({
+        search: (prev) => ({ ...prev, ...update }),
+      });
+    },
+    [navigate],
+  );
+
   const {
     data,
     isLoading,
@@ -94,14 +104,6 @@ function FeedPage() {
 
   const totalCount = data?.pages[0]?.total ?? 0;
 
-  const activeFilters: string[] = [
-    kind ? `kind:${kind}` : "",
-    scope_path ? `scope:${scope_path}` : "",
-    tag ? `tag:${tag}` : "",
-    created_by ? `by:${created_by}` : "",
-    show_forgotten ? "show:forgotten" : "",
-  ].filter((s) => s.length > 0);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -121,18 +123,10 @@ function FeedPage() {
         )}
       </div>
 
-      {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {activeFilters.map((f) => (
-            <span
-              key={f}
-              className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground"
-            >
-              {f}
-            </span>
-          ))}
-        </div>
-      )}
+      <FilterBar
+        filters={{ scope_path, kind, tag, created_by, show_forgotten }}
+        onChange={handleFilterChange}
+      />
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
@@ -169,7 +163,6 @@ function FeedPage() {
             />
           ))}
 
-          {/* Infinite scroll sentinel */}
           <div ref={sentinelRef} className="h-1" />
 
           {isFetchingNextPage && (

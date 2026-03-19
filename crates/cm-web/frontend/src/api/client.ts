@@ -75,6 +75,7 @@ export type Stats = Omit<
   | "db_size_bytes"
   | "entries_by_kind"
   | "entries_by_scope"
+  | "entries_by_tag"
 > & {
   active_entries: number;
   superseded_entries: number;
@@ -82,7 +83,17 @@ export type Stats = Omit<
   relations: number;
   entries_by_kind: Record<string, number>;
   entries_by_scope: Record<string, number>;
+  entries_by_tag: { tag: string; count: number }[];
   db_size_bytes: number;
+  entries_today: number;
+  entries_this_week: number;
+  active_agents: { created_by: string; count: number }[];
+  scope_tree: { path: string; kind: string; entry_count: number }[];
+  quality: {
+    untagged_count: number;
+    stale_count: number;
+    global_scope_count: number;
+  };
 };
 
 // --- Entry detail (GET /entries/:id response) ---
