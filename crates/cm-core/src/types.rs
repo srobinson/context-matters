@@ -385,7 +385,7 @@ pub enum Confidence {
 /// The `extra` field captures any additional keys present in the JSON
 /// that are not part of the known schema, providing forward-compatible
 /// extensibility without schema changes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EntryMeta {
     /// Freeform tags for categorization and filtering.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

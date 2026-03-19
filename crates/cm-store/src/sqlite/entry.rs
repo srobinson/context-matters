@@ -38,15 +38,15 @@ impl CmStore {
         let id_str = id.to_string();
 
         let pool = &self.write_pool;
-
-        dedup::check_duplicate(pool, &content_hash, None).await?;
-
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
         let mut tx = pool
             .begin()
             .await
             .map_err(|e| CmError::Database(e.to_string()))?;
+
+        // Dedup check inside transaction to prevent TOCTOU race
+        dedup::check_duplicate(&mut *tx, &content_hash, None).await?;
 
         sqlx::query(
             "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, meta, created_by, created_at, updated_at) \
@@ -206,27 +206,37 @@ impl CmStore {
             dedup::check_duplicate(&mut *tx, hash, Some(&id_str)).await?;
         }
 
-        // Build dynamic UPDATE
+        // Build dynamic UPDATE, skipping fields whose value hasn't changed
         let mut sets = Vec::new();
         let mut values: Vec<String> = Vec::new();
 
-        if let Some(ref title) = update.title {
+        if let Some(ref title) = update.title
+            && *title != current.title
+        {
             sets.push("title = ?");
             values.push(title.clone());
         }
-        if let Some(ref body) = update.body {
+        if let Some(ref body) = update.body
+            && *body != current.body
+        {
             sets.push("body = ?");
             values.push(body.clone());
         }
-        if let Some(ref kind) = update.kind {
+        if let Some(ref kind) = update.kind
+            && *kind != current.kind
+        {
             sets.push("kind = ?");
             values.push(kind.as_str().to_owned());
         }
-        if let Some(ref meta) = update.meta {
+        if let Some(ref meta) = update.meta
+            && Some(meta) != current.meta.as_ref()
+        {
             sets.push("meta = ?");
             values.push(serde_json::to_string(meta)?);
         }
-        if let Some(ref hash) = new_hash {
+        if let Some(ref hash) = new_hash
+            && *hash != current.content_hash
+        {
             sets.push("content_hash = ?");
             values.push(hash.clone());
         }
@@ -297,16 +307,15 @@ impl CmStore {
         let kind_str = new_entry.kind.as_str().to_owned();
         let new_id_str = new_id.to_string();
         let pool = &self.write_pool;
-
-        // Dedup check for the new entry's content
-        dedup::check_duplicate(pool, &content_hash, None).await?;
-
         let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
         let mut tx = pool
             .begin()
             .await
             .map_err(|e| CmError::Database(e.to_string()))?;
+
+        // Dedup check inside transaction to prevent TOCTOU race
+        dedup::check_duplicate(&mut *tx, &content_hash, None).await?;
 
         // Fetch old entry inside the transaction (before snapshot)
         let old_row = sqlx::query("SELECT * FROM entries WHERE id = ?")

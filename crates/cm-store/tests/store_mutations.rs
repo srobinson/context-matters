@@ -203,6 +203,39 @@ async fn noop_update_no_mutation() {
     assert_eq!(mutations[0].action, MutationAction::Create);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn same_value_update_no_mutation() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let entry = store
+        .create_entry(
+            new_entry("global", EntryKind::Fact, "Same title", "same body"),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    // Update with identical values should be a no-op
+    store
+        .update_entry(
+            entry.id,
+            cm_core::UpdateEntry {
+                title: Some("Same title".to_owned()),
+                body: Some("same body".to_owned()),
+                ..Default::default()
+            },
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let mutations = store.get_mutations(entry.id, 50, 0).await.unwrap();
+    // Only the initial Create, no Update mutation
+    assert_eq!(mutations.len(), 1);
+    assert_eq!(mutations[0].action, MutationAction::Create);
+}
+
 // ── list_mutations filters ──────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

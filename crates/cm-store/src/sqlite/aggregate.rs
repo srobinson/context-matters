@@ -161,7 +161,7 @@ impl CmStore {
 
         let rows = sqlx::query(
             "SELECT id, entry_id, action, source, timestamp, before_snapshot, after_snapshot \
-             FROM mutations WHERE entry_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+             FROM mutations WHERE entry_id = ? ORDER BY timestamp DESC, id DESC LIMIT ? OFFSET ?",
         )
         .bind(&id_str)
         .bind(clamped_limit)
@@ -209,7 +209,7 @@ impl CmStore {
             binds.push(u.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
         }
 
-        sql.push_str(" ORDER BY timestamp DESC LIMIT ?");
+        sql.push_str(" ORDER BY timestamp DESC, id DESC LIMIT ?");
         let clamped_limit = limit.clamp(1, 200);
 
         let mut q = sqlx::query(&sql);
