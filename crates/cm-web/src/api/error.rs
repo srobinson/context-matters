@@ -26,13 +26,17 @@ impl IntoResponse for ApiError {
             CmError::ConstraintViolation(_) => (StatusCode::CONFLICT, self.0.to_string()),
             CmError::Json(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
             CmError::Database(_) | CmError::Internal(_) => {
-                tracing::error!("internal error: {}", self.0);
+                tracing::error!(error = %self.0, "internal error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal server error".to_owned(),
                 )
             }
         };
+
+        if status.is_client_error() {
+            tracing::debug!(status = status.as_u16(), error = %message, "client error");
+        }
 
         (status, axum::Json(serde_json::json!({ "error": message }))).into_response()
     }

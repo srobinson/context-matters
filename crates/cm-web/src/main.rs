@@ -8,6 +8,7 @@ use rust_embed::Embed;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+use uuid::Uuid;
 
 mod api;
 
@@ -44,18 +45,29 @@ pub struct AppState {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let filter = if cli.verbose { "debug" } else { "info" };
+    let default_filter = if cli.verbose {
+        "cm_web=debug,cm_store=debug,tower_http=debug"
+    } else {
+        "cm_web=info,tower_http=info"
+    };
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(filter)),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_filter)),
         )
         .with_writer(std::io::stderr)
         .init();
 
-    tracing::info!("cm-web v{}", env!("CARGO_PKG_VERSION"));
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        port = cli.port,
+        verbose = cli.verbose,
+        "cm-web starting",
+    );
 
-    let store = open_store().await?;
+    let config = cm_store::load_config();
+    tracing::info!(db = %config.db_path().display(), "opening store");
+    let store = open_store_with_config(&config).await?;
     let state = Arc::new(AppState { store });
 
     let app = Router::new()
@@ -64,21 +76,39 @@ async fn main() -> Result<()> {
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &axum::http::Request<_>| {
-                    tracing::info_span!(
-                        "http",
-                        method = %req.method(),
-                        path = %req.uri().path(),
-                    )
+                    let req_id = Uuid::now_v7();
+                    let path = req.uri().path();
+                    let is_api = path.starts_with("/api");
+                    if is_api {
+                        tracing::info_span!(
+                            "http",
+                            req_id = %req_id,
+                            method = %req.method(),
+                            path = %path,
+                        )
+                    } else {
+                        // Static assets at debug level to keep logs clean
+                        tracing::debug_span!(
+                            "http",
+                            req_id = %req_id,
+                            method = %req.method(),
+                            path = %path,
+                        )
+                    }
                 })
                 .on_response(
                     |resp: &axum::http::Response<_>,
                      latency: std::time::Duration,
                      _span: &tracing::Span| {
-                        tracing::info!(
-                            status = resp.status().as_u16(),
-                            latency_ms = latency.as_millis() as u64,
-                            "response"
-                        );
+                        let status = resp.status().as_u16();
+                        let latency_ms = latency.as_millis() as u64;
+                        if status >= 500 {
+                            tracing::error!(status, latency_ms, "response");
+                        } else if status >= 400 {
+                            tracing::warn!(status, latency_ms, "response");
+                        } else {
+                            tracing::info!(status, latency_ms, "response");
+                        }
                     },
                 ),
         );
@@ -161,8 +191,7 @@ fn content_type(path: &str) -> String {
     .to_owned()
 }
 
-async fn open_store() -> Result<CmStore> {
-    let config = cm_store::load_config();
+async fn open_store_with_config(config: &cm_store::Config) -> Result<CmStore> {
     let db_path = config.db_path();
 
     if let Some(parent) = db_path.parent() {
