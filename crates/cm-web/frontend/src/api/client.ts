@@ -217,8 +217,11 @@ export const api = {
     },
   },
 
-  export(): Promise<Blob> {
-    return fetch(`${API_BASE}/export`).then((res) => {
+  export(scopePath?: string): Promise<Blob> {
+    const params = scopePath
+      ? `?scope_path=${encodeURIComponent(scopePath)}`
+      : "";
+    return fetch(`${API_BASE}/export${params}`).then((res) => {
       if (!res.ok) throw new ApiError(res.status, null);
       return res.blob();
     });

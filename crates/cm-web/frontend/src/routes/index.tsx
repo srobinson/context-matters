@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { rootRoute } from "./__root";
 import { useStats } from "@/api/hooks";
-import type { Stats } from "@/api/client";
+import { api, type Stats } from "@/api/client";
 import { QualityAlerts } from "@/components/QualityAlerts";
 import { RecentActivity } from "@/components/RecentActivity";
 import { ScopeTree } from "@/components/ScopeTree";
@@ -119,12 +121,44 @@ function DashboardPage() {
 }
 
 function DashboardHeader() {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const blob = await api.export();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cm-export-${timestamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded");
+    } catch {
+      toast.error("Export failed");
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
+
   return (
-    <div className="flex items-baseline gap-3">
-      <h2 className="text-lg font-medium tracking-tight">Dashboard</h2>
-      <span className="font-mono text-xs text-muted-foreground">
-        system overview
-      </span>
+    <div className="flex items-center justify-between">
+      <div className="flex items-baseline gap-3">
+        <h2 className="text-lg font-medium tracking-tight">Dashboard</h2>
+        <span className="font-mono text-xs text-muted-foreground">
+          system overview
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={handleExport}
+        disabled={isExporting}
+        className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+      >
+        <Download className="h-3 w-3" />
+        {isExporting ? "exporting..." : "export"}
+      </button>
     </div>
   );
 }
