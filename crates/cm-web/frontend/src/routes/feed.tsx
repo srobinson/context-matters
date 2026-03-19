@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useEntries } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
+import { SortSelect } from "@/components/SortSelect";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 
 export type FeedSearch = {
@@ -42,7 +43,20 @@ function FeedPage() {
   const { sort, kind, scope_path, tag, created_by, show_forgotten } =
     feedRoute.useSearch();
 
+  const navigate = useNavigate({ from: "/feed" });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const handleSortChange = useCallback(
+    (newSort: BrowseSort) => {
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          sort: newSort === "recent" ? undefined : newSort,
+        }),
+      });
+    },
+    [navigate],
+  );
 
   const {
     data,
@@ -90,12 +104,13 @@ function FeedPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between">
-        <div className="flex items-baseline gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
           <h2 className="text-lg font-medium tracking-tight">Feed</h2>
-          <span className="font-mono text-xs text-muted-foreground">
-            {sort ?? "recent"}
-          </span>
+          <SortSelect
+            value={sort ?? "recent"}
+            onChange={handleSortChange}
+          />
         </div>
         {entries.length > 0 && (
           <span className="font-mono text-xs text-muted-foreground">
