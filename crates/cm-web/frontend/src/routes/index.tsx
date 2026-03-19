@@ -6,7 +6,7 @@ import type { Stats } from "@/api/client";
 import { QualityAlerts } from "@/components/QualityAlerts";
 import { RecentActivity } from "@/components/RecentActivity";
 import { ScopeTree } from "@/components/ScopeTree";
-import { StatCard } from "@/components/StatCard";
+import { StatCard } from "@/components/composed/StatCard";
 
 export const indexRoute = createRoute({
   getParentRoute: () => rootRoute,

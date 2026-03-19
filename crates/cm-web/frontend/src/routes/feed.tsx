@@ -7,7 +7,7 @@ import { useEntries, useSearch } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
-import { SortSelect } from "@/components/SortSelect";
+import { SortSelect } from "@/components/domain/SortSelect";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
