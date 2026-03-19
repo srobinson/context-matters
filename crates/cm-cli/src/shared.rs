@@ -2,7 +2,10 @@
 //!
 //! Error conversion, input validation, entry formatting, scope management.
 
-use cm_core::{CmError, Confidence, ContextStore, Entry, ScopePath, WriteContext};
+use cm_core::{
+    CmError, Confidence, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
+    WriteContext,
+};
 use serde_json::{Value, json};
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -212,6 +215,73 @@ pub fn entry_has_any_tag(entry: &Entry, tags: &[String]) -> bool {
         Some(meta) => meta.tags.iter().any(|t| tags.contains(t)),
         None => false,
     }
+}
+
+/// Browse through scopes and pages until enough no-query recall matches are found.
+///
+/// This preserves recall semantics for scoped ancestor walks while avoiding
+/// the false negatives caused by fetching one widened page and post-filtering it.
+pub async fn recall_candidates_without_query(
+    store: &impl ContextStore,
+    scope_path: Option<&ScopePath>,
+    kind_filters: &[EntryKind],
+    tags: &[String],
+    limit: u32,
+) -> Result<Vec<Entry>, CmError> {
+    let scoped_paths: Vec<Option<ScopePath>> = match scope_path {
+        Some(scope_path) => scope_path
+            .ancestors()
+            .map(|path| ScopePath::parse(path).expect("validated ancestor path"))
+            .map(Some)
+            .collect(),
+        None => vec![None],
+    };
+
+    let direct_kind = if kind_filters.len() == 1 {
+        Some(kind_filters[0])
+    } else {
+        None
+    };
+    let direct_tag = (tags.len() == 1).then(|| tags[0].clone());
+    let mut matched = Vec::new();
+
+    for scoped_path in scoped_paths {
+        let mut cursor = None;
+
+        loop {
+            let page = store
+                .browse(EntryFilter {
+                    scope_path: scoped_path.clone(),
+                    kind: direct_kind,
+                    tag: direct_tag.clone(),
+                    pagination: Pagination {
+                        limit: MAX_LIMIT,
+                        cursor,
+                    },
+                    ..Default::default()
+                })
+                .await?;
+
+            for entry in page.items {
+                let kind_ok = kind_filters.is_empty() || kind_filters.contains(&entry.kind);
+                let tag_ok = tags.is_empty() || entry_has_any_tag(&entry, tags);
+
+                if kind_ok && tag_ok {
+                    matched.push(entry);
+                    if matched.len() >= limit as usize {
+                        return Ok(matched);
+                    }
+                }
+            }
+
+            let Some(next_cursor) = page.next_cursor else {
+                break;
+            };
+            cursor = Some(next_cursor);
+        }
+    }
+
+    Ok(matched)
 }
 
 // ── Scope Management ──────────────────────────────────────────────

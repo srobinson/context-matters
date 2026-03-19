@@ -44,10 +44,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // --- Query param serialization ---
 
 function toSearchParams(
-  params: Record<string, string | number | boolean | undefined | null>,
+  params: Record<
+    string,
+    string | number | boolean | undefined | null | Array<string | number | boolean>
+  >,
 ): string {
   const sp = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item != null && item !== "") {
+          sp.append(key, String(item));
+        }
+      }
+      continue;
+    }
     if (value != null && value !== "") {
       sp.set(key, String(value));
     }
@@ -133,6 +144,34 @@ export interface MutationListParams {
   cursor?: string;
 }
 
+export interface RecallHit {
+  id: string;
+  scope_path: string;
+  kind: EntryKind;
+  title: string;
+  snippet: string;
+  created_by: string;
+  updated_at: string;
+  tags?: string[];
+  confidence?: "high" | "medium" | "low";
+}
+
+export interface RecallParams {
+  query?: string;
+  scope?: string;
+  kinds?: EntryKind[];
+  tags?: string[];
+  limit?: number;
+  max_tokens?: number;
+}
+
+export interface RecallResponse {
+  results: RecallHit[];
+  returned: number;
+  scope_chain: string[];
+  token_estimate: number;
+}
+
 // --- API namespace ---
 
 export const api = {
@@ -161,6 +200,19 @@ export const api = {
           tag: params.tag,
           limit: params.limit,
           cursor: params.cursor,
+        })}`,
+      );
+    },
+
+    recall(params: RecallParams): Promise<RecallResponse> {
+      return apiFetch(
+        `/entries/recall${toSearchParams({
+          query: params.query,
+          scope: params.scope,
+          kinds: params.kinds,
+          tags: params.tags,
+          limit: params.limit,
+          max_tokens: params.max_tokens,
         })}`,
       );
     },

@@ -168,7 +168,10 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope
         </label>
-        <Select value={scopePath} onValueChange={setScopePath}>
+        <Select
+          value={scopePath}
+          onValueChange={(value) => setScopePath(value ?? "global")}
+        >
           <SelectTrigger className="h-7 w-full font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -196,6 +199,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
           value={tags}
           onChange={setTags}
           suggestions={tagSuggestions}
+          maxSuggestions={8}
         />
       </div>
 

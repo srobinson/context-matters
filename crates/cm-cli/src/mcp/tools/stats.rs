@@ -37,7 +37,7 @@ pub async fn cx_stats(store: &impl ContextStore, args: &Value) -> Result<String,
         })
         .collect();
 
-    // The store returns tags sorted by count DESC (SQL ORDER BY cnt DESC).
+    // The store returns tags sorted by count DESC, then tag ASC.
     // Re-sort if the caller wants alphabetical order.
     let mut entries_by_tag = stats.entries_by_tag;
     if tag_sort == "name" {

@@ -9,12 +9,13 @@ import {
   api,
   type BrowseParams,
   type EntryDetail,
+  type RecallParams,
+  type RecallResponse,
   type SearchParams,
   type MutationListParams,
   type PagedResponse,
   type Stats,
 } from "./client";
-import type { Entry } from "./generated/Entry";
 import type { MutationRecord } from "./generated/MutationRecord";
 import type { NewEntry } from "./generated/NewEntry";
 import type { UpdateEntry } from "./generated/UpdateEntry";
@@ -26,6 +27,7 @@ export const queryKeys = {
     all: ["entries"] as const,
     browse: (params: BrowseParams) => ["entries", "browse", params] as const,
     detail: (id: string) => ["entries", "detail", id] as const,
+    recall: (params: RecallParams) => ["entries", "recall", params] as const,
     search: (params: SearchParams) => ["entries", "search", params] as const,
   },
   stats: ["stats"] as const,
@@ -76,6 +78,17 @@ export function useSearch(params: Omit<SearchParams, "cursor">) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: !!params.query,
+  });
+}
+
+export function useRecall(
+  params: RecallParams,
+  options?: Partial<UseQueryOptions<RecallResponse>>,
+) {
+  return useQuery({
+    queryKey: queryKeys.entries.recall(params),
+    queryFn: () => api.entries.recall(params),
+    ...options,
   });
 }
 

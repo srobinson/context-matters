@@ -1,14 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
+import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import type { Entry } from "@/api/generated/Entry";
-import { useEntries, useSearch } from "@/api/hooks";
+import { useEntries, useRecall } from "@/api/hooks";
+import type { RecallHit } from "@/api/client";
 import { EntryCard } from "@/components/EntryCard";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { MergePanel } from "@/components/MergePanel";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
+import { RecallBar } from "@/components/RecallBar";
+import { FeedModeSelect, type FeedMode } from "@/components/domain/FeedModeSelect";
 import { SortSelect } from "@/components/domain/SortSelect";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -16,6 +26,7 @@ import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 import { GitMerge, Plus, Search, X } from "lucide-react";
 
 export type FeedSearch = {
+  mode?: FeedMode;
   scope_path?: string;
   kind?: EntryKind;
   tag?: string;
@@ -23,12 +34,14 @@ export type FeedSearch = {
   sort?: BrowseSort;
   show_forgotten?: boolean;
   q?: string;
+  entry_id?: string;
 };
 
 export const feedRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/feed",
   validateSearch: (search: Record<string, unknown>): FeedSearch => ({
+    mode: isFeedMode(search["mode"]) ? search["mode"] : undefined,
     scope_path:
       typeof search["scope_path"] === "string"
         ? search["scope_path"]
@@ -44,24 +57,55 @@ export const feedRoute = createRoute({
       search["show_forgotten"] === true ||
       search["show_forgotten"] === "true",
     q: typeof search["q"] === "string" && search["q"] ? search["q"] : undefined,
+    entry_id:
+      typeof search["entry_id"] === "string" && search["entry_id"]
+        ? search["entry_id"]
+        : undefined,
   }),
   component: FeedPage,
 });
 
 function FeedPage() {
-  const { sort, kind, scope_path, tag, created_by, show_forgotten, q } =
+  const { mode, sort, kind, scope_path, tag, created_by, show_forgotten, q, entry_id } =
     feedRoute.useSearch();
 
   const navigate = useNavigate({ from: "/feed" });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showNewEntry, setShowNewEntry] = useState(false);
   const [searchInput, setSearchInput] = useState(q ?? "");
+  const [recallScope, setRecallScope] = useState<string | undefined>(undefined);
+  const [recallKinds, setRecallKinds] = useState<EntryKind[]>([]);
+  const [recallTags, setRecallTags] = useState<string[]>([]);
+  const [recallLimit, setRecallLimit] = useState(20);
+  const [recallMaxTokens, setRecallMaxTokens] = useState<number | undefined>(
+    undefined,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
+  const entryRefs = useRef(new Map<string, HTMLDivElement>());
   const debouncedQuery = useDebounce(searchInput, 300);
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const isSearching = !!debouncedQuery;
+  const isRecallMode = mode === "recall";
+
+  useEffect(() => {
+    setExpandedId(entry_id ?? null);
+  }, [entry_id]);
+
+  useEffect(() => {
+    if (!entry_id) {
+      setHighlightedId(null);
+      return;
+    }
+
+    setHighlightedId(entry_id);
+    const timeoutId = window.setTimeout(() => {
+      setHighlightedId((current) => (current === entry_id ? null : current));
+    }, 1800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [entry_id]);
 
   // Sync debounced query to URL
   useEffect(() => {
@@ -76,6 +120,37 @@ function FeedPage() {
       });
     }
   }, [debouncedQuery, q, navigate]);
+
+  useEffect(() => {
+    if (!isRecallMode) {
+      setSearchInput("");
+      setRecallScope(undefined);
+      setRecallKinds([]);
+      setRecallTags([]);
+      setRecallLimit(20);
+      setRecallMaxTokens(undefined);
+    }
+    if (mergeMode) {
+      setMergeMode(false);
+      setSelectedIds(new Set());
+    }
+  }, [isRecallMode, mergeMode]);
+
+  const handleModeChange = useCallback(
+    (nextMode: FeedMode) => {
+      navigate({
+        search: (prev) => ({
+          ...prev,
+          mode: nextMode === "default" ? undefined : nextMode,
+          q: nextMode === "default" ? undefined : prev.q,
+        }),
+      });
+      if (nextMode === "default") {
+        setSearchInput("");
+      }
+    },
+    [navigate],
+  );
 
   const handleSortChange = useCallback(
     (newSort: BrowseSort) => {
@@ -125,6 +200,34 @@ function FeedPage() {
     setSelectedIds(new Set());
   }, []);
 
+  const toggleExpanded = useCallback(
+    (id: string) => {
+      setExpandedId((prev) => {
+        const nextId = prev === id ? null : id;
+        navigate({
+          search: (prevSearch) => ({
+            ...prevSearch,
+            entry_id: nextId ?? undefined,
+          }),
+          replace: true,
+        });
+        return nextId;
+      });
+    },
+    [navigate],
+  );
+
+  const setEntryRef = useCallback(
+    (id: string) => (node: HTMLDivElement | null) => {
+      if (node) {
+        entryRefs.current.set(id, node);
+      } else {
+        entryRefs.current.delete(id);
+      }
+    },
+    [],
+  );
+
   // Browse query (used when not searching)
   const browseQuery = useEntries({
     sort: sort ?? "recent",
@@ -133,29 +236,42 @@ function FeedPage() {
     tag,
     created_by,
     include_superseded: show_forgotten,
-    limit: 30,
+    limit: 20,
   });
 
-  // Search query (used when searching)
-  const searchQuery = useSearch({
-    query: debouncedQuery ?? "",
-    scope_path,
-    kind,
-    tag,
-    limit: 30,
+  const recallQuery = useRecall({
+    query: debouncedQuery || undefined,
+    scope: recallScope,
+    kinds: recallKinds,
+    tags: recallTags,
+    limit: recallLimit,
+    max_tokens: recallMaxTokens,
+  }, {
+    enabled: isRecallMode,
   });
 
-  const activeQuery = isSearching ? searchQuery : browseQuery;
+  const browseData = browseQuery.data;
+  const browseEntries = useMemo(
+    () => browseData?.pages.flatMap((page) => page.items) ?? [],
+    [browseData],
+  );
+  const recallEntries = useMemo(
+    () => recallQuery.data?.results.map((result) => recallHitToEntry(result)) ?? [],
+    [recallQuery.data],
+  );
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = activeQuery;
+  const entries = isRecallMode ? recallEntries : browseEntries;
+  const totalCount = isRecallMode
+    ? recallQuery.data?.returned ?? 0
+    : browseData?.pages[0]?.total ?? 0;
+  const isLoading = isRecallMode ? recallQuery.isLoading : browseQuery.isLoading;
+  const isError = isRecallMode ? recallQuery.isError : browseQuery.isError;
+  const error = isRecallMode ? recallQuery.error : browseQuery.error;
+  const hasNextPage = isRecallMode ? false : browseQuery.hasNextPage;
+  const fetchNextPage = browseQuery.fetchNextPage;
+  const isFetchingNextPage = isRecallMode
+    ? false
+    : browseQuery.isFetchingNextPage;
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -168,19 +284,58 @@ function FeedPage() {
     !!hasNextPage && !isFetchingNextPage,
   );
 
-  const entries = useMemo(
-    () => data?.pages.flatMap((page) => page.items) ?? [],
-    [data],
-  );
+  useLayoutEffect(() => {
+    if (!entry_id || isLoading || expandedId !== entry_id) return;
 
-  const totalCount = data?.pages[0]?.total ?? 0;
+    let frameOne = 0;
+    let frameTwo = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const scrollToSelectedEntry = () => {
+      const target = entryRefs.current.get(entry_id);
+      if (!target) return;
+
+      const header =
+        document.querySelector("header") instanceof HTMLElement
+          ? document.querySelector("header")
+          : null;
+      const headerHeight = header?.getBoundingClientRect().height ?? 0;
+      const topGap = 12;
+      const top =
+        window.scrollY +
+        target.getBoundingClientRect().top -
+        headerHeight -
+        topGap;
+
+      window.scrollTo({
+        top: Math.max(top, 0),
+        behavior: "smooth",
+      });
+    };
+
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(scrollToSelectedEntry);
+    });
+
+    timeoutId = setTimeout(scrollToSelectedEntry, 180);
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [entry_id, entries, expandedId, isLoading]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-medium tracking-tight">Feed</h2>
-          {!isSearching && (
+          <FeedModeSelect
+            value={isRecallMode ? "recall" : "default"}
+            onChange={handleModeChange}
+          />
+          {!isRecallMode && (
             <SortSelect
               value={sort ?? "recent"}
               onChange={handleSortChange}
@@ -192,12 +347,13 @@ function FeedPage() {
             <span className="font-mono text-xs text-muted-foreground">
               {entries.length}
               {totalCount > entries.length && ` / ${totalCount}`}
-              {isSearching ? " results" : " entries"}
+              {isRecallMode ? " results" : " entries"}
             </span>
           )}
           <button
             type="button"
             onClick={toggleMergeMode}
+            disabled={isRecallMode}
             className={`flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-xs transition-colors ${
               mergeMode
                 ? "border-ring bg-accent text-foreground"
@@ -205,7 +361,11 @@ function FeedPage() {
             }`}
           >
             <GitMerge className="h-3 w-3" />
-            {mergeMode ? "cancel merge" : "merge"}
+            {isRecallMode
+              ? "merge unavailable"
+              : mergeMode
+                ? "cancel merge"
+                : "merge"}
           </button>
           <button
             type="button"
@@ -224,12 +384,17 @@ function FeedPage() {
         <Input
           ref={inputRef}
           type="text"
-          placeholder="Search entries (FTS5)..."
+          placeholder={
+            isRecallMode
+              ? "Recall query (matches cx_recall)..."
+              : "Switch to recall mode to search like MCP..."
+          }
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
+          disabled={!isRecallMode}
           className="pl-8 pr-8 font-mono text-xs"
         />
-        {searchInput && (
+        {isRecallMode && searchInput && (
           <button
             type="button"
             onClick={handleClearSearch}
@@ -240,26 +405,42 @@ function FeedPage() {
         )}
       </div>
 
-      {!isSearching && (
+      {!isRecallMode && (
         <FilterBar
           filters={{ scope_path, kind, tag, created_by, show_forgotten }}
           onChange={handleFilterChange}
         />
       )}
 
-      {isSearching && (scope_path || kind || tag) && (
-        <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-          <span>Searching within:</span>
-          {scope_path && <span className="rounded-md border border-border bg-muted px-1.5 py-0.5">scope:{scope_path}</span>}
-          {kind && <span className="rounded-md border border-border bg-muted px-1.5 py-0.5">kind:{kind}</span>}
-          {tag && <span className="rounded-md border border-border bg-muted px-1.5 py-0.5">tag:{tag}</span>}
-        </div>
+      {isRecallMode && (
+        <RecallBar
+          scope={recallScope}
+          kinds={recallKinds}
+          tags={recallTags}
+          limit={recallLimit}
+          maxTokens={recallMaxTokens}
+          onScopeChange={setRecallScope}
+          onKindsChange={setRecallKinds}
+          onTagsChange={setRecallTags}
+          onLimitChange={(value) =>
+            setRecallLimit(Math.max(1, Math.min(200, value)))
+          }
+          onMaxTokensChange={setRecallMaxTokens}
+          onClear={() => {
+            setRecallScope(undefined);
+            setRecallKinds([]);
+            setRecallTags([]);
+            setRecallLimit(20);
+            setRecallMaxTokens(undefined);
+            setSearchInput("");
+          }}
+        />
       )}
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            {isSearching ? "Searching..." : "Loading entries..."}
+            {isRecallMode ? "Recalling..." : "Loading entries..."}
           </p>
         </div>
       )}
@@ -267,8 +448,8 @@ function FeedPage() {
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">
-            {isSearching ? "Search failed" : "Failed to load entries"}:{" "}
-            {error.message}
+            {isRecallMode ? "Recall failed" : "Failed to load entries"}:{" "}
+            {error?.message ?? "Unknown error"}
           </p>
         </div>
       )}
@@ -307,8 +488,10 @@ function FeedPage() {
       {!isLoading && entries.length === 0 && !isError && !showNewEntry && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            {isSearching
-              ? `No results for "${debouncedQuery}".`
+            {isRecallMode
+              ? debouncedQuery
+                ? `No results for "${debouncedQuery}".`
+                : "No recall results."
               : "No entries found."}
           </p>
         </div>
@@ -317,7 +500,11 @@ function FeedPage() {
       {entries.length > 0 && (
         <div className="space-y-2">
           {entries.map((entry) => (
-            <div key={entry.id} className="flex items-start gap-2">
+            <div
+              key={entry.id}
+              ref={setEntryRef(entry.id)}
+              className="flex items-start gap-2 scroll-mt-16"
+            >
               {mergeMode && (
                 <button
                   type="button"
@@ -346,20 +533,24 @@ function FeedPage() {
                 <EntryCard
                   entry={entry}
                   isExpanded={!mergeMode && expandedId === entry.id}
+                  className={
+                    expandedId === entry.id
+                      ? highlightedId === entry.id
+                        ? "border-amber-400/40 bg-amber-500/8 ring-2 ring-amber-300/30 transition-all duration-500"
+                        : "border-border/90 bg-accent/10 ring-1 ring-ring/25 transition-all duration-300"
+                      : undefined
+                  }
                   onToggle={
                     mergeMode
                       ? () => toggleSelection(entry.id)
-                      : () =>
-                          setExpandedId((prev) =>
-                            prev === entry.id ? null : entry.id,
-                          )
+                      : () => toggleExpanded(entry.id)
                   }
                 />
               </div>
             </div>
           ))}
 
-          <div ref={sentinelRef} className="h-1" />
+          {!isRecallMode && <div ref={sentinelRef} className="h-1" />}
 
           {isFetchingNextPage && (
             <div className="py-4 text-center">
@@ -372,6 +563,28 @@ function FeedPage() {
       )}
     </div>
   );
+}
+
+function recallHitToEntry(hit: RecallHit) {
+  return {
+    id: hit.id,
+    scope_path: hit.scope_path,
+    kind: hit.kind,
+    title: hit.title,
+    body: hit.snippet,
+    content_hash: "",
+    meta:
+      (hit.tags && hit.tags.length > 0) || hit.confidence
+        ? {
+            tags: hit.tags,
+            confidence: (hit.confidence ?? null) as Confidence | null,
+          }
+        : undefined,
+    created_by: hit.created_by,
+    created_at: hit.updated_at,
+    updated_at: hit.updated_at,
+    superseded_by: null,
+  };
 }
 
 const ENTRY_KINDS: ReadonlySet<string> = new Set([
@@ -395,6 +608,12 @@ const BROWSE_SORTS: ReadonlySet<string> = new Set([
   "kind_asc",
   "kind_desc",
 ]);
+
+const FEED_MODES: ReadonlySet<string> = new Set(["default", "recall"]);
+
+function isFeedMode(v: unknown): v is FeedMode {
+  return typeof v === "string" && FEED_MODES.has(v);
+}
 
 function isEntryKind(v: unknown): v is EntryKind {
   return typeof v === "string" && ENTRY_KINDS.has(v);

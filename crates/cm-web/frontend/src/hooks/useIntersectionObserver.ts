@@ -13,6 +13,7 @@ export function useIntersectionObserver(
 
     const observer = new IntersectionObserver(
       ([entry]) => {
+        if (!entry) return;
         if (entry.isIntersecting) onIntersect();
       },
       { rootMargin: "200px" },

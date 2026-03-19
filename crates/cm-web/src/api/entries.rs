@@ -3,15 +3,21 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
+use cm_cli::shared::{
+    MAX_LIMIT, check_input_size, clamp_limit, entry_has_any_tag, entry_to_recall_json,
+    estimate_tokens, recall_candidates_without_query,
+};
 use cm_core::{
     BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationSource,
     NewEntry, PagedResult, Pagination, ScopePath, UpdateEntry, WriteContext,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -21,6 +27,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/entries", get(browse).post(create_entry))
         .route("/entries/search", get(search))
+        .route("/entries/recall", get(recall))
         .route("/entries/merge", axum::routing::post(merge_entry))
         .route(
             "/entries/{id}",
@@ -136,6 +143,185 @@ async fn search(
         total,
         next_cursor: None,
     }))
+}
+
+#[derive(Debug, Deserialize)]
+struct RecallQuery {
+    query: Option<String>,
+    scope: Option<String>,
+    kinds: Vec<String>,
+    tags: Vec<String>,
+    limit: Option<u32>,
+    max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+struct RecallResponse {
+    results: Vec<Value>,
+    returned: usize,
+    scope_chain: Vec<String>,
+    token_estimate: u32,
+}
+
+async fn recall(
+    State(state): State<Arc<AppState>>,
+    raw_query: RawQuery,
+) -> Result<Json<RecallResponse>, ApiError> {
+    let rq = parse_recall_query(raw_query.0.as_deref())?;
+
+    if let Some(ref query) = rq.query {
+        check_input_size(query, "query")
+            .map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
+
+    let scope_path = rq
+        .scope
+        .map(|scope| ScopePath::parse(&scope))
+        .transpose()
+        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+
+    let kind_filters: Vec<EntryKind> = rq
+        .kinds
+        .iter()
+        .map(|kind| parse_entry_kind(kind))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let limit = clamp_limit(rq.limit);
+    let has_post_filter = !kind_filters.is_empty() || !rq.tags.is_empty();
+    let fetch_limit = if has_post_filter {
+        limit.saturating_mul(3).min(MAX_LIMIT as u32)
+    } else {
+        limit
+    };
+
+    let entries = match &rq.query {
+        Some(query) => state
+            .store
+            .search(query, scope_path.as_ref(), fetch_limit)
+            .await?,
+        None => {
+            if !rq.tags.is_empty() {
+                recall_candidates_without_query(
+                    &state.store,
+                    scope_path.as_ref(),
+                    &kind_filters,
+                    &rq.tags,
+                    limit,
+                )
+                .await?
+            } else if let Some(scope_path) = &scope_path {
+                state
+                    .store
+                    .resolve_context(scope_path, &kind_filters, fetch_limit)
+                    .await?
+            } else {
+                let filter = EntryFilter {
+                    kind: if kind_filters.len() == 1 {
+                        Some(kind_filters[0])
+                    } else {
+                        None
+                    },
+                    pagination: Pagination {
+                        limit: fetch_limit,
+                        cursor: None,
+                    },
+                    ..Default::default()
+                };
+                state.store.browse(filter).await?.items
+            }
+        }
+    };
+
+    let entries = if rq.query.is_some() && !kind_filters.is_empty() {
+        entries
+            .into_iter()
+            .filter(|entry| kind_filters.contains(&entry.kind))
+            .collect()
+    } else {
+        entries
+    };
+
+    let entries: Vec<Entry> = if rq.tags.is_empty() {
+        entries
+    } else {
+        entries
+            .into_iter()
+            .filter(|entry| entry_has_any_tag(entry, &rq.tags))
+            .collect()
+    };
+
+    let entries: Vec<Entry> = entries.into_iter().take(limit as usize).collect();
+    let scope_chain: Vec<String> = match &scope_path {
+        Some(scope_path) => scope_path.ancestors().map(String::from).collect(),
+        None => Vec::new(),
+    };
+
+    let mut results = Vec::with_capacity(entries.len());
+    let mut total_tokens = 0;
+
+    for entry in &entries {
+        let entry_json = entry_to_recall_json(entry);
+        let entry_tokens = estimate_tokens(&entry_json.to_string());
+
+        if let Some(budget) = rq.max_tokens
+            && total_tokens + entry_tokens > budget
+            && !results.is_empty()
+        {
+            break;
+        }
+
+        total_tokens += entry_tokens;
+        results.push(entry_json);
+    }
+
+    Ok(Json(RecallResponse {
+        returned: results.len(),
+        results,
+        scope_chain,
+        token_estimate: total_tokens,
+    }))
+}
+
+fn parse_recall_query(raw_query: Option<&str>) -> Result<RecallQuery, ApiError> {
+    let mut query = None;
+    let mut scope = None;
+    let mut kinds = Vec::new();
+    let mut tags = Vec::new();
+    let mut limit = None;
+    let mut max_tokens = None;
+
+    for (key, value) in form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()) {
+        match key.as_ref() {
+            "query" => query = Some(value.into_owned()),
+            "scope" => scope = Some(value.into_owned()),
+            "kinds" => kinds.push(value.into_owned()),
+            "tags" => tags.push(value.into_owned()),
+            "limit" => {
+                limit = Some(value.parse::<u32>().map_err(|_| {
+                    ApiError(cm_core::CmError::Validation(format!(
+                        "invalid limit: '{value}'"
+                    )))
+                })?)
+            }
+            "max_tokens" => {
+                max_tokens = Some(value.parse::<u32>().map_err(|_| {
+                    ApiError(cm_core::CmError::Validation(format!(
+                        "invalid max_tokens: '{value}'"
+                    )))
+                })?)
+            }
+            _ => {}
+        }
+    }
+
+    Ok(RecallQuery {
+        query,
+        scope,
+        kinds,
+        tags,
+        limit,
+        max_tokens,
+    })
 }
 
 #[derive(Debug, Serialize)]

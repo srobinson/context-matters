@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import Markdown from "react-markdown";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { EntryMeta } from "@/api/generated/EntryMeta";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { TagInput } from "./composed/TagInput";
 import { DiffView } from "./DiffView";
+import { MarkdownContent } from "./composed/MarkdownContent";
 
 const ALL_KINDS: EntryKind[] = [
   "fact",
@@ -100,7 +100,8 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
   }, [entry, title, body, kind, tags, confidence, updateEntry, onSaved]);
 
   const handleScopeChange = useCallback(
-    (newScope: string) => {
+    (newScope: string | null) => {
+      if (!newScope) return;
       if (newScope !== entry.scope_path) {
         setPendingScope(newScope);
       }
@@ -180,9 +181,9 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
           </button>
         </div>
         {showPreview ? (
-          <div className="min-h-[120px] rounded-lg border border-input bg-transparent p-3 prose prose-sm prose-neutral dark:prose-invert max-w-none font-mono text-xs leading-relaxed [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs">
-            <Markdown>{body}</Markdown>
-          </div>
+          <MarkdownContent className="min-h-[120px] rounded-lg border border-input bg-transparent p-3">
+            {body}
+          </MarkdownContent>
         ) : (
           <Textarea
             value={body}
@@ -311,6 +312,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
           value={tags}
           onChange={setTags}
           suggestions={tagSuggestions}
+          maxSuggestions={8}
         />
       </div>
 

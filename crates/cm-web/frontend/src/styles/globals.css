@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -35,7 +36,15 @@
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
+  --radius: 0.125rem;
+  --control-radius: 0.125rem;
+  --chip-radius: 0.125rem;
+  --surface-radius: 0.125rem;
+  --overlay-radius: 0.125rem;
+  --pill-radius: 0.125rem;
+  --surface-shadow: 0 0 0 1px rgb(15 23 42 / 0.04);
+  --overlay-shadow: 0 12px 28px rgb(15 23 42 / 0.12);
+  --floating-shadow: 0 18px 42px rgb(15 23 42 / 0.18);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -94,6 +103,9 @@
   --kind-feedback: oklch(0.72 0.19 25);
   --kind-pattern: oklch(0.72 0.13 290);
   --kind-observation: oklch(0.68 0.09 200);
+  --surface-shadow: 0 0 0 1px rgb(255 255 255 / 0.04);
+  --overlay-shadow: 0 18px 40px rgb(0 0 0 / 0.42);
+  --floating-shadow: 0 24px 56px rgb(0 0 0 / 0.52);
 }
 
 @theme inline {
@@ -139,6 +151,14 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-control: var(--control-radius);
+  --radius-chip: var(--chip-radius);
+  --radius-surface: var(--surface-radius);
+  --radius-overlay: var(--overlay-radius);
+  --radius-pill: var(--pill-radius);
+  --shadow-surface: var(--surface-shadow);
+  --shadow-overlay: var(--overlay-shadow);
+  --shadow-floating: var(--floating-shadow);
   --color-kind-fact: var(--kind-fact);
   --color-kind-decision: var(--kind-decision);
   --color-kind-preference: var(--kind-preference);

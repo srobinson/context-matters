@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { NewEntry } from "@/api/generated/NewEntry";
-import { useEntry, useMergeEntry, useForgetEntry } from "@/api/hooks";
+import { useMergeEntry, useForgetEntry } from "@/api/hooks";
 import { KindBadge } from "./domain/KindBadge";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";

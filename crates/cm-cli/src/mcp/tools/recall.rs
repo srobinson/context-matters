@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::mcp::{check_input_size, clamp_limit, cm_err_to_string, estimate_tokens, json_response};
+use crate::shared::recall_candidates_without_query;
 
 use super::{entry_has_any_tag, entry_to_recall_json};
 
@@ -77,29 +78,39 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
             .await
             .map_err(cm_err_to_string)?,
         None => {
-            // Without a query, resolve_context walks ancestors from the given scope.
-            // Without a scope, browse all active entries ordered by updated_at DESC.
-            match &scope_path {
-                Some(sp) => store
-                    .resolve_context(sp, &kind_filters, fetch_limit)
-                    .await
-                    .map_err(cm_err_to_string)?,
-                None => {
-                    let filter = cm_core::EntryFilter {
-                        kind: if kind_filters.len() == 1 {
-                            Some(kind_filters[0])
-                        } else {
-                            None
-                        },
-                        pagination: cm_core::Pagination {
-                            limit: fetch_limit,
-                            cursor: None,
-                        },
-                        ..Default::default()
-                    };
-                    let paged = store.browse(filter).await.map_err(cm_err_to_string)?;
-                    paged.items
+            if params.tags.is_empty() {
+                match &scope_path {
+                    Some(sp) => store
+                        .resolve_context(sp, &kind_filters, fetch_limit)
+                        .await
+                        .map_err(cm_err_to_string)?,
+                    None => {
+                        let filter = cm_core::EntryFilter {
+                            kind: if kind_filters.len() == 1 {
+                                Some(kind_filters[0])
+                            } else {
+                                None
+                            },
+                            pagination: cm_core::Pagination {
+                                limit: fetch_limit,
+                                cursor: None,
+                            },
+                            ..Default::default()
+                        };
+                        let paged = store.browse(filter).await.map_err(cm_err_to_string)?;
+                        paged.items
+                    }
                 }
+            } else {
+                recall_candidates_without_query(
+                    store,
+                    scope_path.as_ref(),
+                    &kind_filters,
+                    &params.tags,
+                    limit,
+                )
+                .await
+                .map_err(cm_err_to_string)?
             }
         }
     };
