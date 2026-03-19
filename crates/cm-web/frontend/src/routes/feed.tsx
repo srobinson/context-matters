@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { createRoute } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
+import { useEntries } from "@/api/hooks";
+import { EntryCard } from "@/components/EntryCard";
 
 export type FeedSearch = {
   scope_path?: string;
@@ -38,6 +41,18 @@ function FeedPage() {
   const { sort, kind, scope_path, tag, created_by, show_forgotten } =
     feedRoute.useSearch();
 
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data, isLoading, isError, error } = useEntries({
+    sort: sort ?? "recent",
+    kind,
+    scope_path,
+    tag,
+    created_by,
+    include_superseded: show_forgotten,
+    limit: 50,
+  });
+
   const activeFilters: string[] = [
     kind ? `kind:${kind}` : "",
     scope_path ? `scope:${scope_path}` : "",
@@ -55,6 +70,13 @@ function FeedPage() {
             {sort ?? "recent"}
           </span>
         </div>
+        {data && (
+          <span className="font-mono text-xs text-muted-foreground">
+            {data.items.length}
+            {data.total > data.items.length && ` / ${data.total}`}
+            {" entries"}
+          </span>
+        )}
       </div>
 
       {activeFilters.length > 0 && (
@@ -70,11 +92,42 @@ function FeedPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-border bg-card p-8 text-center">
-        <p className="text-sm text-muted-foreground">
-          Waiting for API connection...
-        </p>
-      </div>
+      {isLoading && (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Loading entries...</p>
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">
+            Failed to load entries: {error.message}
+          </p>
+        </div>
+      )}
+
+      {data && data.items.length === 0 && (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">No entries found.</p>
+        </div>
+      )}
+
+      {data && data.items.length > 0 && (
+        <div className="space-y-2">
+          {data.items.map((entry) => (
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              isExpanded={expandedId === entry.id}
+              onToggle={() =>
+                setExpandedId((prev) =>
+                  prev === entry.id ? null : entry.id,
+                )
+              }
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
