@@ -3,13 +3,15 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Json;
 use axum::routing::get;
 use cm_core::{
-    BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, PagedResult, Pagination, ScopePath,
+    BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, PagedResult,
+    Pagination, ScopePath,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::AppState;
 use crate::api::error::ApiError;
@@ -18,6 +20,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/entries", get(browse))
         .route("/entries/search", get(search))
+        .route("/entries/{id}", get(get_entry))
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,6 +130,37 @@ async fn search(
         items: entries,
         total,
         next_cursor: None,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+struct EntryDetail {
+    #[serde(flatten)]
+    entry: Entry,
+    relations_from: Vec<EntryRelation>,
+    relations_to: Vec<EntryRelation>,
+}
+
+async fn get_entry(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<EntryDetail>, ApiError> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| {
+        ApiError(cm_core::CmError::Validation(format!(
+            "invalid UUID: '{id}'"
+        )))
+    })?;
+
+    let entry = state.store.get_entry(uuid).await?;
+    let (relations_from, relations_to) = tokio::try_join!(
+        state.store.get_relations_from(uuid),
+        state.store.get_relations_to(uuid),
+    )?;
+
+    Ok(Json(EntryDetail {
+        entry,
+        relations_from,
+        relations_to,
     }))
 }
 
