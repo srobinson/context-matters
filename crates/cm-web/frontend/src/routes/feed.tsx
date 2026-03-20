@@ -52,7 +52,7 @@ function FeedPage() {
     feedRoute.useSearch();
 
   const navigate = useNavigate({ from: "/feed" });
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showNewEntry, setShowNewEntry] = useState(false);
   const [searchInput, setSearchInput] = useState(q ?? "");
@@ -78,7 +78,14 @@ function FeedPage() {
   const isBrowseMode = activeMode === "browse";
 
   useEffect(() => {
-    setExpandedId(entry_id ?? null);
+    if (entry_id) {
+      setExpandedIds((prev) => {
+        if (prev.has(entry_id)) return prev;
+        const next = new Set(prev);
+        next.add(entry_id);
+        return next;
+      });
+    }
   }, [entry_id]);
 
   useEffect(() => {
@@ -188,7 +195,7 @@ function FeedPage() {
       if (prev) setSelectedIds(new Set());
       return !prev;
     });
-    setExpandedId(null);
+    setExpandedIds(new Set());
   }, []);
 
   const toggleSelection = useCallback((id: string) => {
@@ -207,16 +214,21 @@ function FeedPage() {
 
   const toggleExpanded = useCallback(
     (id: string) => {
-      setExpandedId((prev) => {
-        const nextId = prev === id ? null : id;
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
         navigate({
           search: (prevSearch) => ({
             ...prevSearch,
-            entry_id: nextId ?? undefined,
+            entry_id: next.size === 1 ? [...next][0] : undefined,
           }),
           replace: true,
         });
-        return nextId;
+        return next;
       });
     },
     [navigate],
@@ -310,7 +322,7 @@ function FeedPage() {
   const sentinelRef = useIntersectionObserver(handleLoadMore, !!hasNextPage && !isFetchingNextPage);
 
   useLayoutEffect(() => {
-    if (!entry_id || isLoading || expandedId !== entry_id) return;
+    if (!entry_id || isLoading || !expandedIds.has(entry_id)) return;
 
     let frameOne = 0;
     let frameTwo = 0;
@@ -345,7 +357,7 @@ function FeedPage() {
       window.cancelAnimationFrame(frameTwo);
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [entry_id, expandedId, isLoading]);
+  }, [entry_id, expandedIds, isLoading]);
 
   return (
     <div className="space-y-4">
@@ -497,7 +509,7 @@ function FeedPage() {
                 <SnippetCard
                   key={hit.id}
                   entry={hit}
-                  isExpanded={expandedId === hit.id}
+                  isExpanded={expandedIds.has(hit.id)}
                   onToggle={() => toggleExpanded(hit.id)}
                 />
               ))}
@@ -553,7 +565,7 @@ function FeedPage() {
                 <SnippetCard
                   key={entry.id}
                   entry={entry}
-                  isExpanded={expandedId === entry.id}
+                  isExpanded={expandedIds.has(entry.id)}
                   onToggle={() => toggleExpanded(entry.id)}
                 />
               ))}
@@ -673,9 +685,9 @@ function FeedPage() {
               <div className="min-w-0 flex-1">
                 <EntryCard
                   entry={entry}
-                  isExpanded={!mergeMode && expandedId === entry.id}
+                  isExpanded={!mergeMode && expandedIds.has(entry.id)}
                   className={
-                    expandedId === entry.id
+                    expandedIds.has(entry.id)
                       ? highlightedId === entry.id
                         ? "border-amber-400/40 bg-amber-500/8 ring-2 ring-amber-300/30 transition-all duration-500"
                         : "border-border/90 bg-accent/10 ring-1 ring-ring/25 transition-all duration-300"

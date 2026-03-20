@@ -33,6 +33,7 @@ export const queryKeys = {
     search: (params: SearchParams) => ["entries", "search", params] as const,
   },
   agent: {
+    all: ["agent"] as const,
     recall: (params: RecallParams) => ["agent", "recall", params] as const,
     browse: (params: AgentBrowseParams) => ["agent", "browse", params] as const,
   },
@@ -130,6 +131,7 @@ export function useCreateEntry() {
     mutationFn: (entry: NewEntry) => api.entries.create(entry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
     },
   });
@@ -143,6 +145,7 @@ export function useUpdateEntry() {
     onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.detail(id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
     },
   });
 }
@@ -154,6 +157,7 @@ export function useMergeEntry() {
       api.entries.merge(oldId, newEntry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
     },
   });
@@ -165,6 +169,7 @@ export function useForgetEntry() {
     mutationFn: (id: string) => api.entries.forget(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
     },
   });
