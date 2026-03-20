@@ -98,11 +98,18 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
         None
     };
 
+    // Build scope_hits as an object: { "global/project:helioy": 3, "global": 1 }
+    let scope_hits: serde_json::Map<String, Value> = result
+        .scope_hits
+        .iter()
+        .map(|(scope, count)| (scope.clone(), json!(count)))
+        .collect();
+
     let mut response = json!({
         "results": results,
         "returned": results.len(),
         "scope_chain": result.scope_chain,
-        "token_estimate": result.token_estimate,
+        "scope_hits": scope_hits,
     });
 
     if let Some(hint) = hint {

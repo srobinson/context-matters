@@ -1,6 +1,5 @@
 ---
 source: crates/cm-cli/tests/snapshot_tests.rs
-assertion_line: 117
 expression: resp
 ---
 {
@@ -16,10 +15,15 @@ expression: resp
         "test-tag"
       ],
       "title": "Test fact",
+      "token_estimate": 108,
       "updated_at": "[redacted]"
     }
   ],
   "returned": 1,
-  "scope_chain": [],
-  "token_estimate": 70
+  "scope_chain": [
+    "global"
+  ],
+  "scope_hits": {
+    "global": 1
+  }
 }

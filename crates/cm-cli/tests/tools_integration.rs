@@ -332,7 +332,9 @@ async fn recall_respects_max_tokens_budget() {
     let resp: Value = serde_json::from_str(&result).unwrap();
     // With a very small budget, should return fewer than all 10
     assert!(resp["returned"].as_u64().unwrap() < 10);
-    assert!(resp["token_estimate"].as_u64().unwrap() > 0);
+    // Per-entry token estimates should be present
+    let first = &resp["results"][0];
+    assert!(first["token_estimate"].as_u64().unwrap() > 0);
 }
 
 // ── cx_get tests ────────────────────────────────────────────────

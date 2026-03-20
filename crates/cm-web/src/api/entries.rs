@@ -151,6 +151,7 @@ struct RecallResponse {
     results: Vec<RecallEntryView>,
     returned: usize,
     scope_chain: Vec<String>,
+    scope_hits: std::collections::BTreeMap<String, usize>,
     token_estimate: u32,
 }
 
@@ -160,10 +161,14 @@ async fn recall(
 ) -> Result<Json<RecallResponse>, ApiError> {
     let output = agent::execute_recall(&state.store, raw_query.0.as_deref()).await?;
 
+    let scope_hits: std::collections::BTreeMap<String, usize> =
+        output.scope_hits.iter().cloned().collect();
+
     Ok(Json(RecallResponse {
         results: output.results,
         returned: output.returned,
         scope_chain: output.scope_chain,
+        scope_hits,
         token_estimate: output.token_estimate,
     }))
 }

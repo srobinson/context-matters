@@ -91,6 +91,7 @@ pub(crate) struct RecallOutput {
     pub results: Vec<RecallEntryView>,
     pub returned: usize,
     pub scope_chain: Vec<String>,
+    pub scope_hits: Vec<(String, usize)>,
     pub token_estimate: u32,
     pub routing: RecallRouting,
     pub candidates_before_filter: usize,
@@ -183,6 +184,7 @@ pub(crate) async fn execute_recall(
         returned: results.len(),
         results,
         scope_chain: result.scope_chain,
+        scope_hits: result.scope_hits,
         token_estimate: result.token_estimate,
         routing: result.routing,
         candidates_before_filter: result.candidates_before_filter,
@@ -200,6 +202,7 @@ struct AgentRecallResponse {
     results: Vec<RecallEntryView>,
     returned: usize,
     scope_chain: Vec<String>,
+    scope_hits: std::collections::BTreeMap<String, usize>,
     token_estimate: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     hint: Option<String>,
@@ -223,10 +226,14 @@ async fn recall_handler(
 ) -> Result<Json<AgentRecallResponse>, ApiError> {
     let output = execute_recall(&state.store, raw_query.0.as_deref()).await?;
 
+    let scope_hits: std::collections::BTreeMap<String, usize> =
+        output.scope_hits.iter().cloned().collect();
+
     Ok(Json(AgentRecallResponse {
         returned: output.returned,
         results: output.results,
         scope_chain: output.scope_chain,
+        scope_hits,
         token_estimate: output.token_estimate,
         hint: output.hint,
         _trace: RecallTrace {

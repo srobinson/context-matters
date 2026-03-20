@@ -32,6 +32,11 @@ pub enum RecallRouting {
 pub struct RecallResult {
     pub entries: Vec<Entry>,
     pub scope_chain: Vec<String>,
+    /// Per-scope hit counts. When scope is provided, ordered from most specific
+    /// ancestor to broadest. When scope is omitted, derived from returned entries
+    /// (most specific first).
+    pub scope_hits: Vec<(String, usize)>,
+    /// Total estimated tokens across all returned entries (full body, not snippets).
     pub token_estimate: u32,
     pub routing: RecallRouting,
     pub candidates_before_filter: usize,
@@ -83,14 +88,18 @@ pub async fn recall(
             .collect()
     };
 
-    // Apply limit after post-filtering
-    let entries: Vec<Entry> = entries.into_iter().take(request.limit as usize).collect();
+    // Sort by scope depth descending (most specific first).
+    // Stable sort preserves the store's native ordering (relevance or recency) within each scope level.
+    let mut entries: Vec<Entry> = entries;
+    entries.sort_by(|a, b| {
+        b.scope_path
+            .as_str()
+            .len()
+            .cmp(&a.scope_path.as_str().len())
+    });
 
-    // Build scope chain
-    let scope_chain: Vec<String> = match &request.scope {
-        Some(sp) => sp.ancestors().map(String::from).collect(),
-        None => Vec::new(),
-    };
+    // Apply limit after post-filtering and sorting
+    let entries: Vec<Entry> = entries.into_iter().take(request.limit as usize).collect();
 
     // Token budget tracking
     let mut budget_entries = Vec::with_capacity(entries.len());
@@ -112,9 +121,47 @@ pub async fn recall(
         budget_entries.push(entry.clone());
     }
 
+    // Build scope chain and hits
+    let (scope_chain, scope_hits) = match &request.scope {
+        Some(sp) => {
+            // Explicit scope: chain from the provided scope path
+            let chain: Vec<String> = sp.ancestors().map(String::from).collect();
+            let hits: Vec<(String, usize)> = chain
+                .iter()
+                .map(|s| {
+                    let count = budget_entries
+                        .iter()
+                        .filter(|e| e.scope_path.as_str() == s)
+                        .count();
+                    (s.clone(), count)
+                })
+                .collect();
+            (chain, hits)
+        }
+        None => {
+            // No scope provided: derive from returned entries
+            let mut seen = std::collections::BTreeMap::<String, usize>::new();
+            for entry in &budget_entries {
+                *seen
+                    .entry(entry.scope_path.as_str().to_owned())
+                    .or_default() += 1;
+            }
+            let mut hits: Vec<(String, usize)> = seen.into_iter().collect();
+            // Sort by depth descending (most specific first), then alphabetically
+            hits.sort_by(|a, b| {
+                let depth_a = a.0.matches('/').count();
+                let depth_b = b.0.matches('/').count();
+                depth_b.cmp(&depth_a).then_with(|| a.0.cmp(&b.0))
+            });
+            let chain: Vec<String> = hits.iter().map(|(s, _)| s.clone()).collect();
+            (chain, hits)
+        }
+    };
+
     Ok(RecallResult {
         entries: budget_entries,
         scope_chain,
+        scope_hits,
         token_estimate: total_tokens,
         routing,
         candidates_before_filter,

@@ -52,6 +52,8 @@ pub struct RecallEntryView {
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
+    /// Estimated tokens for the full entry body (not the snippet).
+    pub token_estimate: u32,
 }
 
 /// Two-phase browse view: snippet instead of full body, includes timestamps and superseded_by.
@@ -119,6 +121,10 @@ pub fn project_recall_entry(entry: &Entry) -> RecallEntryView {
         updated_at: format_time(&entry.updated_at),
         tags: extract_tags(&entry.meta),
         confidence: extract_confidence(&entry.meta),
+        token_estimate: {
+            let full = serde_json::to_string(&project_full_entry(entry)).unwrap_or_default();
+            estimate_tokens(&full)
+        },
     }
 }
 

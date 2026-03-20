@@ -639,7 +639,7 @@ async fn scope_chain_extracted_from_scope_path() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn scope_chain_empty_when_no_scope() {
+async fn scope_chain_derived_from_entries_when_no_scope() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "Fact", "Body.", EntryKind::Fact).await;
@@ -654,7 +654,9 @@ async fn scope_chain_empty_when_no_scope() {
     .await
     .unwrap();
 
-    assert!(result.scope_chain.is_empty());
+    // When scope is omitted, scope_chain is derived from returned entries
+    assert_eq!(result.scope_chain, vec!["global"]);
+    assert_eq!(result.scope_hits, vec![("global".to_owned(), 1)]);
 }
 
 // ── Limit enforcement ────────────────────────────────────────────
