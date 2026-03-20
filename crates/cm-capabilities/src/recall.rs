@@ -98,9 +98,11 @@ pub async fn recall(
         let entry_tokens = estimate_tokens(&entry_str);
 
         if let Some(budget) = request.max_tokens
-            && total_tokens + entry_tokens > budget && !budget_entries.is_empty() {
-                break;
-            }
+            && total_tokens + entry_tokens > budget
+            && !budget_entries.is_empty()
+        {
+            break;
+        }
 
         total_tokens += entry_tokens;
         budget_entries.push(entry.clone());
