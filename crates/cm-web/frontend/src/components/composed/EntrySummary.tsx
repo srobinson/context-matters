@@ -1,9 +1,9 @@
 import { ArrowUpRight } from "lucide-react";
 import type { Entry } from "@/api/generated/Entry";
+import { KindBadge } from "@/components/domain/KindBadge";
+import { getQualityIssues, QualityBadge } from "@/components/domain/QualityBadge";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { KindBadge } from "@/components/domain/KindBadge";
-import { QualityBadge, getQualityIssues } from "@/components/domain/QualityBadge";
 
 interface EntrySummaryProps {
   entry: Entry;
@@ -39,8 +39,7 @@ export function EntrySummary({
     <div
       className={cn(
         "group flex items-start gap-3 rounded-control",
-        interactive &&
-          "transition-colors",
+        interactive && "transition-colors",
         className,
       )}
     >

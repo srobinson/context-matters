@@ -1,6 +1,5 @@
-import { useCallback } from "react";
-import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import { useCallback } from "react";
 import {
   Select,
   SelectContent,
@@ -8,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 // --- Public types ---
 
@@ -45,13 +45,7 @@ export interface FilterBarProps {
 
 // --- Internal components ---
 
-function ActiveChip({
-  label,
-  onRemove,
-}: {
-  label: string;
-  onRemove: () => void;
-}) {
+function ActiveChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
       {label}
@@ -78,26 +72,17 @@ function FacetSelect({
   options: FacetOption[];
 }) {
   return (
-    <Select
-      value={value}
-      onValueChange={(v) =>
-        onChange(v == null || v === "" ? undefined : v)
-      }
-    >
+    <Select value={value} onValueChange={(v) => onChange(v == null || v === "" ? undefined : v)}>
       <SelectTrigger className="h-7 w-auto min-w-[100px] gap-1 rounded-md border-border bg-muted px-2 font-mono text-xs text-muted-foreground">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent className="min-w-[var(--radix-select-trigger-width)] w-auto max-w-[min(500px,90vw)]">
-        <SelectItem value="">
-          {`Any ${placeholder.toLowerCase()}`}
-        </SelectItem>
+        <SelectItem value="">{`Any ${placeholder.toLowerCase()}`}</SelectItem>
         {options.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
             {opt.label}
             {opt.count != null && (
-              <span className="ml-1 text-muted-foreground/60">
-                ({opt.count})
-              </span>
+              <span className="ml-1 text-muted-foreground/60">({opt.count})</span>
             )}
           </SelectItem>
         ))}
@@ -116,19 +101,14 @@ export function FilterBar({
   onClearAll,
   chipLabel,
 }: FilterBarProps) {
-  const defaultChipLabel = useCallback(
-    (key: string, value: string | boolean) => {
-      if (typeof value === "boolean") return `show:${key}`;
-      return `${key}:${value}`;
-    },
-    [],
-  );
+  const defaultChipLabel = useCallback((key: string, value: string | boolean) => {
+    if (typeof value === "boolean") return `show:${key}`;
+    return `${key}:${value}`;
+  }, []);
 
   const formatChip = chipLabel ?? defaultChipLabel;
 
-  const activeEntries = Object.entries(values).filter(
-    ([, v]) => v !== undefined && v !== false,
-  );
+  const activeEntries = Object.entries(values).filter(([, v]) => v !== undefined && v !== false);
   const hasActiveFilters = activeEntries.length > 0;
 
   return (
@@ -139,9 +119,7 @@ export function FilterBar({
             key={facet.key}
             placeholder={facet.placeholder}
             value={
-              typeof values[facet.key] === "string"
-                ? (values[facet.key] as string)
-                : undefined
+              typeof values[facet.key] === "string" ? (values[facet.key] as string) : undefined
             }
             onChange={(v) => onChange(facet.key, v)}
             options={facet.options}
@@ -156,12 +134,8 @@ export function FilterBar({
             <input
               type="checkbox"
               checked={!!values[toggle.key]}
-              onChange={(e) =>
-                onChange(toggle.key, e.target.checked || undefined)
-              }
-              className={cn(
-                "h-3.5 w-3.5 rounded border-border accent-foreground",
-              )}
+              onChange={(e) => onChange(toggle.key, e.target.checked || undefined)}
+              className={cn("h-3.5 w-3.5 rounded border-border accent-foreground")}
             />
             {toggle.label}
           </label>

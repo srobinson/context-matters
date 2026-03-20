@@ -1,21 +1,21 @@
 import {
-  useQuery,
+  type UseQueryOptions,
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
-  type UseQueryOptions,
 } from "@tanstack/react-query";
 import {
-  api,
   type AgentBrowseParams,
   type AgentRecallResponse,
+  api,
   type BrowseParams,
   type EntryDetail,
+  type MutationListParams,
+  type PagedResponse,
   type RecallParams,
   type RecallResponse,
   type SearchParams,
-  type MutationListParams,
-  type PagedResponse,
   type Stats,
 } from "./client";
 import type { MutationRecord } from "./generated/MutationRecord";
@@ -39,8 +39,7 @@ export const queryKeys = {
   stats: ["stats"] as const,
   mutations: {
     all: ["mutations"] as const,
-    list: (params: MutationListParams) =>
-      ["mutations", "list", params] as const,
+    list: (params: MutationListParams) => ["mutations", "list", params] as const,
   },
 };
 
@@ -49,17 +48,13 @@ export const queryKeys = {
 export function useEntries(params: Omit<BrowseParams, "cursor"> = {}) {
   return useInfiniteQuery({
     queryKey: queryKeys.entries.browse(params),
-    queryFn: ({ pageParam }) =>
-      api.entries.browse({ ...params, cursor: pageParam }),
+    queryFn: ({ pageParam }) => api.entries.browse({ ...params, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 }
 
-export function useEntry(
-  id: string,
-  options?: Partial<UseQueryOptions<EntryDetail>>,
-) {
+export function useEntry(id: string, options?: Partial<UseQueryOptions<EntryDetail>>) {
   return useQuery({
     queryKey: queryKeys.entries.detail(id),
     queryFn: () => api.entries.get(id),
@@ -79,8 +74,7 @@ export function useStats(options?: Partial<UseQueryOptions<Stats>>) {
 export function useSearch(params: Omit<SearchParams, "cursor">) {
   return useInfiniteQuery({
     queryKey: queryKeys.entries.search(params),
-    queryFn: ({ pageParam }) =>
-      api.entries.search({ ...params, cursor: pageParam }),
+    queryFn: ({ pageParam }) => api.entries.search({ ...params, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: !!params.query,
@@ -109,10 +103,7 @@ export function useAgentRecall(
   });
 }
 
-export function useAgentBrowse(
-  params: AgentBrowseParams,
-  options?: { enabled?: boolean },
-) {
+export function useAgentBrowse(params: AgentBrowseParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.agent.browse(params),
     queryFn: () => api.agent.browse(params),

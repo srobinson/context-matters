@@ -1,13 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
 import { createRoute, Link } from "@tanstack/react-router";
-import { toast } from "sonner";
 import { ArrowRight, Download, Sparkles } from "lucide-react";
-import { rootRoute } from "./__root";
-import { useStats } from "@/api/hooks";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { api, type Stats } from "@/api/client";
+import { useStats } from "@/api/hooks";
+import { StatCard } from "@/components/composed/StatCard";
 import { RecentActivity } from "@/components/RecentActivity";
 import { ScopeTree } from "@/components/ScopeTree";
-import { StatCard } from "@/components/composed/StatCard";
+import { rootRoute } from "./__root";
 
 export const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -30,11 +30,7 @@ function computeQualityScore(stats: Stats): number {
   const tagged = total - stats.quality.untagged_count;
   const nonStale = total - stats.quality.stale_count;
   const scoped = total - stats.quality.global_scope_count;
-  return Math.round(
-    (tagged / total) * 34 +
-      (nonStale / total) * 33 +
-      (scoped / total) * 33,
-  );
+  return Math.round((tagged / total) * 34 + (nonStale / total) * 33 + (scoped / total) * 33);
 }
 
 function buildReviewSignals(stats: Stats): ReviewSignal[] {
@@ -84,10 +80,7 @@ function getHotScopes(stats: Stats): { path: string; count: number }[] {
 function DashboardPage() {
   const { data: stats, isLoading, isError, error } = useStats();
 
-  const qualityScore = useMemo(
-    () => (stats ? computeQualityScore(stats) : null),
-    [stats],
-  );
+  const qualityScore = useMemo(() => (stats ? computeQualityScore(stats) : null), [stats]);
 
   const agentSummary = useMemo(() => {
     if (!stats?.active_agents) return null;
@@ -106,10 +99,7 @@ function DashboardPage() {
     return count > 3 ? `${names} +${count - 3}` : names;
   }, [stats]);
 
-  const reviewSignals = useMemo(
-    () => (stats ? buildReviewSignals(stats) : []),
-    [stats],
-  );
+  const reviewSignals = useMemo(() => (stats ? buildReviewSignals(stats) : []), [stats]);
 
   const hotScopes = useMemo(() => (stats ? getHotScopes(stats) : []), [stats]);
 
@@ -143,9 +133,7 @@ function DashboardPage() {
       <div className="space-y-6">
         <DashboardHeader />
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-          <p className="text-sm text-destructive">
-            Failed to load stats: {error.message}
-          </p>
+          <p className="text-sm text-destructive">Failed to load stats: {error.message}</p>
         </div>
       </div>
     );
@@ -213,10 +201,7 @@ function DashboardHeader() {
     setIsExporting(true);
     try {
       const blob = await api.export();
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, 19);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -241,8 +226,7 @@ function DashboardHeader() {
           </span>
         </div>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Review pressure, scope concentration, and recent changes across the
-          context store.
+          Review pressure, scope concentration, and recent changes across the context store.
         </p>
       </div>
 
@@ -284,8 +268,8 @@ function ReviewPanel({
                 No review backlog detected
               </h3>
               <p className="max-w-xl text-sm text-muted-foreground">
-                Quality checks are currently clean. Use the feed to inspect
-                recent additions or export the store snapshot.
+                Quality checks are currently clean. Use the feed to inspect recent additions or
+                export the store snapshot.
               </p>
             </div>
           </div>
@@ -322,8 +306,8 @@ function ReviewPanel({
                 </div>
               </div>
               <p className="max-w-xl text-sm text-muted-foreground">
-                {primarySignal.description}. This is the largest review queue
-                surfaced by the current heuristics.
+                {primarySignal.description}. This is the largest review queue surfaced by the
+                current heuristics.
               </p>
             </div>
           </div>
@@ -357,7 +341,6 @@ function ReviewPanel({
               ))}
             </div>
           </div>
-
         </div>
 
         <div className="space-y-3">
@@ -366,14 +349,11 @@ function ReviewPanel({
           </p>
           {topScope ? (
             <p className="text-sm text-muted-foreground">
-              Heaviest scope:{" "}
-              <span className="font-mono text-foreground">{topScope.path}</span>{" "}
+              Heaviest scope: <span className="font-mono text-foreground">{topScope.path}</span>{" "}
               with {topScope.count} entries.
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Scope load data is not available yet.
-            </p>
+            <p className="text-sm text-muted-foreground">Scope load data is not available yet.</p>
           )}
 
           <div className="space-y-2">
@@ -385,9 +365,7 @@ function ReviewPanel({
                 className="flex items-center justify-between rounded-control border border-border/60 bg-background/35 px-3 py-2 font-mono text-xs transition-colors hover:bg-accent/20"
               >
                 <span className="truncate text-foreground">{scope.path}</span>
-                <span className="ml-3 shrink-0 text-muted-foreground">
-                  {scope.count}
-                </span>
+                <span className="ml-3 shrink-0 text-muted-foreground">{scope.count}</span>
               </Link>
             ))}
           </div>

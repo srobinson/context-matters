@@ -1,7 +1,7 @@
-import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
-import type { Stats } from "@/api/client";
 import { TriangleAlert } from "lucide-react";
+import { useMemo } from "react";
+import type { Stats } from "@/api/client";
 
 interface QualityAlert {
   label: string;

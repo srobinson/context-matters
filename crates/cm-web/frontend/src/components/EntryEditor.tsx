@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
+import type { EntryDetail, Stats } from "@/api/client";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { EntryMeta } from "@/api/generated/EntryMeta";
-import type { Stats, EntryDetail } from "@/api/client";
-import { useUpdateEntry, useMergeEntry, useStats } from "@/api/hooks";
+import { useMergeEntry, useStats, useUpdateEntry } from "@/api/hooks";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -13,9 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { MarkdownContent } from "./composed/MarkdownContent";
 import { TagInput } from "./composed/TagInput";
 import { DiffView } from "./DiffView";
-import { MarkdownContent } from "./composed/MarkdownContent";
 
 const ALL_KINDS: EntryKind[] = [
   "fact",
@@ -28,12 +28,7 @@ const ALL_KINDS: EntryKind[] = [
   "observation",
 ];
 
-const ALL_CONFIDENCES: (Confidence | "none")[] = [
-  "none",
-  "high",
-  "medium",
-  "low",
-];
+const ALL_CONFIDENCES: (Confidence | "none")[] = ["none", "high", "medium", "low"];
 
 interface EntryEditorProps {
   entry: EntryDetail;
@@ -69,8 +64,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
     body !== entry.body ||
     kind !== entry.kind ||
     JSON.stringify(tags) !== JSON.stringify(entry.meta?.tags ?? []) ||
-    (confidence === "none" ? null : confidence) !==
-      (entry.meta?.confidence ?? null);
+    (confidence === "none" ? null : confidence) !== (entry.meta?.confidence ?? null);
 
   const isMutating = updateEntry.isPending || mergeEntry.isPending;
 
@@ -137,23 +131,10 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         },
       },
     );
-  }, [
-    pendingScope,
-    entry,
-    kind,
-    title,
-    body,
-    tags,
-    confidence,
-    mergeEntry,
-    onSaved,
-  ]);
+  }, [pendingScope, entry, kind, title, body, tags, confidence, mergeEntry, onSaved]);
 
   return (
-    <div
-      className="space-y-4 border-t border-border pt-3"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="space-y-4 border-t border-border pt-3" onClick={(e) => e.stopPropagation()}>
       {/* Title */}
       <div className="space-y-1">
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
@@ -217,10 +198,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
           <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             confidence
           </label>
-          <Select
-            value={confidence}
-            onValueChange={(v) => setConfidence(v as Confidence | "none")}
-          >
+          <Select value={confidence} onValueChange={(v) => setConfidence(v as Confidence | "none")}>
             <SelectTrigger className="h-7 w-[120px] font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -240,10 +218,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope
         </label>
-        <Select
-          value={entry.scope_path}
-          onValueChange={handleScopeChange}
-        >
+        <Select value={entry.scope_path} onValueChange={handleScopeChange}>
           <SelectTrigger className="h-7 w-full font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -252,9 +227,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
                 {opt.count != null && (
-                  <span className="ml-1 text-muted-foreground/60">
-                    ({opt.count})
-                  </span>
+                  <span className="ml-1 text-muted-foreground/60">({opt.count})</span>
                 )}
               </SelectItem>
             ))}
@@ -265,17 +238,15 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
       {/* Scope change confirmation */}
       {pendingScope && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-          <p className="font-mono text-xs text-foreground">
-            Move entry to a different scope?
-          </p>
+          <p className="font-mono text-xs text-foreground">Move entry to a different scope?</p>
           <p className="font-mono text-[11px] text-muted-foreground">
             <span className="line-through">{entry.scope_path}</span>
             {" \u2192 "}
             <span className="font-medium text-foreground">{pendingScope}</span>
           </p>
           <p className="font-mono text-[10px] text-muted-foreground/80">
-            This creates a new entry at the target scope and supersedes the
-            original. The operation cannot be undone.
+            This creates a new entry at the target scope and supersedes the original. The operation
+            cannot be undone.
           </p>
           <div className="flex items-center gap-2 pt-1">
             <button
@@ -295,9 +266,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               cancel
             </button>
             {mergeEntry.isError && (
-              <span className="font-mono text-xs text-destructive">
-                {mergeEntry.error.message}
-              </span>
+              <span className="font-mono text-xs text-destructive">{mergeEntry.error.message}</span>
             )}
           </div>
         </div>
@@ -308,12 +277,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           tags
         </label>
-        <TagInput
-          value={tags}
-          onChange={setTags}
-          suggestions={tagSuggestions}
-          maxSuggestions={8}
-        />
+        <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} maxSuggestions={8} />
       </div>
 
       {/* Created by (read-only) */}
@@ -321,9 +285,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           created by
         </label>
-        <p className="font-mono text-xs text-muted-foreground">
-          {entry.created_by}
-        </p>
+        <p className="font-mono text-xs text-muted-foreground">{entry.created_by}</p>
       </div>
 
       {/* Actions / Diff view */}

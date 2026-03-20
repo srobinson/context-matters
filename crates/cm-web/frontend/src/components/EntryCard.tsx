@@ -1,14 +1,8 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryRelation } from "@/api/generated/EntryRelation";
 import { useEntry, useForgetEntry } from "@/api/hooks";
-import { EntryEditor } from "./EntryEditor";
-import { MutationHistory } from "./MutationHistory";
-import { MarkdownContent } from "./composed/MarkdownContent";
-import { EntrySummary } from "./composed/EntrySummary";
-import { KindBadge } from "./domain/KindBadge";
-import { QualityBadge, getQualityIssues } from "./domain/QualityBadge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +15,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { EntrySummary } from "./composed/EntrySummary";
+import { MarkdownContent } from "./composed/MarkdownContent";
+import { KindBadge } from "./domain/KindBadge";
+import { getQualityIssues, QualityBadge } from "./domain/QualityBadge";
+import { EntryEditor } from "./EntryEditor";
+import { MutationHistory } from "./MutationHistory";
 
 function MetadataRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -53,9 +53,7 @@ function RelationsList({
             key={`${rel.source_id}-${rel.target_id}-${rel.relation}`}
             className="flex items-center gap-2 font-mono text-xs text-muted-foreground"
           >
-            <span className="rounded bg-muted px-1 py-0.5 text-[10px]">
-              {rel.relation}
-            </span>
+            <span className="rounded bg-muted px-1 py-0.5 text-[10px]">{rel.relation}</span>
             <span className="truncate">{targetId}</span>
           </div>
         );
@@ -76,13 +74,7 @@ function QualityBadges({ entry }: { entry: Entry }) {
   );
 }
 
-function ExpandedContent({
-  entryId,
-  onForgotten,
-}: {
-  entryId: string;
-  onForgotten?: () => void;
-}) {
+function ExpandedContent({ entryId, onForgotten }: { entryId: string; onForgotten?: () => void }) {
   const { data: detail, isLoading, refetch } = useEntry(entryId);
   const [isEditing, setIsEditing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -104,18 +96,12 @@ function ExpandedContent({
   }, [detail, forgetEntry, onForgotten]);
 
   if (isLoading || !detail) {
-    return (
-      <div className="pt-3 text-xs text-muted-foreground">Loading...</div>
-    );
+    return <div className="pt-3 text-xs text-muted-foreground">Loading...</div>;
   }
 
   if (isEditing) {
     return (
-      <EntryEditor
-        entry={detail}
-        onCancel={() => setIsEditing(false)}
-        onSaved={handleEditSaved}
-      />
+      <EntryEditor entry={detail} onCancel={() => setIsEditing(false)} onSaved={handleEditSaved} />
     );
   }
 
@@ -123,10 +109,7 @@ function ExpandedContent({
   const allTags = meta?.tags ?? [];
 
   return (
-    <div
-      className="space-y-4 border-t border-border pt-3"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="space-y-4 border-t border-border pt-3" onClick={(e) => e.stopPropagation()}>
       {/* Full markdown body */}
       <MarkdownContent>{detail.body}</MarkdownContent>
 
@@ -156,19 +139,10 @@ function ExpandedContent({
       <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
         <MetadataRow label="kind" value={<KindBadge kind={detail.kind} />} />
         <MetadataRow label="scope" value={detail.scope_path} />
-        <MetadataRow
-          label="confidence"
-          value={meta?.confidence ?? "none"}
-        />
+        <MetadataRow label="confidence" value={meta?.confidence ?? "none"} />
         <MetadataRow label="created by" value={detail.created_by} />
-        <MetadataRow
-          label="created"
-          value={new Date(detail.created_at).toLocaleString()}
-        />
-        <MetadataRow
-          label="updated"
-          value={new Date(detail.updated_at).toLocaleString()}
-        />
+        <MetadataRow label="created" value={new Date(detail.created_at).toLocaleString()} />
+        <MetadataRow label="updated" value={new Date(detail.updated_at).toLocaleString()} />
         <MetadataRow
           label="hash"
           value={
@@ -179,28 +153,16 @@ function ExpandedContent({
         />
         {meta?.source && <MetadataRow label="source" value={meta.source} />}
         {meta?.expires_at && (
-          <MetadataRow
-            label="expires"
-            value={new Date(meta.expires_at).toLocaleString()}
-          />
+          <MetadataRow label="expires" value={new Date(meta.expires_at).toLocaleString()} />
         )}
-        {meta?.priority != null && (
-          <MetadataRow label="priority" value={meta.priority} />
-        )}
+        {meta?.priority != null && <MetadataRow label="priority" value={meta.priority} />}
       </div>
 
       {/* Relations */}
-      {(detail.relations_from.length > 0 ||
-        detail.relations_to.length > 0) && (
+      {(detail.relations_from.length > 0 || detail.relations_to.length > 0) && (
         <div className="space-y-2">
-          <RelationsList
-            relations={detail.relations_from}
-            direction="from"
-          />
-          <RelationsList
-            relations={detail.relations_to}
-            direction="to"
-          />
+          <RelationsList relations={detail.relations_from} direction="from" />
+          <RelationsList relations={detail.relations_to} direction="to" />
         </div>
       )}
 
@@ -241,19 +203,15 @@ function ExpandedContent({
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle className="font-mono text-sm">
-                Forget this entry?
-              </AlertDialogTitle>
+              <AlertDialogTitle className="font-mono text-sm">Forget this entry?</AlertDialogTitle>
               <AlertDialogDescription className="font-mono text-xs">
-                &ldquo;{detail.title}&rdquo; will be marked as forgotten. It
-                will no longer appear in recall results but can still be viewed
-                with the &ldquo;show forgotten&rdquo; filter.
+                &ldquo;{detail.title}&rdquo; will be marked as forgotten. It will no longer appear
+                in recall results but can still be viewed with the &ldquo;show forgotten&rdquo;
+                filter.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="font-mono text-xs">
-                cancel
-              </AlertDialogCancel>
+              <AlertDialogCancel className="font-mono text-xs">cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleForget}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-mono text-xs"
@@ -303,17 +261,12 @@ export function EntryCard({
         }}
       >
         <div className="min-w-0 flex-1">
-          <EntrySummary
-            entry={entry}
-            showQuality={!isExpanded}
-          />
+          <EntrySummary entry={entry} showQuality={!isExpanded} />
         </div>
       </div>
 
       {/* Expanded content */}
-      {isExpanded && (
-        <ExpandedContent entryId={entry.id} onForgotten={onToggle} />
-      )}
+      {isExpanded && <ExpandedContent entryId={entry.id} onForgotten={onToggle} />}
     </article>
   );
 }

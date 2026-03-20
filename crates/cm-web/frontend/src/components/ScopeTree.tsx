@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import type { Stats } from "@/api/client";
 import { ChevronRight, FolderTree } from "lucide-react";
+import { useMemo, useState } from "react";
+import type { Stats } from "@/api/client";
 import { cn } from "@/lib/utils";
 
 interface ScopeNode {
@@ -11,15 +11,11 @@ interface ScopeNode {
   children: ScopeNode[];
 }
 
-function buildTree(
-  scopes: { path: string; kind: string; entry_count: number }[],
-): ScopeNode[] {
+function buildTree(scopes: { path: string; kind: string; entry_count: number }[]): ScopeNode[] {
   const nodeMap = new Map<string, ScopeNode>();
 
   // Sort by path length so parents are processed first
-  const sorted = [...scopes].sort(
-    (a, b) => a.path.length - b.path.length,
-  );
+  const sorted = [...scopes].sort((a, b) => a.path.length - b.path.length);
 
   for (const scope of sorted) {
     const segments = scope.path.split("/");
@@ -61,10 +57,7 @@ function buildTree(
 }
 
 export function ScopeTree({ stats }: { stats: Stats }) {
-  const tree = useMemo(
-    () => buildTree(stats.scope_tree),
-    [stats.scope_tree],
-  );
+  const tree = useMemo(() => buildTree(stats.scope_tree), [stats.scope_tree]);
 
   if (tree.length === 0) {
     return (
@@ -72,9 +65,7 @@ export function ScopeTree({ stats }: { stats: Stats }) {
         <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope tree
         </h3>
-        <p className="font-mono text-xs text-muted-foreground">
-          No scopes yet.
-        </p>
+        <p className="font-mono text-xs text-muted-foreground">No scopes yet.</p>
       </div>
     );
   }
@@ -89,7 +80,8 @@ export function ScopeTree({ stats }: { stats: Stats }) {
           </h3>
         </div>
         <p className="text-sm text-muted-foreground">
-          Entry concentration by scope. Start here when you need to understand where the weight is accumulating.
+          Entry concentration by scope. Start here when you need to understand where the weight is
+          accumulating.
         </p>
       </div>
       <div className="space-y-1">
@@ -117,12 +109,7 @@ function ScopeNodeRow({ node, depth }: { node: ScopeNode; depth: number }) {
             onClick={() => setExpanded((p) => !p)}
             className="shrink-0 rounded-control p-0.5 text-muted-foreground/60 hover:text-foreground"
           >
-            <ChevronRight
-              className={cn(
-                "h-3 w-3 transition-transform",
-                expanded && "rotate-90",
-              )}
-            />
+            <ChevronRight className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")} />
           </button>
         ) : (
           <span className="w-4" />

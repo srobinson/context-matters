@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export interface TagInputProps {
   /** Current tags */
@@ -29,9 +29,7 @@ export function TagInput({
   const normalizedSuggestions = useMemo(
     () =>
       suggestions.map((suggestion) =>
-        typeof suggestion === "string"
-          ? { value: suggestion, label: suggestion }
-          : suggestion,
+        typeof suggestion === "string" ? { value: suggestion, label: suggestion } : suggestion,
       ),
     [suggestions],
   );
@@ -42,18 +40,14 @@ export function TagInput({
   );
 
   const filteredSuggestions = useMemo(() => {
-    const limit = (
-      items: Array<{ value: string; label: string }>,
-    ) =>
+    const limit = (items: Array<{ value: string; label: string }>) =>
       maxSuggestions == null ? items : items.slice(0, maxSuggestions);
 
     if (!input.trim()) return limit(availableSuggestions);
     const query = input.toLowerCase();
     return limit(
       availableSuggestions.filter(
-        (s) =>
-          s.value.toLowerCase().includes(query) ||
-          s.label.toLowerCase().includes(query),
+        (s) => s.value.toLowerCase().includes(query) || s.label.toLowerCase().includes(query),
       ),
     );
   }, [input, availableSuggestions, maxSuggestions]);

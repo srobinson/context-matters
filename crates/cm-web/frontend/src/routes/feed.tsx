@@ -1,29 +1,22 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
 import { createRoute, useNavigate } from "@tanstack/react-router";
-import { rootRoute } from "./__root";
+import { GitMerge, Plus, Search, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import { useEntries, useAgentRecall, useAgentBrowse } from "@/api/hooks";
+import { useAgentBrowse, useAgentRecall, useEntries } from "@/api/hooks";
+import { type FeedMode, FeedModeSelect } from "@/components/domain/FeedModeSelect";
+import { SortSelect } from "@/components/domain/SortSelect";
 import { EntryCard } from "@/components/EntryCard";
-import { SnippetCard } from "@/components/SnippetCard";
-import { TracePanel } from "@/components/TracePanel";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { MergePanel } from "@/components/MergePanel";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
 import { RecallBar } from "@/components/RecallBar";
-import { FeedModeSelect, type FeedMode } from "@/components/domain/FeedModeSelect";
-import { SortSelect } from "@/components/domain/SortSelect";
+import { SnippetCard } from "@/components/SnippetCard";
+import { TracePanel } from "@/components/TracePanel";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
-import { GitMerge, Plus, Search, X } from "lucide-react";
+import { rootRoute } from "./__root";
 
 export type FeedSearch = {
   mode?: FeedMode;
@@ -41,26 +34,15 @@ export const feedRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/feed",
   validateSearch: (search: Record<string, unknown>): FeedSearch => ({
-    mode: isFeedMode(search["mode"]) ? search["mode"] : undefined,
-    scope_path:
-      typeof search["scope_path"] === "string"
-        ? search["scope_path"]
-        : undefined,
-    kind: isEntryKind(search["kind"]) ? search["kind"] : undefined,
-    tag: typeof search["tag"] === "string" ? search["tag"] : undefined,
-    created_by:
-      typeof search["created_by"] === "string"
-        ? search["created_by"]
-        : undefined,
-    sort: isBrowseSort(search["sort"]) ? search["sort"] : undefined,
-    show_forgotten:
-      search["show_forgotten"] === true ||
-      search["show_forgotten"] === "true",
-    q: typeof search["q"] === "string" && search["q"] ? search["q"] : undefined,
-    entry_id:
-      typeof search["entry_id"] === "string" && search["entry_id"]
-        ? search["entry_id"]
-        : undefined,
+    mode: isFeedMode(search.mode) ? search.mode : undefined,
+    scope_path: typeof search.scope_path === "string" ? search.scope_path : undefined,
+    kind: isEntryKind(search.kind) ? search.kind : undefined,
+    tag: typeof search.tag === "string" ? search.tag : undefined,
+    created_by: typeof search.created_by === "string" ? search.created_by : undefined,
+    sort: isBrowseSort(search.sort) ? search.sort : undefined,
+    show_forgotten: search.show_forgotten === true || search.show_forgotten === "true",
+    q: typeof search.q === "string" && search.q ? search.q : undefined,
+    entry_id: typeof search.entry_id === "string" && search.entry_id ? search.entry_id : undefined,
   }),
   component: FeedPage,
 });
@@ -78,9 +60,7 @@ function FeedPage() {
   const [recallKinds, setRecallKinds] = useState<EntryKind[]>([]);
   const [recallTags, setRecallTags] = useState<string[]>([]);
   const [recallLimit, setRecallLimit] = useState(20);
-  const [recallMaxTokens, setRecallMaxTokens] = useState<number | undefined>(
-    undefined,
-  );
+  const [recallMaxTokens, setRecallMaxTokens] = useState<number | undefined>(undefined);
   const [browseScope, setBrowseScope] = useState<string | undefined>(undefined);
   const [browseKind, setBrowseKind] = useState<EntryKind | undefined>(undefined);
   const [browseTag, setBrowseTag] = useState<string | undefined>(undefined);
@@ -194,17 +174,14 @@ function FeedPage() {
     inputRef.current?.focus();
   }, []);
 
-  const handleBrowseFilterChange = useCallback(
-    (update: Partial<FilterState>) => {
-      if ("scope_path" in update) setBrowseScope(update.scope_path);
-      if ("kind" in update) setBrowseKind(update.kind);
-      if ("tag" in update) setBrowseTag(update.tag);
-      if ("created_by" in update) setBrowseAgent(update.created_by);
-      if ("show_forgotten" in update) setBrowseForgotten(!!update.show_forgotten);
-      setBrowseCursor(undefined);
-    },
-    [],
-  );
+  const handleBrowseFilterChange = useCallback((update: Partial<FilterState>) => {
+    if ("scope_path" in update) setBrowseScope(update.scope_path);
+    if ("kind" in update) setBrowseKind(update.kind);
+    if ("tag" in update) setBrowseTag(update.tag);
+    if ("created_by" in update) setBrowseAgent(update.created_by);
+    if ("show_forgotten" in update) setBrowseForgotten(!!update.show_forgotten);
+    setBrowseCursor(undefined);
+  }, []);
 
   const toggleMergeMode = useCallback(() => {
     setMergeMode((prev) => {
@@ -267,28 +244,34 @@ function FeedPage() {
     limit: 20,
   });
 
-  const recallQuery = useAgentRecall({
-    query: debouncedQuery || undefined,
-    scope: recallScope,
-    kinds: recallKinds,
-    tags: recallTags,
-    limit: recallLimit,
-    max_tokens: recallMaxTokens,
-  }, {
-    enabled: isRecallMode,
-  });
+  const recallQuery = useAgentRecall(
+    {
+      query: debouncedQuery || undefined,
+      scope: recallScope,
+      kinds: recallKinds,
+      tags: recallTags,
+      limit: recallLimit,
+      max_tokens: recallMaxTokens,
+    },
+    {
+      enabled: isRecallMode,
+    },
+  );
 
-  const agentBrowseQuery = useAgentBrowse({
-    scope_path: browseScope,
-    kind: browseKind,
-    tag: browseTag,
-    created_by: browseAgent,
-    include_superseded: browseForgotten || undefined,
-    limit: 20,
-    cursor: browseCursor,
-  }, {
-    enabled: isBrowseMode,
-  });
+  const agentBrowseQuery = useAgentBrowse(
+    {
+      scope_path: browseScope,
+      kind: browseKind,
+      tag: browseTag,
+      created_by: browseAgent,
+      include_superseded: browseForgotten || undefined,
+      limit: 20,
+      cursor: browseCursor,
+    },
+    {
+      enabled: isBrowseMode,
+    },
+  );
 
   const handleBrowseNext = useCallback(() => {
     const cursor = agentBrowseQuery.data?.next_cursor;
@@ -309,8 +292,8 @@ function FeedPage() {
   // Curate mode uses browseEntries; recall mode uses recallResults rendered separately
   const entries = isRecallMode ? [] : browseEntries;
   const totalCount = isRecallMode
-    ? recallQuery.data?.returned ?? 0
-    : browseData?.pages[0]?.total ?? 0;
+    ? (recallQuery.data?.returned ?? 0)
+    : (browseData?.pages[0]?.total ?? 0);
   const isLoading = isRecallMode ? recallQuery.isLoading : browseQuery.isLoading;
   const isError = isRecallMode ? recallQuery.isError : browseQuery.isError;
   const error = isRecallMode ? recallQuery.error : browseQuery.error;
@@ -324,10 +307,7 @@ function FeedPage() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const sentinelRef = useIntersectionObserver(
-    handleLoadMore,
-    !!hasNextPage && !isFetchingNextPage,
-  );
+  const sentinelRef = useIntersectionObserver(handleLoadMore, !!hasNextPage && !isFetchingNextPage);
 
   useLayoutEffect(() => {
     if (!entry_id || isLoading || expandedId !== entry_id) return;
@@ -346,11 +326,7 @@ function FeedPage() {
           : null;
       const headerHeight = header?.getBoundingClientRect().height ?? 0;
       const topGap = 12;
-      const top =
-        window.scrollY +
-        target.getBoundingClientRect().top -
-        headerHeight -
-        topGap;
+      const top = window.scrollY + target.getBoundingClientRect().top - headerHeight - topGap;
 
       window.scrollTo({
         top: Math.max(top, 0),
@@ -369,22 +345,16 @@ function FeedPage() {
       window.cancelAnimationFrame(frameTwo);
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [entry_id, entries, expandedId, isLoading]);
+  }, [entry_id, expandedId, isLoading]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-medium tracking-tight">Feed</h2>
-          <FeedModeSelect
-            value={activeMode}
-            onChange={handleModeChange}
-          />
+          <FeedModeSelect value={activeMode} onChange={handleModeChange} />
           {activeMode === "curate" && (
-            <SortSelect
-              value={sort ?? "recent"}
-              onChange={handleSortChange}
-            />
+            <SortSelect value={sort ?? "recent"} onChange={handleSortChange} />
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -397,7 +367,7 @@ function FeedPage() {
               {isRecallMode
                 ? recallResults.length
                 : isBrowseMode
-                  ? agentBrowseQuery.data?.entries.length ?? 0
+                  ? (agentBrowseQuery.data?.entries.length ?? 0)
                   : entries.length}
               {isBrowseMode && agentBrowseQuery.data
                 ? ` / ${agentBrowseQuery.data.total}`
@@ -418,11 +388,7 @@ function FeedPage() {
             }`}
           >
             <GitMerge className="h-3 w-3" />
-            {activeMode !== "curate"
-              ? "merge unavailable"
-              : mergeMode
-                ? "cancel merge"
-                : "merge"}
+            {activeMode !== "curate" ? "merge unavailable" : mergeMode ? "cancel merge" : "merge"}
           </button>
           <button
             type="button"
@@ -481,9 +447,7 @@ function FeedPage() {
           onScopeChange={setRecallScope}
           onKindsChange={setRecallKinds}
           onTagsChange={setRecallTags}
-          onLimitChange={(value) =>
-            setRecallLimit(Math.max(1, Math.min(200, value)))
-          }
+          onLimitChange={(value) => setRecallLimit(Math.max(1, Math.min(200, value)))}
           onMaxTokensChange={setRecallMaxTokens}
           onClear={() => {
             setRecallScope(undefined);
@@ -524,9 +488,7 @@ function FeedPage() {
           {recallResults.length === 0 ? (
             <div className="rounded-lg border border-border bg-card p-8 text-center">
               <p className="text-sm text-muted-foreground">
-                {debouncedQuery
-                  ? `No results for "${debouncedQuery}".`
-                  : "No recall results."}
+                {debouncedQuery ? `No results for "${debouncedQuery}".` : "No recall results."}
               </p>
             </div>
           ) : (
@@ -583,9 +545,7 @@ function FeedPage() {
           />
           {agentBrowseQuery.data.entries.length === 0 ? (
             <div className="rounded-lg border border-border bg-card p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                No entries match the current filters.
-              </p>
+              <p className="text-sm text-muted-foreground">No entries match the current filters.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -643,9 +603,7 @@ function FeedPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-lg border border-border bg-muted/50 px-3 py-2">
             <span className="font-mono text-xs text-muted-foreground">
-              {selectedIds.size === 0
-                ? "Select entries to merge"
-                : `${selectedIds.size} selected`}
+              {selectedIds.size === 0 ? "Select entries to merge" : `${selectedIds.size} selected`}
             </span>
             {selectedIds.size >= 2 && (
               <span className="font-mono text-[10px] text-muted-foreground/60">
@@ -670,11 +628,15 @@ function FeedPage() {
         />
       )}
 
-      {activeMode === "curate" && !isLoading && entries.length === 0 && !isError && !showNewEntry && (
-        <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">No entries found.</p>
-        </div>
-      )}
+      {activeMode === "curate" &&
+        !isLoading &&
+        entries.length === 0 &&
+        !isError &&
+        !showNewEntry && (
+          <div className="rounded-lg border border-border bg-card p-8 text-center">
+            <p className="text-sm text-muted-foreground">No entries found.</p>
+          </div>
+        )}
 
       {activeMode === "curate" && entries.length > 0 && (
         <div className="space-y-2">
@@ -696,7 +658,7 @@ function FeedPage() {
                   aria-label={`Select ${entry.title} for merge`}
                 >
                   {selectedIds.has(entry.id) && (
-                    <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                    <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                       <path
                         d="M2.5 6L5 8.5L9.5 3.5"
                         stroke="currentColor"
@@ -720,9 +682,7 @@ function FeedPage() {
                       : undefined
                   }
                   onToggle={
-                    mergeMode
-                      ? () => toggleSelection(entry.id)
-                      : () => toggleExpanded(entry.id)
+                    mergeMode ? () => toggleSelection(entry.id) : () => toggleExpanded(entry.id)
                   }
                 />
               </div>
@@ -733,9 +693,7 @@ function FeedPage() {
 
           {isFetchingNextPage && (
             <div className="py-4 text-center">
-              <p className="text-sm text-muted-foreground">
-                Loading more...
-              </p>
+              <p className="text-sm text-muted-foreground">Loading more...</p>
             </div>
           )}
         </div>

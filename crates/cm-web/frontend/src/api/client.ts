@@ -1,11 +1,11 @@
+import type { BrowseSort } from "./generated/BrowseSort";
 import type { Entry } from "./generated/Entry";
 import type { EntryKind } from "./generated/EntryKind";
 import type { EntryRelation } from "./generated/EntryRelation";
-import type { BrowseSort } from "./generated/BrowseSort";
 import type { MutationRecord } from "./generated/MutationRecord";
 import type { NewEntry } from "./generated/NewEntry";
-import type { UpdateEntry } from "./generated/UpdateEntry";
 import type { StoreStats } from "./generated/StoreStats";
+import type { UpdateEntry } from "./generated/UpdateEntry";
 
 const API_BASE = "/api";
 
@@ -346,9 +346,7 @@ export const api = {
   },
 
   export(scopePath?: string): Promise<Blob> {
-    const params = scopePath
-      ? `?scope_path=${encodeURIComponent(scopePath)}`
-      : "";
+    const params = scopePath ? `?scope_path=${encodeURIComponent(scopePath)}` : "";
     return fetch(`${API_BASE}/export${params}`).then((res) => {
       if (!res.ok) throw new ApiError(res.status, null);
       return res.blob();

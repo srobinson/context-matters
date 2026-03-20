@@ -1,10 +1,10 @@
 import { useState } from "react";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import { KindBadge } from "./domain/KindBadge";
-import { MarkdownContent } from "./composed/MarkdownContent";
+import { useEntry } from "@/api/hooks";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { useEntry } from "@/api/hooks";
+import { MarkdownContent } from "./composed/MarkdownContent";
+import { KindBadge } from "./domain/KindBadge";
 
 export interface SnippetEntry {
   id: string;
@@ -27,16 +27,11 @@ function ExpandedBody({ entryId }: { entryId: string }) {
   const { data: detail, isLoading } = useEntry(entryId);
 
   if (isLoading || !detail) {
-    return (
-      <div className="pt-3 text-xs text-muted-foreground">Loading...</div>
-    );
+    return <div className="pt-3 text-xs text-muted-foreground">Loading...</div>;
   }
 
   return (
-    <div
-      className="border-t border-border/50 pt-3"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="border-t border-border/50 pt-3" onClick={(e) => e.stopPropagation()}>
       <MarkdownContent>{detail.body}</MarkdownContent>
 
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1">
@@ -44,17 +39,13 @@ function ExpandedBody({ entryId }: { entryId: string }) {
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             scope
           </span>
-          <span className="font-mono text-xs text-muted-foreground">
-            {detail.scope_path}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{detail.scope_path}</span>
         </div>
         <div className="flex items-baseline gap-2">
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             created by
           </span>
-          <span className="font-mono text-xs text-muted-foreground">
-            {detail.created_by}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{detail.created_by}</span>
         </div>
         {detail.meta?.confidence && (
           <div className="flex items-baseline gap-2">

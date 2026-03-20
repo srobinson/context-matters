@@ -30,13 +30,20 @@ interface BrowseTraceData {
 
 export type TraceData = RecallTraceData | BrowseTraceData;
 
-function TraceBadge({ children, variant }: { children: React.ReactNode; variant?: "muted" | "active" | "warn" }) {
+function TraceBadge({
+  children,
+  variant,
+}: {
+  children: React.ReactNode;
+  variant?: "muted" | "active" | "warn";
+}) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] leading-none",
         variant === "active" && "border-ring/30 bg-ring/10 text-foreground",
-        variant === "warn" && "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        variant === "warn" &&
+          "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
         (!variant || variant === "muted") && "border-border bg-muted text-muted-foreground",
       )}
     >
@@ -69,10 +76,14 @@ function RecallTraceContent({ data }: { data: RecallTraceData }) {
         </span>
       </TraceRow>
       <TraceRow label="fetch limit">
-        <span className="font-mono text-xs text-muted-foreground">{data.trace.fetch_limit_used}</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {data.trace.fetch_limit_used}
+        </span>
       </TraceRow>
       <TraceRow label="token estimate">
-        <span className="font-mono text-xs text-muted-foreground">{data.token_estimate.toLocaleString()}</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {data.token_estimate.toLocaleString()}
+        </span>
         {data.trace.token_budget_exhausted && (
           <TraceBadge variant="warn">budget exhausted</TraceBadge>
         )}
@@ -96,9 +107,7 @@ function BrowseTraceContent({ data }: { data: BrowseTraceData }) {
       </TraceRow>
       <TraceRow label="total">
         <span className="font-mono text-xs text-muted-foreground">{data.total}</span>
-        {data.has_more && (
-          <TraceBadge variant="muted">has more</TraceBadge>
-        )}
+        {data.has_more && <TraceBadge variant="muted">has more</TraceBadge>}
       </TraceRow>
       {data.trace.filter_set.length > 0 && (
         <TraceRow label="filters">
@@ -126,9 +135,7 @@ export function TracePanel({ data }: { data: TraceData }) {
         onClick={() => setOpen((p) => !p)}
         className="flex w-full items-center justify-between px-3 py-1.5 font-mono text-[10px] text-muted-foreground/70 transition-colors hover:text-muted-foreground"
       >
-        <span className="uppercase tracking-wider">
-          {data.kind} trace
-        </span>
+        <span className="uppercase tracking-wider">{data.kind} trace</span>
         <span>{open ? "\u25B4" : "\u25BE"}</span>
       </button>
       {open && (

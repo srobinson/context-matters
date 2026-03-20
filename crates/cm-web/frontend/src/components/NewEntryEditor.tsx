@@ -1,12 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import type { Stats } from "@/api/client";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { EntryMeta } from "@/api/generated/EntryMeta";
-import type { Stats } from "@/api/client";
 import { useCreateEntry, useStats } from "@/api/hooks";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "./composed/TagInput";
 
 const ALL_KINDS: EntryKind[] = [
@@ -27,12 +27,7 @@ const ALL_KINDS: EntryKind[] = [
   "observation",
 ];
 
-const ALL_CONFIDENCES: (Confidence | "none")[] = [
-  "none",
-  "high",
-  "medium",
-  "low",
-];
+const ALL_CONFIDENCES: (Confidence | "none")[] = ["none", "high", "medium", "low"];
 
 interface NewEntryEditorProps {
   onCancel: () => void;
@@ -145,10 +140,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
           <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             confidence
           </label>
-          <Select
-            value={confidence}
-            onValueChange={(v) => setConfidence(v as Confidence | "none")}
-          >
+          <Select value={confidence} onValueChange={(v) => setConfidence(v as Confidence | "none")}>
             <SelectTrigger className="h-7 w-[120px] font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -168,10 +160,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope
         </label>
-        <Select
-          value={scopePath}
-          onValueChange={(value) => setScopePath(value ?? "global")}
-        >
+        <Select value={scopePath} onValueChange={(value) => setScopePath(value ?? "global")}>
           <SelectTrigger className="h-7 w-full font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -180,9 +169,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
                 {opt.count != null && (
-                  <span className="ml-1 text-muted-foreground/60">
-                    ({opt.count})
-                  </span>
+                  <span className="ml-1 text-muted-foreground/60">({opt.count})</span>
                 )}
               </SelectItem>
             ))}
@@ -195,12 +182,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
         <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           tags
         </label>
-        <TagInput
-          value={tags}
-          onChange={setTags}
-          suggestions={tagSuggestions}
-          maxSuggestions={8}
-        />
+        <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} maxSuggestions={8} />
       </div>
 
       {/* Actions */}
@@ -222,9 +204,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
           cancel
         </button>
         {createEntry.isError && (
-          <span className="font-mono text-xs text-destructive">
-            {createEntry.error.message}
-          </span>
+          <span className="font-mono text-xs text-destructive">{createEntry.error.message}</span>
         )}
       </div>
     </div>
@@ -232,7 +212,8 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
 }
 
 function buildScopeOptions(stats: Stats | undefined) {
-  if (!stats?.scope_tree) return [{ value: "global", label: "global", count: undefined as number | undefined }];
+  if (!stats?.scope_tree)
+    return [{ value: "global", label: "global", count: undefined as number | undefined }];
   return stats.scope_tree.map((node) => ({
     value: node.path,
     label: node.path,

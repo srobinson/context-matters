@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
+import { ArrowUpRight } from "lucide-react";
 import type { Entry } from "@/api/generated/Entry";
 import { useEntries } from "@/api/hooks";
 import { EntrySummary } from "./composed/EntrySummary";
-import { ArrowUpRight } from "lucide-react";
 
 export function RecentActivity() {
   const { data, isLoading } = useEntries({ sort: "recent", limit: 8 });
@@ -42,9 +42,7 @@ export function RecentActivity() {
       )}
 
       {!isLoading && entries.length === 0 && (
-        <p className="font-mono text-xs text-muted-foreground">
-          No entries yet.
-        </p>
+        <p className="font-mono text-xs text-muted-foreground">No entries yet.</p>
       )}
 
       {entries.length > 0 && (

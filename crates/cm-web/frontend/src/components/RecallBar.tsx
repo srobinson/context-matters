@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { EntryKind } from "@/api/generated/EntryKind";
 import type { Stats } from "@/api/client";
+import type { EntryKind } from "@/api/generated/EntryKind";
 import { useStats } from "@/api/hooks";
 import { TagInput } from "@/components/composed/TagInput";
 import { Input } from "@/components/ui/input";
@@ -88,10 +88,7 @@ export function RecallBar({
           <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             scope
           </label>
-          <Select
-            value={scope}
-            onValueChange={(value) => onScopeChange(value ?? undefined)}
-          >
+          <Select value={scope} onValueChange={(value) => onScopeChange(value ?? undefined)}>
             <SelectTrigger className="w-full font-mono text-xs">
               <SelectValue placeholder="Any scope" />
             </SelectTrigger>
@@ -176,9 +173,7 @@ export function RecallBar({
                 type="button"
                 onClick={() =>
                   onKindsChange(
-                    selected
-                      ? kinds.filter((value) => value !== kind)
-                      : [...kinds, kind],
+                    selected ? kinds.filter((value) => value !== kind) : [...kinds, kind],
                   )
                 }
                 className={cn(

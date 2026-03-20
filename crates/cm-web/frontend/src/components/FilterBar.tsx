@@ -1,11 +1,8 @@
 import { useCallback, useMemo } from "react";
-import type { EntryKind } from "@/api/generated/EntryKind";
 import type { Stats } from "@/api/client";
+import type { EntryKind } from "@/api/generated/EntryKind";
 import { useStats } from "@/api/hooks";
-import {
-  FilterBar as ComposedFilterBar,
-  type FacetDefinition,
-} from "./composed/FilterBar";
+import { FilterBar as ComposedFilterBar, type FacetDefinition } from "./composed/FilterBar";
 
 const ALL_KINDS: EntryKind[] = [
   "fact",
@@ -70,13 +67,10 @@ export function FilterBar({
     });
   }, [onChange]);
 
-  const chipLabel = useCallback(
-    (key: string, value: string | boolean) => {
-      if (typeof value === "boolean") return CHIP_LABELS[key] ?? key;
-      return `${CHIP_LABELS[key] ?? key}:${value}`;
-    },
-    [],
-  );
+  const chipLabel = useCallback((key: string, value: string | boolean) => {
+    if (typeof value === "boolean") return CHIP_LABELS[key] ?? key;
+    return `${CHIP_LABELS[key] ?? key}:${value}`;
+  }, []);
 
   return (
     <ComposedFilterBar

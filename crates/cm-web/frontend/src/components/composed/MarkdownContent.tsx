@@ -39,7 +39,10 @@ function extractLeadingFrontmatter(source: string) {
   }
 
   const rawLines = lines.slice(1, closingIndex);
-  const body = lines.slice(closingIndex + 1).join("\n").replace(/^\n+/, "");
+  const body = lines
+    .slice(closingIndex + 1)
+    .join("\n")
+    .replace(/^\n+/, "");
   const fields = parseFrontmatterFields(rawLines);
 
   return {
@@ -72,13 +75,8 @@ function parseFrontmatterFields(lines: string[]): FrontmatterField[] {
       continue;
     }
 
-    if (
-      current &&
-      (line.startsWith("  ") || line.startsWith("\t") || line.startsWith("- "))
-    ) {
-      current.value = current.value
-        ? `${current.value}\n${line.trim()}`
-        : line.trim();
+    if (current && (line.startsWith("  ") || line.startsWith("\t") || line.startsWith("- "))) {
+      current.value = current.value ? `${current.value}\n${line.trim()}` : line.trim();
       continue;
     }
 
@@ -120,7 +118,7 @@ function FrontmatterPanel({
     );
   }
 
-  if (raw && raw.trim()) {
+  if (raw?.trim()) {
     return (
       <section className="not-prose rounded-lg border border-border/80 bg-muted/40 p-3">
         <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/70">
@@ -136,10 +134,7 @@ function FrontmatterPanel({
   return null;
 }
 
-export function MarkdownContent({
-  children,
-  className,
-}: MarkdownContentProps) {
+export function MarkdownContent({ children, className }: MarkdownContentProps) {
   const { fields, raw, body } = extractLeadingFrontmatter(children);
 
   return (
