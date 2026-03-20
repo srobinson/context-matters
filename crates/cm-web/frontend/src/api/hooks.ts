@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import {
   api,
+  type AgentRecallResponse,
   type BrowseParams,
   type EntryDetail,
   type RecallParams,
@@ -29,6 +30,9 @@ export const queryKeys = {
     detail: (id: string) => ["entries", "detail", id] as const,
     recall: (params: RecallParams) => ["entries", "recall", params] as const,
     search: (params: SearchParams) => ["entries", "search", params] as const,
+  },
+  agent: {
+    recall: (params: RecallParams) => ["agent", "recall", params] as const,
   },
   stats: ["stats"] as const,
   mutations: {
@@ -88,6 +92,17 @@ export function useRecall(
   return useQuery({
     queryKey: queryKeys.entries.recall(params),
     queryFn: () => api.entries.recall(params),
+    ...options,
+  });
+}
+
+export function useAgentRecall(
+  params: RecallParams,
+  options?: Partial<UseQueryOptions<AgentRecallResponse>>,
+) {
+  return useQuery({
+    queryKey: queryKeys.agent.recall(params),
+    queryFn: () => api.agent.recall(params),
     ...options,
   });
 }

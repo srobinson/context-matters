@@ -172,6 +172,17 @@ export interface RecallResponse {
   token_estimate: number;
 }
 
+export interface RecallTraceInfo {
+  routing: string;
+  candidates_before_filter: number;
+  fetch_limit_used: number;
+  token_budget_exhausted: boolean;
+}
+
+export interface AgentRecallResponse extends RecallResponse {
+  _trace: RecallTraceInfo;
+}
+
 // --- API namespace ---
 
 export const api = {
@@ -246,6 +257,21 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ old_id: oldId, new_entry: newEntry }),
       });
+    },
+  },
+
+  agent: {
+    recall(params: RecallParams): Promise<AgentRecallResponse> {
+      return apiFetch(
+        `/agent/recall${toSearchParams({
+          query: params.query,
+          scope: params.scope,
+          kinds: params.kinds,
+          tags: params.tags,
+          limit: params.limit,
+          max_tokens: params.max_tokens,
+        })}`,
+      );
     },
   },
 

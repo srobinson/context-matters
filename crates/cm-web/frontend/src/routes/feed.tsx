@@ -9,11 +9,11 @@ import {
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
-import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import { useEntries, useRecall } from "@/api/hooks";
-import type { RecallHit } from "@/api/client";
+import { useEntries, useAgentRecall } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
+import { SnippetCard } from "@/components/SnippetCard";
+import { TracePanel } from "@/components/TracePanel";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { MergePanel } from "@/components/MergePanel";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
@@ -241,7 +241,7 @@ function FeedPage() {
     limit: 20,
   });
 
-  const recallQuery = useRecall({
+  const recallQuery = useAgentRecall({
     query: debouncedQuery || undefined,
     scope: recallScope,
     kinds: recallKinds,
@@ -257,23 +257,19 @@ function FeedPage() {
     () => browseData?.pages.flatMap((page) => page.items) ?? [],
     [browseData],
   );
-  const recallEntries = useMemo(
-    () => recallQuery.data?.results.map((result) => recallHitToEntry(result)) ?? [],
-    [recallQuery.data],
-  );
+  const recallResults = recallQuery.data?.results ?? [];
 
-  const entries = isRecallMode ? recallEntries : browseEntries;
+  // Curate mode uses browseEntries; recall mode uses recallResults rendered separately
+  const entries = isRecallMode ? [] : browseEntries;
   const totalCount = isRecallMode
     ? recallQuery.data?.returned ?? 0
     : browseData?.pages[0]?.total ?? 0;
   const isLoading = isRecallMode ? recallQuery.isLoading : browseQuery.isLoading;
   const isError = isRecallMode ? recallQuery.isError : browseQuery.isError;
   const error = isRecallMode ? recallQuery.error : browseQuery.error;
-  const hasNextPage = isRecallMode ? false : browseQuery.hasNextPage;
+  const hasNextPage = browseQuery.hasNextPage;
   const fetchNextPage = browseQuery.fetchNextPage;
-  const isFetchingNextPage = isRecallMode
-    ? false
-    : browseQuery.isFetchingNextPage;
+  const isFetchingNextPage = browseQuery.isFetchingNextPage;
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -345,10 +341,10 @@ function FeedPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {!isBrowseMode && entries.length > 0 && (
+          {!isBrowseMode && (isRecallMode ? recallResults.length > 0 : entries.length > 0) && (
             <span className="font-mono text-xs text-muted-foreground">
-              {entries.length}
-              {totalCount > entries.length && ` / ${totalCount}`}
+              {isRecallMode ? recallResults.length : entries.length}
+              {!isRecallMode && totalCount > entries.length && ` / ${totalCount}`}
               {isRecallMode ? " results" : " entries"}
             </span>
           )}
@@ -441,6 +437,54 @@ function FeedPage() {
         />
       )}
 
+      {isRecallMode && recallQuery.isLoading && (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Recalling...</p>
+        </div>
+      )}
+
+      {isRecallMode && recallQuery.isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">
+            Recall failed: {recallQuery.error?.message ?? "Unknown error"}
+          </p>
+        </div>
+      )}
+
+      {isRecallMode && recallQuery.data && (
+        <>
+          <TracePanel
+            data={{
+              kind: "recall",
+              trace: recallQuery.data._trace,
+              scope_chain: recallQuery.data.scope_chain,
+              token_estimate: recallQuery.data.token_estimate,
+              returned: recallQuery.data.returned,
+            }}
+          />
+          {recallResults.length === 0 ? (
+            <div className="rounded-lg border border-border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                {debouncedQuery
+                  ? `No results for "${debouncedQuery}".`
+                  : "No recall results."}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recallResults.map((hit) => (
+                <SnippetCard
+                  key={hit.id}
+                  entry={hit}
+                  isExpanded={expandedId === hit.id}
+                  onToggle={() => toggleExpanded(hit.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {isBrowseMode && (
         <div className="rounded-lg border border-dashed border-border bg-card/50 p-8 text-center">
           <p className="font-mono text-xs text-muted-foreground">
@@ -449,19 +493,16 @@ function FeedPage() {
         </div>
       )}
 
-      {!isBrowseMode && isLoading && (
+      {activeMode === "curate" && isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            {isRecallMode ? "Recalling..." : "Loading entries..."}
-          </p>
+          <p className="text-sm text-muted-foreground">Loading entries...</p>
         </div>
       )}
 
-      {!isBrowseMode && isError && (
+      {activeMode === "curate" && isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">
-            {isRecallMode ? "Recall failed" : "Failed to load entries"}:{" "}
-            {error?.message ?? "Unknown error"}
+            Failed to load entries: {error?.message ?? "Unknown error"}
           </p>
         </div>
       )}
@@ -497,19 +538,13 @@ function FeedPage() {
         />
       )}
 
-      {!isBrowseMode && !isLoading && entries.length === 0 && !isError && !showNewEntry && (
+      {activeMode === "curate" && !isLoading && entries.length === 0 && !isError && !showNewEntry && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            {isRecallMode
-              ? debouncedQuery
-                ? `No results for "${debouncedQuery}".`
-                : "No recall results."
-              : "No entries found."}
-          </p>
+          <p className="text-sm text-muted-foreground">No entries found.</p>
         </div>
       )}
 
-      {!isBrowseMode && entries.length > 0 && (
+      {activeMode === "curate" && entries.length > 0 && (
         <div className="space-y-2">
           {entries.map((entry) => (
             <div
@@ -562,7 +597,7 @@ function FeedPage() {
             </div>
           ))}
 
-          {!isRecallMode && <div ref={sentinelRef} className="h-1" />}
+          <div ref={sentinelRef} className="h-1" />
 
           {isFetchingNextPage && (
             <div className="py-4 text-center">
@@ -575,28 +610,6 @@ function FeedPage() {
       )}
     </div>
   );
-}
-
-function recallHitToEntry(hit: RecallHit) {
-  return {
-    id: hit.id,
-    scope_path: hit.scope_path,
-    kind: hit.kind,
-    title: hit.title,
-    body: hit.snippet,
-    content_hash: "",
-    meta:
-      (hit.tags && hit.tags.length > 0) || hit.confidence
-        ? {
-            tags: hit.tags,
-            confidence: (hit.confidence ?? null) as Confidence | null,
-          }
-        : undefined,
-    created_by: hit.created_by,
-    created_at: hit.updated_at,
-    updated_at: hit.updated_at,
-    superseded_by: null,
-  };
 }
 
 const ENTRY_KINDS: ReadonlySet<string> = new Set([
