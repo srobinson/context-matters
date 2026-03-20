@@ -714,3 +714,37 @@ async fn result_includes_trace_metadata() {
     assert_eq!(result.fetch_limit_used, 60);
     assert_eq!(result.routing, RecallRouting::Search);
 }
+
+// ── BrowseFallback multi-kind filtering ─────────────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_fallback_filters_multiple_kinds() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "A fact", "Body A.", EntryKind::Fact).await;
+    seed_entry(&store, "A decision", "Body B.", EntryKind::Decision).await;
+    seed_entry(&store, "A lesson", "Body C.", EntryKind::Lesson).await;
+    seed_entry(&store, "A pattern", "Body D.", EntryKind::Pattern).await;
+
+    // No query, no scope, no tags -> BrowseFallback, with multi-kind filter
+    let result = recall(
+        &store,
+        RecallRequest {
+            kinds: vec![EntryKind::Fact, EntryKind::Decision],
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.entries.len(), 2);
+    for entry in &result.entries {
+        assert!(
+            entry.kind == EntryKind::Fact || entry.kind == EntryKind::Decision,
+            "unexpected kind: {:?}",
+            entry.kind,
+        );
+    }
+}

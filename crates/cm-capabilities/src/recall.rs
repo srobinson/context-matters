@@ -59,8 +59,11 @@ pub async fn recall(
     let (raw_entries, routing) = route_query(store, &request, fetch_limit).await?;
     let candidates_before_filter = raw_entries.len();
 
-    // Post-filter by kinds (only for search path; resolve_context handles kinds internally)
-    let entries = if request.query.is_some() && !request.kinds.is_empty() {
+    // Post-filter by kinds. Some routing paths (ScopeResolve, TagScopeWalk)
+    // already filter internally, making this a no-op for those paths.
+    // BrowseFallback and Search need this when kinds.len() > 1 since
+    // EntryFilter.kind only accepts a single Option<EntryKind>.
+    let entries = if !request.kinds.is_empty() {
         raw_entries
             .into_iter()
             .filter(|e| request.kinds.contains(&e.kind))

@@ -200,6 +200,14 @@ async fn browse_handler(
     State(state): State<Arc<AppState>>,
     Query(bq): Query<BrowseQuery>,
 ) -> Result<Json<AgentBrowseResponse>, ApiError> {
+    if let Some(ref t) = bq.tag {
+        check_input_size(t, "tag").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
+    if let Some(ref c) = bq.created_by {
+        check_input_size(c, "created_by")
+            .map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
+
     let scope_path = bq
         .scope_path
         .map(|s| ScopePath::parse(&s))
