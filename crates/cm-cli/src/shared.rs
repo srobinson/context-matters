@@ -5,12 +5,16 @@
 use cm_core::{
     CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath, WriteContext,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 // ── Re-exports from cm-capabilities ──────────────────────────────
 
 pub use cm_capabilities::constants::{
     DEFAULT_LIMIT, MAX_BATCH_IDS, MAX_INPUT_BYTES, MAX_LIMIT, SNIPPET_LENGTH,
+};
+pub use cm_capabilities::projection::{
+    BrowseEntryView, FullEntryView, RecallEntryView, entry_has_any_tag, estimate_tokens,
+    project_browse_entry, project_full_entry, project_recall_entry, snippet,
 };
 pub use cm_capabilities::validation::{check_input_size, clamp_limit, parse_confidence};
 
@@ -65,35 +69,10 @@ pub fn cm_err_to_string(e: CmError) -> String {
 
 // ── Input Validation (re-exported from cm-capabilities above) ────
 
-// ── Text Helpers ──────────────────────────────────────────────────
-
-/// Truncate body to a snippet, safe for multi-byte UTF-8.
-///
-/// Uses `floor_char_boundary` (stable since Rust 1.82) to avoid
-/// panicking on multi-byte character boundaries. Tries to break
-/// at a word boundary for readability.
-pub fn snippet(body: &str, max_bytes: usize) -> String {
-    if body.len() <= max_bytes {
-        return body.to_owned();
-    }
-    let end = body.floor_char_boundary(max_bytes);
-    match body[..end].rfind(' ') {
-        Some(pos) => format!("{}...", &body[..pos]),
-        None => format!("{}...", &body[..end]),
-    }
-}
-
-/// Rough token estimate: ~4 characters per token for English text.
-pub fn estimate_tokens(text: &str) -> u32 {
-    (text.len() as u32).div_ceil(4)
-}
-
 /// Serialize a JSON value to a pretty-printed string for the response.
 pub fn json_response(value: Value) -> Result<String, String> {
     serde_json::to_string_pretty(&value).map_err(|e| format!("[json] {e}"))
 }
-
-// ── Confidence (re-exported from cm-capabilities above) ──────────
 
 // ── Serde Defaults ────────────────────────────────────────────────
 
@@ -107,78 +86,21 @@ pub fn default_created_by() -> String {
     "agent:claude-code".to_owned()
 }
 
-// ── Entry Formatting ──────────────────────────────────────────────
+// ── Entry Formatting (legacy JSON wrappers, delegates to cm-capabilities) ──
 
 /// Convert an entry to the two-phase recall response format (snippet, not full body).
 pub fn entry_to_recall_json(entry: &Entry) -> Value {
-    let mut result = json!({
-        "id": entry.id.to_string(),
-        "scope_path": entry.scope_path.as_str(),
-        "kind": entry.kind.as_str(),
-        "title": &entry.title,
-        "snippet": snippet(&entry.body, SNIPPET_LENGTH),
-        "created_by": &entry.created_by,
-        "updated_at": entry.updated_at.to_rfc3339(),
-    });
-
-    if let Some(ref meta) = entry.meta {
-        if !meta.tags.is_empty() {
-            result["tags"] = json!(meta.tags);
-        }
-        if let Some(ref confidence) = meta.confidence {
-            result["confidence"] = json!(confidence);
-        }
-    }
-
-    result
+    serde_json::to_value(project_recall_entry(entry)).expect("RecallEntryView serializes")
 }
 
 /// Convert an entry to the browse response format (two-phase: snippet, not full body).
 pub fn entry_to_browse_json(entry: &Entry) -> Value {
-    let mut result = json!({
-        "id": entry.id.to_string(),
-        "scope_path": entry.scope_path.as_str(),
-        "kind": entry.kind.as_str(),
-        "title": &entry.title,
-        "snippet": snippet(&entry.body, SNIPPET_LENGTH),
-        "created_by": &entry.created_by,
-        "created_at": entry.created_at.to_rfc3339(),
-        "updated_at": entry.updated_at.to_rfc3339(),
-        "superseded_by": entry.superseded_by.map(|id| id.to_string()),
-    });
-
-    if let Some(ref meta) = entry.meta
-        && !meta.tags.is_empty()
-    {
-        result["tags"] = json!(meta.tags);
-    }
-
-    result
+    serde_json::to_value(project_browse_entry(entry)).expect("BrowseEntryView serializes")
 }
 
 /// Convert an entry to the full response format (includes body).
 pub fn entry_to_full_json(entry: &Entry) -> Value {
-    json!({
-        "id": entry.id.to_string(),
-        "scope_path": entry.scope_path.as_str(),
-        "kind": entry.kind.as_str(),
-        "title": &entry.title,
-        "body": &entry.body,
-        "content_hash": &entry.content_hash,
-        "meta": &entry.meta,
-        "created_by": &entry.created_by,
-        "created_at": entry.created_at.to_rfc3339(),
-        "updated_at": entry.updated_at.to_rfc3339(),
-        "superseded_by": entry.superseded_by.map(|id| id.to_string()),
-    })
-}
-
-/// Check whether an entry has any of the specified tags.
-pub fn entry_has_any_tag(entry: &Entry, tags: &[String]) -> bool {
-    match &entry.meta {
-        Some(meta) => meta.tags.iter().any(|t| tags.contains(t)),
-        None => false,
-    }
+    serde_json::to_value(project_full_entry(entry)).expect("FullEntryView serializes")
 }
 
 /// Browse through scopes and pages until enough no-query recall matches are found.
@@ -297,27 +219,6 @@ pub async fn ensure_scope_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn snippet_short_text_unchanged() {
-        assert_eq!(snippet("hello world", 200), "hello world");
-    }
-
-    #[test]
-    fn snippet_truncates_at_word_boundary() {
-        let long_text = "a ".repeat(150);
-        let result = snippet(&long_text, 200);
-        assert!(result.ends_with("..."));
-        assert!(result.len() <= 210); // 200 + "..."
-    }
-
-    #[test]
-    fn estimate_tokens_rough_accuracy() {
-        assert_eq!(estimate_tokens(""), 0);
-        assert_eq!(estimate_tokens("abcd"), 1);
-        assert_eq!(estimate_tokens("abcdefgh"), 2);
-        assert_eq!(estimate_tokens("abc"), 1); // 3 chars rounds up to 1 token
-    }
 
     #[test]
     fn cm_err_to_string_includes_recovery_guidance() {
