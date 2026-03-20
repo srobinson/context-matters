@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/srobinson/context-matters/compare/v0.1.9...v0.1.10) (2026-03-20)
+
+
+### Bug Fixes
+
+* improve cx_recall query guidance and add zero-result hints ([#17](https://github.com/srobinson/context-matters/issues/17)) ([a2a1382](https://github.com/srobinson/context-matters/commit/a2a138292b91e2c4bc6ccf11efb568f016e57c06))
+
 ## [0.1.9](https://github.com/srobinson/context-matters/compare/v0.1.8...v0.1.9) (2026-03-20)
 
 
