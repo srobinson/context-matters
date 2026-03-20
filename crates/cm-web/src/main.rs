@@ -4,13 +4,12 @@ use axum::http::{StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use clap::Parser;
 use cm_store::CmStore;
+use cm_web::AppState;
 use rust_embed::Embed;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
-
-mod api;
 
 #[derive(Embed)]
 #[folder = "frontend/dist/"]
@@ -34,11 +33,6 @@ struct Cli {
     /// Enable verbose debug output
     #[arg(long)]
     verbose: bool,
-}
-
-/// Shared application state passed to all handlers.
-pub struct AppState {
-    pub store: CmStore,
 }
 
 #[tokio::main]
@@ -71,7 +65,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState { store });
 
     let app = Router::new()
-        .nest("/api", api::router(state.clone()))
+        .nest("/api", cm_web::api::router(state.clone()))
         .fallback(spa_handler)
         .layer(
             TraceLayer::new_for_http()
