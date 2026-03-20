@@ -6,7 +6,7 @@ pub fn generated_tool_list() -> serde_json::Value {
 serde_json::from_str(r##"{
   "tools": [
     {
-      "description": "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body.",
+      "description": "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.",
       "inputSchema": {
         "properties": {
           "kinds": {
@@ -25,7 +25,7 @@ serde_json::from_str(r##"{
             "type": "integer"
           },
           "query": {
-            "description": "FTS5 search query. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Omit to return all entries at the target scope via ancestor walk.",
+            "description": "FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Use OR between synonyms: 'auth OR authentication'. Omit to return all entries at the target scope via ancestor walk.",
             "type": "string"
           },
           "scope": {
