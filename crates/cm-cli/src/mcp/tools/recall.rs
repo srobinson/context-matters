@@ -1,38 +1,33 @@
 //! Handler for the `cx_recall` tool.
 
-use cm_core::{ContextStore, Entry, EntryKind, ScopePath};
+use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::validation::{check_input_size, clamp_limit};
+use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{check_input_size, clamp_limit, cm_err_to_string, estimate_tokens, json_response};
-use crate::shared::recall_candidates_without_query;
+use crate::mcp::{cm_err_to_string, json_response};
 
-use super::{entry_has_any_tag, entry_to_recall_json};
+use super::entry_to_recall_json;
 
 /// Parameters for the `cx_recall` tool.
 #[derive(Debug, Deserialize)]
 struct CxRecallParams {
-    /// FTS5 search query. When omitted, uses scope resolution instead.
     #[serde(default)]
     query: Option<String>,
 
-    /// Scope path to search within. Defaults to "global".
     #[serde(default)]
     scope: Option<String>,
 
-    /// Filter to specific entry kinds (OR semantics).
     #[serde(default)]
     kinds: Vec<String>,
 
-    /// Filter to entries with any of these tags (OR semantics).
     #[serde(default)]
     tags: Vec<String>,
 
-    /// Maximum number of entries to return.
     #[serde(default)]
     limit: Option<u32>,
 
-    /// Maximum token budget for the response.
     #[serde(default)]
     max_tokens: Option<u32>,
 }
@@ -46,14 +41,14 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
         check_input_size(q, "query")?;
     }
 
-    // Parse and validate scope path (None = search all scopes)
-    let scope_path = match &params.scope {
+    // Parse and validate scope path
+    let scope = match &params.scope {
         Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
         None => None,
     };
 
     // Parse kind filters
-    let kind_filters: Vec<EntryKind> = params
+    let kinds: Vec<EntryKind> = params
         .kinds
         .iter()
         .map(|k| k.parse::<EntryKind>().map_err(cm_err_to_string))
@@ -61,113 +56,29 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
 
     let limit = clamp_limit(params.limit);
 
-    // Fetch more than requested when post-filtering, to compensate for filtered-out entries
-    let has_post_filter = !kind_filters.is_empty() || !params.tags.is_empty();
-    let fetch_limit = if has_post_filter {
-        limit.saturating_mul(3).min(crate::shared::MAX_LIMIT)
-    } else {
-        limit
-    };
+    // Delegate to RecallCapability
+    let result = recall::recall(
+        store,
+        RecallRequest {
+            query: params.query,
+            scope,
+            kinds,
+            tags: params.tags,
+            limit,
+            max_tokens: params.max_tokens,
+        },
+    )
+    .await
+    .map_err(cm_err_to_string)?;
 
-    // Route to search or resolve_context based on query presence.
-    // When scope is None, search is unscoped (all entries).
-    // When scope is set, search narrows to that scope + ancestors.
-    let entries = match &params.query {
-        Some(query) => store
-            .search(query, scope_path.as_ref(), fetch_limit)
-            .await
-            .map_err(cm_err_to_string)?,
-        None => {
-            if params.tags.is_empty() {
-                match &scope_path {
-                    Some(sp) => store
-                        .resolve_context(sp, &kind_filters, fetch_limit)
-                        .await
-                        .map_err(cm_err_to_string)?,
-                    None => {
-                        let filter = cm_core::EntryFilter {
-                            kind: if kind_filters.len() == 1 {
-                                Some(kind_filters[0])
-                            } else {
-                                None
-                            },
-                            pagination: cm_core::Pagination {
-                                limit: fetch_limit,
-                                cursor: None,
-                            },
-                            ..Default::default()
-                        };
-                        let paged = store.browse(filter).await.map_err(cm_err_to_string)?;
-                        paged.items
-                    }
-                }
-            } else {
-                recall_candidates_without_query(
-                    store,
-                    scope_path.as_ref(),
-                    &kind_filters,
-                    &params.tags,
-                    limit,
-                )
-                .await
-                .map_err(cm_err_to_string)?
-            }
-        }
-    };
-
-    // Post-filter by kinds (only when using search path, since resolve_context handles kinds internally)
-    let entries = if params.query.is_some() && !kind_filters.is_empty() {
-        entries
-            .into_iter()
-            .filter(|e| kind_filters.contains(&e.kind))
-            .collect()
-    } else {
-        entries
-    };
-
-    // Post-filter by tags
-    let entries: Vec<Entry> = if params.tags.is_empty() {
-        entries
-    } else {
-        entries
-            .into_iter()
-            .filter(|e| entry_has_any_tag(e, &params.tags))
-            .collect()
-    };
-
-    // Apply limit after post-filtering
-    let entries: Vec<Entry> = entries.into_iter().take(limit as usize).collect();
-
-    // Build scope chain from the target scope (empty when unscoped)
-    let scope_chain: Vec<String> = match &scope_path {
-        Some(sp) => sp.ancestors().map(String::from).collect(),
-        None => Vec::new(),
-    };
-
-    // Build result entries with token budget tracking
-    let mut results = Vec::with_capacity(entries.len());
-    let mut total_tokens: u32 = 0;
-
-    for entry in &entries {
-        let entry_json = entry_to_recall_json(entry);
-        let entry_tokens = estimate_tokens(&entry_json.to_string());
-
-        if let Some(budget) = params.max_tokens
-            && total_tokens + entry_tokens > budget
-            && !results.is_empty()
-        {
-            break;
-        }
-
-        total_tokens += entry_tokens;
-        results.push(entry_json);
-    }
+    // Map entries through the legacy JSON projection for MCP envelope
+    let results: Vec<Value> = result.entries.iter().map(entry_to_recall_json).collect();
 
     let response = json!({
         "results": results,
         "returned": results.len(),
-        "scope_chain": scope_chain,
-        "token_estimate": total_tokens,
+        "scope_chain": result.scope_chain,
+        "token_estimate": result.token_estimate,
     });
 
     json_response(response)

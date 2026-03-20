@@ -26,6 +26,6 @@ pub use update::cx_update;
 
 // Re-export shared helpers used by tool handlers.
 pub(crate) use crate::shared::{
-    default_created_by, default_scope, entry_has_any_tag, entry_to_browse_json, entry_to_full_json,
+    default_created_by, default_scope, entry_to_browse_json, entry_to_full_json,
     entry_to_recall_json, parse_confidence,
 };
