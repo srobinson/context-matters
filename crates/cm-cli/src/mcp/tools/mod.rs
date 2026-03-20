@@ -24,8 +24,10 @@ pub use stats::cx_stats;
 pub use store::cx_store;
 pub use update::cx_update;
 
-// Re-export shared helpers used by tool handlers.
+// Re-export helpers used by tool handlers.
+pub(crate) use cm_capabilities::validation::parse_confidence;
+
 pub(crate) use crate::shared::{
     default_created_by, default_scope, entry_to_browse_json, entry_to_full_json,
-    entry_to_recall_json, parse_confidence,
+    entry_to_recall_json,
 };
