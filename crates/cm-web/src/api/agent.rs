@@ -6,21 +6,26 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{RawQuery, State};
+use axum::extract::{Query, RawQuery, State};
 use axum::response::Json;
 use axum::routing::get;
-use cm_capabilities::projection::{RecallEntryView, project_recall_entry};
+use cm_capabilities::browse::{self, BrowseRequest};
+use cm_capabilities::projection::{
+    BrowseEntryView, RecallEntryView, project_browse_entry, project_recall_entry,
+};
 use cm_capabilities::recall::{self, RecallRequest, RecallRouting};
 use cm_capabilities::validation::{check_input_size, clamp_limit};
-use cm_core::{EntryKind, ScopePath};
-use serde::Serialize;
+use cm_core::{BrowseSort, EntryKind, ScopePath};
+use serde::{Deserialize, Serialize};
 use url::form_urlencoded;
 
 use crate::AppState;
 use crate::api::error::ApiError;
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/agent/recall", get(recall_handler))
+    Router::new()
+        .route("/agent/recall", get(recall_handler))
+        .route("/agent/browse", get(browse_handler))
 }
 
 // ── Query parsing ────────────────────────────────────────────────
@@ -158,6 +163,100 @@ async fn recall_handler(
             candidates_before_filter: result.candidates_before_filter,
             fetch_limit_used: result.fetch_limit_used,
             token_budget_exhausted,
+        },
+    }))
+}
+
+// ── Browse ──────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct BrowseQuery {
+    scope_path: Option<String>,
+    kind: Option<String>,
+    tag: Option<String>,
+    created_by: Option<String>,
+    include_superseded: Option<bool>,
+    limit: Option<u32>,
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AgentBrowseResponse {
+    entries: Vec<BrowseEntryView>,
+    total: u64,
+    has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_cursor: Option<String>,
+    _trace: BrowseTrace,
+}
+
+#[derive(Debug, Serialize)]
+struct BrowseTrace {
+    filter_set: Vec<String>,
+    sort: String,
+}
+
+async fn browse_handler(
+    State(state): State<Arc<AppState>>,
+    Query(bq): Query<BrowseQuery>,
+) -> Result<Json<AgentBrowseResponse>, ApiError> {
+    let scope_path = bq
+        .scope_path
+        .map(|s| ScopePath::parse(&s))
+        .transpose()
+        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+
+    let kind = bq
+        .kind
+        .map(|k| k.parse::<EntryKind>().map_err(ApiError))
+        .transpose()?;
+
+    let limit = clamp_limit(bq.limit);
+
+    // Track which filters are active for the trace
+    let mut filter_set = Vec::new();
+    if scope_path.is_some() {
+        filter_set.push("scope_path".to_owned());
+    }
+    if kind.is_some() {
+        filter_set.push("kind".to_owned());
+    }
+    if bq.tag.is_some() {
+        filter_set.push("tag".to_owned());
+    }
+    if bq.created_by.is_some() {
+        filter_set.push("created_by".to_owned());
+    }
+    if bq.include_superseded.unwrap_or(false) {
+        filter_set.push("include_superseded".to_owned());
+    }
+
+    let result = browse::browse(
+        &state.store,
+        BrowseRequest {
+            scope_path,
+            kind,
+            tag: bq.tag,
+            created_by: bq.created_by,
+            include_superseded: bq.include_superseded.unwrap_or(false),
+            sort: BrowseSort::Recent,
+            limit,
+            cursor: bq.cursor,
+        },
+    )
+    .await
+    .map_err(ApiError)?;
+
+    let entries: Vec<BrowseEntryView> = result.entries.iter().map(project_browse_entry).collect();
+
+    Ok(Json(AgentBrowseResponse {
+        total: result.total,
+        has_more: result.has_more,
+        next_cursor: result.next_cursor,
+        entries,
+        _trace: BrowseTrace {
+            filter_set,
+            sort: "recent".to_owned(),
         },
     }))
 }
