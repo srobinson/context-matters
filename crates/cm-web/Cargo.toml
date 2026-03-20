@@ -36,7 +36,6 @@ open = "5"
 url = "2"
 
 [dev-dependencies]
-cm-cli = { workspace = true }
 http-body-util = "0.1"
 tempfile = "3"
 tower = "0.5"

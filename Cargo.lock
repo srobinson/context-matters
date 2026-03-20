@@ -406,7 +406,6 @@ dependencies = [
  "chrono",
  "clap",
  "cm-capabilities",
- "cm-cli",
  "cm-core",
  "cm-store",
  "http-body-util",

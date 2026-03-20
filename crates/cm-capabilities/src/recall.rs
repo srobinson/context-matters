@@ -56,7 +56,8 @@ pub async fn recall(
     };
 
     // Route to the appropriate query path
-    let (raw_entries, routing) = route_query(store, &request, fetch_limit).await?;
+    let (raw_entries, routing, actual_fetch_limit) =
+        route_query(store, &request, fetch_limit).await?;
     let candidates_before_filter = raw_entries.len();
 
     // Post-filter by kinds. Some routing paths (ScopeResolve, TagScopeWalk)
@@ -117,23 +118,27 @@ pub async fn recall(
         token_estimate: total_tokens,
         routing,
         candidates_before_filter,
-        fetch_limit_used: fetch_limit,
+        fetch_limit_used: actual_fetch_limit,
     })
 }
 
 // ── Routing ──────────────────────────────────────────────────────
 
+/// Returns `(entries, routing, actual_fetch_limit)`.
+///
+/// The third element is the SQL LIMIT actually used in the fetch, which differs
+/// from the top-level `fetch_limit` for `TagScopeWalk` (uses `MAX_LIMIT` per page).
 async fn route_query(
     store: &impl ContextStore,
     request: &RecallRequest,
     fetch_limit: u32,
-) -> Result<(Vec<Entry>, RecallRouting), CmError> {
+) -> Result<(Vec<Entry>, RecallRouting, u32), CmError> {
     match &request.query {
         Some(query) => {
             let entries = store
                 .search(query, request.scope.as_ref(), fetch_limit)
                 .await?;
-            Ok((entries, RecallRouting::Search))
+            Ok((entries, RecallRouting::Search, fetch_limit))
         }
         None => {
             if !request.tags.is_empty() {
@@ -145,14 +150,14 @@ async fn route_query(
                     request.limit,
                 )
                 .await?;
-                Ok((entries, RecallRouting::TagScopeWalk))
+                Ok((entries, RecallRouting::TagScopeWalk, MAX_LIMIT))
             } else {
                 match &request.scope {
                     Some(sp) => {
                         let entries = store
                             .resolve_context(sp, &request.kinds, fetch_limit)
                             .await?;
-                        Ok((entries, RecallRouting::ScopeResolve))
+                        Ok((entries, RecallRouting::ScopeResolve, fetch_limit))
                     }
                     None => {
                         let filter = EntryFilter {
@@ -168,7 +173,7 @@ async fn route_query(
                             ..Default::default()
                         };
                         let paged = store.browse(filter).await?;
-                        Ok((paged.items, RecallRouting::BrowseFallback))
+                        Ok((paged.items, RecallRouting::BrowseFallback, fetch_limit))
                     }
                 }
             }

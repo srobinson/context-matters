@@ -16,6 +16,7 @@ use cm_capabilities::projection::{
 use cm_capabilities::recall::{self, RecallRequest, RecallRouting};
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{BrowseSort, EntryKind, ScopePath};
+use cm_store::CmStore;
 use serde::{Deserialize, Serialize};
 use url::form_urlencoded;
 
@@ -28,19 +29,19 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/agent/browse", get(browse_handler))
 }
 
-// ── Query parsing ────────────────────────────────────────────────
+// ── Shared query parsing ────────────────────────────────────────
 
 #[derive(Debug)]
-struct RecallQuery {
-    query: Option<String>,
-    scope: Option<String>,
-    kinds: Vec<String>,
-    tags: Vec<String>,
-    limit: Option<u32>,
-    max_tokens: Option<u32>,
+pub(crate) struct RecallQuery {
+    pub query: Option<String>,
+    pub scope: Option<String>,
+    pub kinds: Vec<String>,
+    pub tags: Vec<String>,
+    pub limit: Option<u32>,
+    pub max_tokens: Option<u32>,
 }
 
-fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiError> {
+pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiError> {
     let mut query = None;
     let mut scope = None;
     let mut kinds = Vec::new();
@@ -82,32 +83,29 @@ fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiError> {
     })
 }
 
-// ── Response types ───────────────────────────────────────────────
+// ── Shared recall execution ─────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-struct AgentRecallResponse {
-    results: Vec<RecallEntryView>,
-    returned: usize,
-    scope_chain: Vec<String>,
-    token_estimate: u32,
-    _trace: RecallTrace,
+/// Intermediate result from executing a recall, shared by both
+/// `/api/agent/recall` (with `_trace`) and `/api/entries/recall` (without).
+pub(crate) struct RecallOutput {
+    pub results: Vec<RecallEntryView>,
+    pub returned: usize,
+    pub scope_chain: Vec<String>,
+    pub token_estimate: u32,
+    pub routing: RecallRouting,
+    pub candidates_before_filter: usize,
+    pub fetch_limit_used: u32,
+    pub post_filters_applied: Vec<String>,
+    pub token_budget_exhausted: bool,
 }
 
-#[derive(Debug, Serialize)]
-struct RecallTrace {
-    routing: String,
-    candidates_before_filter: usize,
-    fetch_limit_used: u32,
-    token_budget_exhausted: bool,
-}
-
-// ── Handler ──────────────────────────────────────────────────────
-
-async fn recall_handler(
-    State(state): State<Arc<AppState>>,
-    raw_query: RawQuery,
-) -> Result<Json<AgentRecallResponse>, ApiError> {
-    let rq = parse_recall_query(raw_query.0.as_deref())?;
+/// Execute a recall against the store, returning all data needed by both
+/// the agent endpoint and the compatibility alias.
+pub(crate) async fn execute_recall(
+    store: &CmStore,
+    raw_query: Option<&str>,
+) -> Result<RecallOutput, ApiError> {
+    let rq = parse_recall_query(raw_query)?;
 
     if let Some(ref q) = rq.query {
         check_input_size(q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
@@ -127,8 +125,16 @@ async fn recall_handler(
 
     let limit = clamp_limit(rq.limit);
 
+    let mut post_filters_applied = Vec::new();
+    if !kinds.is_empty() {
+        post_filters_applied.push("kinds".to_owned());
+    }
+    if !rq.tags.is_empty() {
+        post_filters_applied.push("tags".to_owned());
+    }
+
     let result = recall::recall(
-        &state.store,
+        store,
         RecallRequest {
             query: rq.query,
             scope,
@@ -148,21 +154,63 @@ async fn recall_handler(
         result.token_estimate >= budget && entries_len < result.candidates_before_filter
     });
 
-    Ok(Json(AgentRecallResponse {
+    Ok(RecallOutput {
         returned: results.len(),
         results,
         scope_chain: result.scope_chain,
         token_estimate: result.token_estimate,
+        routing: result.routing,
+        candidates_before_filter: result.candidates_before_filter,
+        fetch_limit_used: result.fetch_limit_used,
+        post_filters_applied,
+        token_budget_exhausted,
+    })
+}
+
+// ── Recall response types ───────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct AgentRecallResponse {
+    results: Vec<RecallEntryView>,
+    returned: usize,
+    scope_chain: Vec<String>,
+    token_estimate: u32,
+    _trace: RecallTrace,
+}
+
+#[derive(Debug, Serialize)]
+struct RecallTrace {
+    routing: String,
+    candidates_before_filter: usize,
+    fetch_limit_used: u32,
+    post_filters_applied: Vec<String>,
+    token_budget_exhausted: bool,
+}
+
+// ── Recall handler ──────────────────────────────────────────────
+
+async fn recall_handler(
+    State(state): State<Arc<AppState>>,
+    raw_query: RawQuery,
+) -> Result<Json<AgentRecallResponse>, ApiError> {
+    let output = execute_recall(&state.store, raw_query.0.as_deref()).await?;
+
+    Ok(Json(AgentRecallResponse {
+        returned: output.returned,
+        results: output.results,
+        scope_chain: output.scope_chain,
+        token_estimate: output.token_estimate,
         _trace: RecallTrace {
-            routing: match result.routing {
+            routing: match output.routing {
                 RecallRouting::Search => "search".to_owned(),
                 RecallRouting::TagScopeWalk => "tag_scope_walk".to_owned(),
                 RecallRouting::ScopeResolve => "scope_resolve".to_owned(),
                 RecallRouting::BrowseFallback => "browse_fallback".to_owned(),
             },
-            candidates_before_filter: result.candidates_before_filter,
-            fetch_limit_used: result.fetch_limit_used,
-            token_budget_exhausted,
+            candidates_before_filter: output.candidates_before_filter,
+            fetch_limit_used: output.fetch_limit_used,
+            post_filters_applied: output.post_filters_applied,
+            token_budget_exhausted: output.token_budget_exhausted,
         },
     }))
 }
@@ -185,15 +233,22 @@ struct AgentBrowseResponse {
     entries: Vec<BrowseEntryView>,
     total: u64,
     has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     next_cursor: Option<String>,
     _trace: BrowseTrace,
 }
 
 #[derive(Debug, Serialize)]
 struct BrowseTrace {
-    filter_set: Vec<String>,
+    filter_set: BrowseFilterSet,
     sort: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BrowseFilterSet {
+    scope_path: Option<String>,
+    kind: Option<String>,
+    tag: Option<String>,
+    include_superseded: bool,
 }
 
 async fn browse_handler(
@@ -219,25 +274,16 @@ async fn browse_handler(
         .map(|k| k.parse::<EntryKind>().map_err(ApiError))
         .transpose()?;
 
+    let include_superseded = bq.include_superseded.unwrap_or(false);
     let limit = clamp_limit(bq.limit);
 
-    // Track which filters are active for the trace
-    let mut filter_set = Vec::new();
-    if scope_path.is_some() {
-        filter_set.push("scope_path".to_owned());
-    }
-    if kind.is_some() {
-        filter_set.push("kind".to_owned());
-    }
-    if bq.tag.is_some() {
-        filter_set.push("tag".to_owned());
-    }
-    if bq.created_by.is_some() {
-        filter_set.push("created_by".to_owned());
-    }
-    if bq.include_superseded.unwrap_or(false) {
-        filter_set.push("include_superseded".to_owned());
-    }
+    // Echo back the actual filter values for the trace
+    let filter_set = BrowseFilterSet {
+        scope_path: scope_path.as_ref().map(|sp| sp.as_str().to_owned()),
+        kind: kind.map(|k| k.as_str().to_owned()),
+        tag: bq.tag.clone(),
+        include_superseded,
+    };
 
     let result = browse::browse(
         &state.store,
@@ -246,7 +292,7 @@ async fn browse_handler(
             kind,
             tag: bq.tag,
             created_by: bq.created_by,
-            include_superseded: bq.include_superseded.unwrap_or(false),
+            include_superseded,
             sort: BrowseSort::Recent,
             limit,
             cursor: bq.cursor,

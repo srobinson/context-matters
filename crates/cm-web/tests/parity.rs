@@ -1,16 +1,21 @@
 //! Contract tests verifying semantic parity between agent web endpoints and MCP tools.
 //!
 //! Each test seeds a fixture store, calls both the web endpoint (via axum test client)
-//! and the MCP tool handler (via cm-cli), then compares the shared response fields.
-//! The `_trace` object is agent-endpoint-only and is excluded from comparison.
+//! and the capability layer directly (the same path MCP tools use), then compares
+//! the full shared response fields. The `_trace` object is agent-endpoint-only and is
+//! excluded from comparison.
 
 use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
-use cm_cli::mcp::tools;
+use cm_capabilities::browse::{self, BrowseRequest};
+use cm_capabilities::projection::{project_browse_entry, project_recall_entry};
+use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::validation::clamp_limit;
 use cm_core::{
-    ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope, ScopePath, WriteContext,
+    BrowseSort, ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope, ScopePath,
+    WriteContext,
 };
 use cm_store::{CmStore, schema};
 use cm_web::{AppState, api};
@@ -126,6 +131,48 @@ async fn seed_entries(store: &CmStore) {
     }
 }
 
+/// Strip the `_trace` key from a JSON value, returning the shared fields only.
+fn strip_trace(mut v: Value) -> Value {
+    if let Some(obj) = v.as_object_mut() {
+        obj.remove("_trace");
+    }
+    v
+}
+
+/// Build the expected MCP-equivalent recall JSON by calling the capability layer directly.
+async fn capability_recall(store: &CmStore, request: RecallRequest) -> Value {
+    let result = recall::recall(store, request).await.unwrap();
+    let results: Vec<Value> = result
+        .entries
+        .iter()
+        .map(|e| serde_json::to_value(project_recall_entry(e)).unwrap())
+        .collect();
+
+    json!({
+        "results": results,
+        "returned": results.len(),
+        "scope_chain": result.scope_chain,
+        "token_estimate": result.token_estimate,
+    })
+}
+
+/// Build the expected MCP-equivalent browse JSON by calling the capability layer directly.
+async fn capability_browse(store: &CmStore, request: BrowseRequest) -> Value {
+    let result = browse::browse(store, request).await.unwrap();
+    let entries: Vec<Value> = result
+        .entries
+        .iter()
+        .map(|e| serde_json::to_value(project_browse_entry(e)).unwrap())
+        .collect();
+
+    json!({
+        "entries": entries,
+        "total": result.total,
+        "next_cursor": result.next_cursor,
+        "has_more": result.has_more,
+    })
+}
+
 // ── Recall parity tests ─────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
@@ -133,42 +180,33 @@ async fn recall_basic_query_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
-    // MCP tool
-    let mcp_text = tools::cx_recall(&store, &json!({"query": "architecture"}))
-        .await
-        .unwrap();
-    let mcp: Value = serde_json::from_str(&mcp_text).unwrap();
+    // Capability layer (same path MCP uses)
+    let expected = capability_recall(
+        &store,
+        RecallRequest {
+            query: Some("architecture".to_owned()),
+            limit: clamp_limit(None),
+            ..Default::default()
+        },
+    )
+    .await;
 
     // Web endpoint
     let app = test_app(store);
     let web = get_json(app, "/api/agent/recall?query=architecture").await;
+    let web_shared = strip_trace(web.clone());
 
-    // Shared fields must match
-    assert_eq!(mcp["returned"], web["returned"]);
-    assert_eq!(mcp["scope_chain"], web["scope_chain"]);
-    assert_eq!(mcp["token_estimate"], web["token_estimate"]);
+    // Full shared-field equality
     assert_eq!(
-        mcp["results"].as_array().unwrap().len(),
-        web["results"].as_array().unwrap().len()
+        expected, web_shared,
+        "Shared fields must match between capability layer and web endpoint"
     );
 
-    // Entry fields match (comparing id, kind, title, snippet for each)
-    for (m, w) in mcp["results"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(web["results"].as_array().unwrap())
-    {
-        assert_eq!(m["id"], w["id"]);
-        assert_eq!(m["kind"], w["kind"]);
-        assert_eq!(m["title"], w["title"]);
-        assert_eq!(m["snippet"], w["snippet"]);
-        assert_eq!(m["scope_path"], w["scope_path"]);
-    }
-
-    // Web has _trace, MCP does not
-    assert!(web.get("_trace").is_some());
-    assert!(mcp.get("_trace").is_none());
+    // Web has _trace, capability does not
+    assert!(
+        web.get("_trace").is_some(),
+        "Agent endpoint must include _trace"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -176,16 +214,17 @@ async fn recall_with_scope_and_tags_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
-    let mcp_text = tools::cx_recall(
+    let scope = ScopePath::parse("global/project:helioy").unwrap();
+    let expected = capability_recall(
         &store,
-        &json!({
-            "scope": "global/project:helioy",
-            "tags": ["architecture"]
-        }),
+        RecallRequest {
+            scope: Some(scope),
+            tags: vec!["architecture".to_owned()],
+            limit: clamp_limit(None),
+            ..Default::default()
+        },
     )
-    .await
-    .unwrap();
-    let mcp: Value = serde_json::from_str(&mcp_text).unwrap();
+    .await;
 
     let app = test_app(store);
     let web = get_json(
@@ -193,20 +232,12 @@ async fn recall_with_scope_and_tags_parity() {
         "/api/agent/recall?scope=global/project:helioy&tags=architecture",
     )
     .await;
+    let web_shared = strip_trace(web);
 
-    assert_eq!(mcp["returned"], web["returned"]);
-    assert_eq!(mcp["scope_chain"], web["scope_chain"]);
-
-    for (m, w) in mcp["results"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(web["results"].as_array().unwrap())
-    {
-        assert_eq!(m["id"], w["id"]);
-        assert_eq!(m["kind"], w["kind"]);
-        assert_eq!(m["title"], w["title"]);
-    }
+    assert_eq!(
+        expected, web_shared,
+        "Scoped+tagged recall must match capability layer"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -216,32 +247,24 @@ async fn recall_entries_compat_matches_agent() {
 
     let app = test_app(store);
 
-    // Agent endpoint
+    // Agent endpoint (with _trace)
     let agent = get_json(app.clone(), "/api/agent/recall?query=architecture").await;
+    let agent_shared = strip_trace(agent);
 
-    // Compatibility endpoint
+    // Compatibility endpoint (without _trace)
     let compat = get_json(app, "/api/entries/recall?query=architecture").await;
 
-    // Shared fields must match
-    assert_eq!(agent["returned"], compat["returned"]);
-    assert_eq!(agent["scope_chain"], compat["scope_chain"]);
-    assert_eq!(agent["token_estimate"], compat["token_estimate"]);
+    // Must be identical on all shared fields
+    assert_eq!(
+        agent_shared, compat,
+        "Compatibility alias must match agent endpoint on shared fields"
+    );
 
-    // Entry fields match
-    for (a, c) in agent["results"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(compat["results"].as_array().unwrap())
-    {
-        assert_eq!(a["id"], c["id"]);
-        assert_eq!(a["kind"], c["kind"]);
-        assert_eq!(a["title"], c["title"]);
-        assert_eq!(a["snippet"], c["snippet"]);
-    }
-
-    // Compat has no _trace
-    assert!(compat.get("_trace").is_none());
+    // Compat must not have _trace
+    assert!(
+        compat.get("_trace").is_none(),
+        "Compatibility endpoint must not include _trace"
+    );
 }
 
 // ── Browse parity tests ─────────────────────────────────────────
@@ -251,36 +274,28 @@ async fn browse_basic_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
-    let mcp_text = tools::cx_browse(&store, &json!({})).await.unwrap();
-    let mcp: Value = serde_json::from_str(&mcp_text).unwrap();
+    let expected = capability_browse(
+        &store,
+        BrowseRequest {
+            limit: clamp_limit(None),
+            sort: BrowseSort::Recent,
+            ..Default::default()
+        },
+    )
+    .await;
 
     let app = test_app(store);
     let web = get_json(app, "/api/agent/browse").await;
+    let web_shared = strip_trace(web.clone());
 
-    assert_eq!(mcp["total"], web["total"]);
-    assert_eq!(mcp["has_more"], web["has_more"]);
     assert_eq!(
-        mcp["entries"].as_array().unwrap().len(),
-        web["entries"].as_array().unwrap().len()
+        expected, web_shared,
+        "Shared fields must match between capability layer and web endpoint"
     );
-
-    for (m, w) in mcp["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(web["entries"].as_array().unwrap())
-    {
-        assert_eq!(m["id"], w["id"]);
-        assert_eq!(m["kind"], w["kind"]);
-        assert_eq!(m["title"], w["title"]);
-        assert_eq!(m["snippet"], w["snippet"]);
-        assert_eq!(m["scope_path"], w["scope_path"]);
-        assert_eq!(m["created_at"], w["created_at"]);
-        assert_eq!(m["updated_at"], w["updated_at"]);
-    }
-
-    assert!(web.get("_trace").is_some());
-    assert!(mcp.get("_trace").is_none());
+    assert!(
+        web.get("_trace").is_some(),
+        "Agent endpoint must include _trace"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -288,25 +303,25 @@ async fn browse_with_filters_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
-    let mcp_text = tools::cx_browse(&store, &json!({"kind": "fact"}))
-        .await
-        .unwrap();
-    let mcp: Value = serde_json::from_str(&mcp_text).unwrap();
+    let expected = capability_browse(
+        &store,
+        BrowseRequest {
+            kind: Some(EntryKind::Fact),
+            limit: clamp_limit(None),
+            sort: BrowseSort::Recent,
+            ..Default::default()
+        },
+    )
+    .await;
 
     let app = test_app(store);
     let web = get_json(app, "/api/agent/browse?kind=fact").await;
+    let web_shared = strip_trace(web);
 
-    assert_eq!(mcp["total"], web["total"]);
-    for (m, w) in mcp["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(web["entries"].as_array().unwrap())
-    {
-        assert_eq!(m["id"], w["id"]);
-        assert_eq!(m["kind"], w["kind"]);
-        assert_eq!(w["kind"], "fact");
-    }
+    assert_eq!(
+        expected, web_shared,
+        "Filtered browse must match capability layer"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -318,28 +333,137 @@ async fn browse_pagination_parity() {
     let store = CmStore::new(write_pool, read_pool);
     seed_entries(&store).await;
 
-    // Page 1
-    let mcp_text = tools::cx_browse(&store, &json!({"limit": 2}))
-        .await
-        .unwrap();
-    let mcp: Value = serde_json::from_str(&mcp_text).unwrap();
+    // Page 1 via capability
+    let cap_page1 = capability_browse(
+        &store,
+        BrowseRequest {
+            limit: 2,
+            sort: BrowseSort::Recent,
+            ..Default::default()
+        },
+    )
+    .await;
 
+    // Page 1 via web
     let app = test_app(store);
-    let web = get_json(app, "/api/agent/browse?limit=2").await;
+    let web_page1 = get_json(app, "/api/agent/browse?limit=2").await;
+    let web_page1_shared = strip_trace(web_page1.clone());
 
-    assert_eq!(mcp["has_more"], web["has_more"]);
-    assert_eq!(mcp["entries"].as_array().unwrap().len(), 2);
-    assert_eq!(web["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        cap_page1, web_page1_shared,
+        "Page 1 must match capability layer"
+    );
+    assert!(
+        cap_page1["has_more"].as_bool().unwrap(),
+        "Should have more pages"
+    );
+    assert!(
+        cap_page1["next_cursor"].is_string(),
+        "Capability must return next_cursor"
+    );
 
-    // Both should have next_cursor
-    assert!(mcp["next_cursor"].is_string());
-    assert!(web["next_cursor"].is_string());
+    // Verify cursor values match
+    assert_eq!(
+        cap_page1["next_cursor"], web_page1_shared["next_cursor"],
+        "Cursor values must match between capability and web"
+    );
 
-    // Page 2: create a second store from the same db to avoid clone
+    // Page 2 via web using cursor from page 1
+    let cursor = web_page1_shared["next_cursor"].as_str().unwrap();
     let (write_pool2, read_pool2) = schema::create_pools(&db_path).await.unwrap();
     let store2 = CmStore::new(write_pool2, read_pool2);
-    let cursor = web["next_cursor"].as_str().unwrap();
-    let app2 = test_app(store2);
-    let web2 = get_json(app2, &format!("/api/agent/browse?limit=2&cursor={cursor}")).await;
-    assert_eq!(web2["entries"].as_array().unwrap().len(), 2);
+
+    let cap_page2 = capability_browse(
+        &store2,
+        BrowseRequest {
+            limit: 2,
+            sort: BrowseSort::Recent,
+            cursor: Some(cursor.to_owned()),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let (write_pool3, read_pool3) = schema::create_pools(&db_path).await.unwrap();
+    let store3 = CmStore::new(write_pool3, read_pool3);
+    let app2 = test_app(store3);
+    let web_page2 = get_json(app2, &format!("/api/agent/browse?limit=2&cursor={cursor}")).await;
+    let web_page2_shared = strip_trace(web_page2);
+
+    assert_eq!(
+        cap_page2, web_page2_shared,
+        "Page 2 must match capability layer"
+    );
+    assert_eq!(cap_page2["entries"].as_array().unwrap().len(), 2);
+}
+
+// ── Trace contract tests ────────────────────────────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_trace_has_required_fields() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    let web = get_json(
+        app,
+        "/api/agent/recall?query=architecture&kinds=fact&tags=architecture",
+    )
+    .await;
+    let trace = web.get("_trace").expect("_trace must be present");
+
+    assert!(trace.get("routing").is_some(), "_trace.routing required");
+    assert!(
+        trace.get("candidates_before_filter").is_some(),
+        "_trace.candidates_before_filter required"
+    );
+    assert!(
+        trace.get("fetch_limit_used").is_some(),
+        "_trace.fetch_limit_used required"
+    );
+    assert!(
+        trace.get("post_filters_applied").is_some(),
+        "_trace.post_filters_applied required"
+    );
+    assert!(
+        trace.get("token_budget_exhausted").is_some(),
+        "_trace.token_budget_exhausted required"
+    );
+
+    let post_filters = trace["post_filters_applied"].as_array().unwrap();
+    let filter_names: Vec<&str> = post_filters.iter().map(|v| v.as_str().unwrap()).collect();
+    assert!(
+        filter_names.contains(&"kinds"),
+        "post_filters_applied should include 'kinds'"
+    );
+    assert!(
+        filter_names.contains(&"tags"),
+        "post_filters_applied should include 'tags'"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_trace_has_structured_filter_set() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    let web = get_json(app, "/api/agent/browse?kind=fact&tag=architecture").await;
+    let trace = web.get("_trace").expect("_trace must be present");
+
+    let filter_set = trace.get("filter_set").expect("_trace.filter_set required");
+    assert!(
+        filter_set.is_object(),
+        "filter_set must be a structured object"
+    );
+    assert!(
+        filter_set.get("scope_path").is_some(),
+        "filter_set.scope_path required"
+    );
+    assert_eq!(filter_set["kind"], "fact");
+    assert_eq!(filter_set["tag"], "architecture");
+    assert_eq!(filter_set["include_superseded"], false);
+
+    assert!(trace.get("sort").is_some(), "_trace.sort required");
+    assert_eq!(trace["sort"], "recent");
 }

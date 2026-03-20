@@ -7,19 +7,16 @@ use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
-use cm_capabilities::projection::project_recall_entry;
-use cm_capabilities::recall::{self, RecallRequest};
-use cm_capabilities::validation::{check_input_size, clamp_limit};
+use cm_capabilities::projection::RecallEntryView;
 use cm_core::{
     BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationSource,
     NewEntry, PagedResult, Pagination, ScopePath, UpdateEntry, WriteContext,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::api::agent;
 use crate::api::error::ApiError;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -144,19 +141,14 @@ async fn search(
     }))
 }
 
-#[derive(Debug, Deserialize)]
-struct RecallQuery {
-    query: Option<String>,
-    scope: Option<String>,
-    kinds: Vec<String>,
-    tags: Vec<String>,
-    limit: Option<u32>,
-    max_tokens: Option<u32>,
-}
+// ── Recall compatibility alias ──────────────────────────────────
+//
+// Delegates to the same RecallCapability path as /api/agent/recall
+// but omits the _trace object for backward compatibility.
 
 #[derive(Debug, Serialize)]
 struct RecallResponse {
-    results: Vec<Value>,
+    results: Vec<RecallEntryView>,
     returned: usize,
     scope_chain: Vec<String>,
     token_estimate: u32,
@@ -166,95 +158,17 @@ async fn recall(
     State(state): State<Arc<AppState>>,
     raw_query: RawQuery,
 ) -> Result<Json<RecallResponse>, ApiError> {
-    let rq = parse_recall_query(raw_query.0.as_deref())?;
-
-    if let Some(ref q) = rq.query {
-        check_input_size(q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-    }
-
-    let scope = rq
-        .scope
-        .map(|s| ScopePath::parse(&s))
-        .transpose()
-        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
-
-    let kinds: Vec<EntryKind> = rq
-        .kinds
-        .iter()
-        .map(|k| k.parse::<EntryKind>().map_err(ApiError))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let limit = clamp_limit(rq.limit);
-
-    let result = recall::recall(
-        &state.store,
-        RecallRequest {
-            query: rq.query,
-            scope,
-            kinds,
-            tags: rq.tags,
-            limit,
-            max_tokens: rq.max_tokens,
-        },
-    )
-    .await
-    .map_err(ApiError)?;
-
-    let results: Vec<Value> = result
-        .entries
-        .iter()
-        .map(|e| serde_json::to_value(project_recall_entry(e)).expect("RecallEntryView serializes"))
-        .collect();
+    let output = agent::execute_recall(&state.store, raw_query.0.as_deref()).await?;
 
     Ok(Json(RecallResponse {
-        returned: results.len(),
-        results,
-        scope_chain: result.scope_chain,
-        token_estimate: result.token_estimate,
+        results: output.results,
+        returned: output.returned,
+        scope_chain: output.scope_chain,
+        token_estimate: output.token_estimate,
     }))
 }
 
-fn parse_recall_query(raw_query: Option<&str>) -> Result<RecallQuery, ApiError> {
-    let mut query = None;
-    let mut scope = None;
-    let mut kinds = Vec::new();
-    let mut tags = Vec::new();
-    let mut limit = None;
-    let mut max_tokens = None;
-
-    for (key, value) in form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()) {
-        match key.as_ref() {
-            "query" => query = Some(value.into_owned()),
-            "scope" => scope = Some(value.into_owned()),
-            "kinds" => kinds.push(value.into_owned()),
-            "tags" => tags.push(value.into_owned()),
-            "limit" => {
-                limit = Some(value.parse::<u32>().map_err(|_| {
-                    ApiError(cm_core::CmError::Validation(format!(
-                        "invalid limit: '{value}'"
-                    )))
-                })?)
-            }
-            "max_tokens" => {
-                max_tokens = Some(value.parse::<u32>().map_err(|_| {
-                    ApiError(cm_core::CmError::Validation(format!(
-                        "invalid max_tokens: '{value}'"
-                    )))
-                })?)
-            }
-            _ => {}
-        }
-    }
-
-    Ok(RecallQuery {
-        query,
-        scope,
-        kinds,
-        tags,
-        limit,
-        max_tokens,
-    })
-}
+// ── Single entry operations ─────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 struct EntryDetail {
