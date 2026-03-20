@@ -16,7 +16,8 @@ use serde_json::{Value, json};
 
 // Re-export shared helpers for internal use by tool handlers.
 pub(crate) use crate::shared::{
-    MAX_BATCH_IDS, check_input_size, clamp_limit, cm_err_to_string, ensure_scope_chain, json_response, snippet,
+    MAX_BATCH_IDS, check_input_size, cm_err_to_string, ensure_scope_chain,
+    json_response, snippet,
 };
 
 // ── Constants ─────────────────────────────────────────────────────

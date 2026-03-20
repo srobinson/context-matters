@@ -1,10 +1,12 @@
 //! Handler for the `cx_browse` tool.
 
-use cm_core::{ContextStore, EntryFilter, EntryKind, Pagination, ScopePath};
+use cm_capabilities::browse::{self, BrowseRequest};
+use cm_capabilities::validation::clamp_limit;
+use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{clamp_limit, cm_err_to_string, json_response};
+use crate::mcp::{cm_err_to_string, json_response};
 
 use super::entry_to_browse_json;
 
@@ -55,30 +57,31 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String
 
     let limit = clamp_limit(params.limit);
 
-    let filter = EntryFilter {
-        scope_path,
-        kind,
-        tag: params.tag,
-        created_by: params.created_by,
-        include_superseded: params.include_superseded,
-        pagination: Pagination {
+    // Delegate to BrowseCapability
+    let result = browse::browse(
+        store,
+        BrowseRequest {
+            scope_path,
+            kind,
+            tag: params.tag,
+            created_by: params.created_by,
+            include_superseded: params.include_superseded,
             limit,
             cursor: params.cursor,
+            ..Default::default()
         },
-        ..Default::default()
-    };
+    )
+    .await
+    .map_err(cm_err_to_string)?;
 
-    let result = store.browse(filter).await.map_err(cm_err_to_string)?;
-
-    let entries: Vec<Value> = result.items.iter().map(entry_to_browse_json).collect();
-
-    let has_more = result.next_cursor.is_some();
+    // Map entries through the legacy JSON projection for MCP envelope
+    let entries: Vec<Value> = result.entries.iter().map(entry_to_browse_json).collect();
 
     let response = json!({
         "entries": entries,
         "total": result.total,
         "next_cursor": result.next_cursor,
-        "has_more": has_more,
+        "has_more": result.has_more,
     });
 
     json_response(response)
