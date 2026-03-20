@@ -189,16 +189,18 @@ async fn recall(
     let limit = clamp_limit(rq.limit);
     let has_post_filter = !kind_filters.is_empty() || !rq.tags.is_empty();
     let fetch_limit = if has_post_filter {
-        limit.saturating_mul(3).min(MAX_LIMIT as u32)
+        limit.saturating_mul(3).min(MAX_LIMIT)
     } else {
         limit
     };
 
     let entries = match &rq.query {
-        Some(query) => state
-            .store
-            .search(query, scope_path.as_ref(), fetch_limit)
-            .await?,
+        Some(query) => {
+            state
+                .store
+                .search(query, scope_path.as_ref(), fetch_limit)
+                .await?
+        }
         None => {
             if !rq.tags.is_empty() {
                 recall_candidates_without_query(

@@ -40,7 +40,7 @@ blake3 = "1"
 base64 = "0.22"
 
 # Type generation
-ts-rs = { version = "12.0", features = ["chrono-impl", "uuid-impl", "serde-json-impl"] }
+ts-rs = { version = "12.0", features = ["chrono-impl", "uuid-impl", "serde-json-impl", "no-serde-warnings"] }
 
 # Error handling
 anyhow = "1"
