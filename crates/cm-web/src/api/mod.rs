@@ -1,5 +1,6 @@
 //! API router and handler modules.
 
+mod agent;
 mod entries;
 mod error;
 mod export;
@@ -17,6 +18,7 @@ use crate::AppState;
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .merge(entries::router())
+        .merge(agent::router())
         .route("/stats", get(stats::get_stats))
         .route("/mutations", get(mutations::list_mutations))
         .route("/export", get(export::export))
