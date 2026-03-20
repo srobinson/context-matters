@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/srobinson/context-matters/compare/v0.1.8...v0.1.9) (2026-03-20)
+
+
+### Features
+
+* extract shared capabilities into cm-capabilities crate ([#15](https://github.com/srobinson/context-matters/issues/15)) ([a1a49d0](https://github.com/srobinson/context-matters/commit/a1a49d0cf00088cefb51ee58195658b38ebf7e73))
+
 ## [0.1.8](https://github.com/srobinson/context-matters/compare/v0.1.7...v0.1.8) (2026-03-19)
 
 
