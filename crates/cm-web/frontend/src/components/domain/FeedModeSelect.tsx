@@ -1,12 +1,10 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+export type FeedMode = "curate" | "recall" | "browse";
 
-export type FeedMode = "default" | "recall";
+const modes: { value: FeedMode; label: string }[] = [
+  { value: "curate", label: "Curate" },
+  { value: "recall", label: "Recall" },
+  { value: "browse", label: "Browse" },
+];
 
 export function FeedModeSelect({
   value,
@@ -16,14 +14,21 @@ export function FeedModeSelect({
   onChange: (mode: FeedMode) => void;
 }) {
   return (
-    <Select value={value} onValueChange={(next) => onChange(next as FeedMode)}>
-      <SelectTrigger className="h-7 w-[128px] gap-1 rounded-md border-border bg-muted px-2 font-mono text-xs text-muted-foreground">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="default">Default</SelectItem>
-        <SelectItem value="recall">Recall</SelectItem>
-      </SelectContent>
-    </Select>
+    <div className="inline-flex items-center rounded-md border border-border bg-muted p-0.5">
+      {modes.map((m) => (
+        <button
+          key={m.value}
+          type="button"
+          onClick={() => onChange(m.value)}
+          className={`rounded px-2.5 py-0.5 font-mono text-xs transition-colors ${
+            value === m.value
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
   );
 }

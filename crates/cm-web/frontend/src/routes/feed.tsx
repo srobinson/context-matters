@@ -87,7 +87,9 @@ function FeedPage() {
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const isRecallMode = mode === "recall";
+  const activeMode: FeedMode = mode ?? "curate";
+  const isRecallMode = activeMode === "recall";
+  const isBrowseMode = activeMode === "browse";
 
   useEffect(() => {
     setExpandedId(entry_id ?? null);
@@ -130,22 +132,22 @@ function FeedPage() {
       setRecallLimit(20);
       setRecallMaxTokens(undefined);
     }
-    if (mergeMode) {
+    if (activeMode !== "curate" && mergeMode) {
       setMergeMode(false);
       setSelectedIds(new Set());
     }
-  }, [isRecallMode, mergeMode]);
+  }, [activeMode, isRecallMode, mergeMode]);
 
   const handleModeChange = useCallback(
     (nextMode: FeedMode) => {
       navigate({
         search: (prev) => ({
           ...prev,
-          mode: nextMode === "default" ? undefined : nextMode,
-          q: nextMode === "default" ? undefined : prev.q,
+          mode: nextMode === "curate" ? undefined : nextMode,
+          q: nextMode !== "recall" ? undefined : prev.q,
         }),
       });
-      if (nextMode === "default") {
+      if (nextMode !== "recall") {
         setSearchInput("");
       }
     },
@@ -332,10 +334,10 @@ function FeedPage() {
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-medium tracking-tight">Feed</h2>
           <FeedModeSelect
-            value={isRecallMode ? "recall" : "default"}
+            value={activeMode}
             onChange={handleModeChange}
           />
-          {!isRecallMode && (
+          {activeMode === "curate" && (
             <SortSelect
               value={sort ?? "recent"}
               onChange={handleSortChange}
@@ -343,7 +345,7 @@ function FeedPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {entries.length > 0 && (
+          {!isBrowseMode && entries.length > 0 && (
             <span className="font-mono text-xs text-muted-foreground">
               {entries.length}
               {totalCount > entries.length && ` / ${totalCount}`}
@@ -353,7 +355,7 @@ function FeedPage() {
           <button
             type="button"
             onClick={toggleMergeMode}
-            disabled={isRecallMode}
+            disabled={activeMode !== "curate"}
             className={`flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-xs transition-colors ${
               mergeMode
                 ? "border-ring bg-accent text-foreground"
@@ -361,7 +363,7 @@ function FeedPage() {
             }`}
           >
             <GitMerge className="h-3 w-3" />
-            {isRecallMode
+            {activeMode !== "curate"
               ? "merge unavailable"
               : mergeMode
                 ? "cancel merge"
@@ -370,7 +372,7 @@ function FeedPage() {
           <button
             type="button"
             onClick={() => setShowNewEntry(true)}
-            disabled={showNewEntry || mergeMode}
+            disabled={showNewEntry || mergeMode || isBrowseMode}
             className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           >
             <Plus className="h-3 w-3" />
@@ -379,33 +381,35 @@ function FeedPage() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          ref={inputRef}
-          type="text"
-          placeholder={
-            isRecallMode
-              ? "Recall query (matches cx_recall)..."
-              : "Switch to recall mode to search like MCP..."
-          }
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          disabled={!isRecallMode}
-          className="pl-8 pr-8 font-mono text-xs"
-        />
-        {isRecallMode && searchInput && (
-          <button
-            type="button"
-            onClick={handleClearSearch}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
+      {!isBrowseMode && (
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={inputRef}
+            type="text"
+            placeholder={
+              isRecallMode
+                ? "Recall query (matches cx_recall)..."
+                : `Switch to Recall mode to search like MCP...`
+            }
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            disabled={!isRecallMode}
+            className="pl-8 pr-8 font-mono text-xs"
+          />
+          {isRecallMode && searchInput && (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
-      {!isRecallMode && (
+      {activeMode === "curate" && (
         <FilterBar
           filters={{ scope_path, kind, tag, created_by, show_forgotten }}
           onChange={handleFilterChange}
@@ -437,7 +441,15 @@ function FeedPage() {
         />
       )}
 
-      {isLoading && (
+      {isBrowseMode && (
+        <div className="rounded-lg border border-dashed border-border bg-card/50 p-8 text-center">
+          <p className="font-mono text-xs text-muted-foreground">
+            Browse mode (agent parity) will be wired to /api/agent/browse
+          </p>
+        </div>
+      )}
+
+      {!isBrowseMode && isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
             {isRecallMode ? "Recalling..." : "Loading entries..."}
@@ -445,7 +457,7 @@ function FeedPage() {
         </div>
       )}
 
-      {isError && (
+      {!isBrowseMode && isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">
             {isRecallMode ? "Recall failed" : "Failed to load entries"}:{" "}
@@ -485,7 +497,7 @@ function FeedPage() {
         />
       )}
 
-      {!isLoading && entries.length === 0 && !isError && !showNewEntry && (
+      {!isBrowseMode && !isLoading && entries.length === 0 && !isError && !showNewEntry && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
             {isRecallMode
@@ -497,7 +509,7 @@ function FeedPage() {
         </div>
       )}
 
-      {entries.length > 0 && (
+      {!isBrowseMode && entries.length > 0 && (
         <div className="space-y-2">
           {entries.map((entry) => (
             <div
@@ -609,7 +621,7 @@ const BROWSE_SORTS: ReadonlySet<string> = new Set([
   "kind_desc",
 ]);
 
-const FEED_MODES: ReadonlySet<string> = new Set(["default", "recall"]);
+const FEED_MODES: ReadonlySet<string> = new Set(["curate", "recall", "browse"]);
 
 function isFeedMode(v: unknown): v is FeedMode {
   return typeof v === "string" && FEED_MODES.has(v);
