@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import {
   api,
+  type AgentBrowseParams,
   type AgentRecallResponse,
   type BrowseParams,
   type EntryDetail,
@@ -33,6 +34,7 @@ export const queryKeys = {
   },
   agent: {
     recall: (params: RecallParams) => ["agent", "recall", params] as const,
+    browse: (params: AgentBrowseParams) => ["agent", "browse", params] as const,
   },
   stats: ["stats"] as const,
   mutations: {
@@ -103,6 +105,17 @@ export function useAgentRecall(
   return useQuery({
     queryKey: queryKeys.agent.recall(params),
     queryFn: () => api.agent.recall(params),
+    ...options,
+  });
+}
+
+export function useAgentBrowse(
+  params: AgentBrowseParams,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: queryKeys.agent.browse(params),
+    queryFn: () => api.agent.browse(params),
     ...options,
   });
 }

@@ -10,7 +10,7 @@ import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "./__root";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import { useEntries, useAgentRecall } from "@/api/hooks";
+import { useEntries, useAgentRecall, useAgentBrowse } from "@/api/hooks";
 import { EntryCard } from "@/components/EntryCard";
 import { SnippetCard } from "@/components/SnippetCard";
 import { TracePanel } from "@/components/TracePanel";
@@ -81,6 +81,12 @@ function FeedPage() {
   const [recallMaxTokens, setRecallMaxTokens] = useState<number | undefined>(
     undefined,
   );
+  const [browseScope, setBrowseScope] = useState<string | undefined>(undefined);
+  const [browseKind, setBrowseKind] = useState<EntryKind | undefined>(undefined);
+  const [browseTag, setBrowseTag] = useState<string | undefined>(undefined);
+  const [browseAgent, setBrowseAgent] = useState<string | undefined>(undefined);
+  const [browseForgotten, setBrowseForgotten] = useState(false);
+  const [browseCursor, setBrowseCursor] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const entryRefs = useRef(new Map<string, HTMLDivElement>());
   const debouncedQuery = useDebounce(searchInput, 300);
@@ -132,11 +138,19 @@ function FeedPage() {
       setRecallLimit(20);
       setRecallMaxTokens(undefined);
     }
+    if (!isBrowseMode) {
+      setBrowseScope(undefined);
+      setBrowseKind(undefined);
+      setBrowseTag(undefined);
+      setBrowseAgent(undefined);
+      setBrowseForgotten(false);
+      setBrowseCursor(undefined);
+    }
     if (activeMode !== "curate" && mergeMode) {
       setMergeMode(false);
       setSelectedIds(new Set());
     }
-  }, [activeMode, isRecallMode, mergeMode]);
+  }, [activeMode, isRecallMode, isBrowseMode, mergeMode]);
 
   const handleModeChange = useCallback(
     (nextMode: FeedMode) => {
@@ -179,6 +193,18 @@ function FeedPage() {
     setSearchInput("");
     inputRef.current?.focus();
   }, []);
+
+  const handleBrowseFilterChange = useCallback(
+    (update: Partial<FilterState>) => {
+      if ("scope_path" in update) setBrowseScope(update.scope_path);
+      if ("kind" in update) setBrowseKind(update.kind);
+      if ("tag" in update) setBrowseTag(update.tag);
+      if ("created_by" in update) setBrowseAgent(update.created_by);
+      if ("show_forgotten" in update) setBrowseForgotten(!!update.show_forgotten);
+      setBrowseCursor(undefined);
+    },
+    [],
+  );
 
   const toggleMergeMode = useCallback(() => {
     setMergeMode((prev) => {
@@ -251,6 +277,27 @@ function FeedPage() {
   }, {
     enabled: isRecallMode,
   });
+
+  const agentBrowseQuery = useAgentBrowse({
+    scope_path: browseScope,
+    kind: browseKind,
+    tag: browseTag,
+    created_by: browseAgent,
+    include_superseded: browseForgotten || undefined,
+    limit: 20,
+    cursor: browseCursor,
+  }, {
+    enabled: isBrowseMode,
+  });
+
+  const handleBrowseNext = useCallback(() => {
+    const cursor = agentBrowseQuery.data?.next_cursor;
+    if (cursor) setBrowseCursor(cursor);
+  }, [agentBrowseQuery.data?.next_cursor]);
+
+  const handleBrowseReset = useCallback(() => {
+    setBrowseCursor(undefined);
+  }, []);
 
   const browseData = browseQuery.data;
   const browseEntries = useMemo(
@@ -341,10 +388,22 @@ function FeedPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {!isBrowseMode && (isRecallMode ? recallResults.length > 0 : entries.length > 0) && (
+          {(isRecallMode
+            ? recallResults.length > 0
+            : isBrowseMode
+              ? (agentBrowseQuery.data?.entries.length ?? 0) > 0
+              : entries.length > 0) && (
             <span className="font-mono text-xs text-muted-foreground">
-              {isRecallMode ? recallResults.length : entries.length}
-              {!isRecallMode && totalCount > entries.length && ` / ${totalCount}`}
+              {isRecallMode
+                ? recallResults.length
+                : isBrowseMode
+                  ? agentBrowseQuery.data?.entries.length ?? 0
+                  : entries.length}
+              {isBrowseMode && agentBrowseQuery.data
+                ? ` / ${agentBrowseQuery.data.total}`
+                : !isRecallMode && totalCount > entries.length
+                  ? ` / ${totalCount}`
+                  : ""}
               {isRecallMode ? " results" : " entries"}
             </span>
           )}
@@ -486,11 +545,84 @@ function FeedPage() {
       )}
 
       {isBrowseMode && (
-        <div className="rounded-lg border border-dashed border-border bg-card/50 p-8 text-center">
-          <p className="font-mono text-xs text-muted-foreground">
-            Browse mode (agent parity) will be wired to /api/agent/browse
+        <FilterBar
+          filters={{
+            scope_path: browseScope,
+            kind: browseKind,
+            tag: browseTag,
+            created_by: browseAgent,
+            show_forgotten: browseForgotten,
+          }}
+          onChange={handleBrowseFilterChange}
+        />
+      )}
+
+      {isBrowseMode && agentBrowseQuery.isLoading && (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Browsing...</p>
+        </div>
+      )}
+
+      {isBrowseMode && agentBrowseQuery.isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">
+            Browse failed: {agentBrowseQuery.error?.message ?? "Unknown error"}
           </p>
         </div>
+      )}
+
+      {isBrowseMode && agentBrowseQuery.data && (
+        <>
+          <TracePanel
+            data={{
+              kind: "browse",
+              trace: agentBrowseQuery.data._trace,
+              total: agentBrowseQuery.data.total,
+              has_more: agentBrowseQuery.data.has_more,
+            }}
+          />
+          {agentBrowseQuery.data.entries.length === 0 ? (
+            <div className="rounded-lg border border-border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                No entries match the current filters.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {agentBrowseQuery.data.entries.map((entry) => (
+                <SnippetCard
+                  key={entry.id}
+                  entry={entry}
+                  isExpanded={expandedId === entry.id}
+                  onToggle={() => toggleExpanded(entry.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            {browseCursor ? (
+              <button
+                type="button"
+                onClick={handleBrowseReset}
+                className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                first page
+              </button>
+            ) : (
+              <div />
+            )}
+            {agentBrowseQuery.data.has_more && agentBrowseQuery.data.next_cursor && (
+              <button
+                type="button"
+                onClick={handleBrowseNext}
+                className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                next page
+              </button>
+            )}
+          </div>
+        </>
       )}
 
       {activeMode === "curate" && isLoading && (

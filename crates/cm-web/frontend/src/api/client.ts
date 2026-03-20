@@ -183,6 +183,42 @@ export interface AgentRecallResponse extends RecallResponse {
   _trace: RecallTraceInfo;
 }
 
+export interface BrowseEntryView {
+  id: string;
+  scope_path: string;
+  kind: EntryKind;
+  title: string;
+  snippet: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  superseded_by?: string | null;
+  tags?: string[];
+}
+
+export interface BrowseTraceInfo {
+  filter_set: string[];
+  sort: string;
+}
+
+export interface AgentBrowseResponse {
+  entries: BrowseEntryView[];
+  total: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+  _trace: BrowseTraceInfo;
+}
+
+export interface AgentBrowseParams {
+  scope_path?: string;
+  kind?: EntryKind;
+  tag?: string;
+  created_by?: string;
+  include_superseded?: boolean;
+  limit?: number;
+  cursor?: string;
+}
+
 // --- API namespace ---
 
 export const api = {
@@ -270,6 +306,20 @@ export const api = {
           tags: params.tags,
           limit: params.limit,
           max_tokens: params.max_tokens,
+        })}`,
+      );
+    },
+
+    browse(params: AgentBrowseParams = {}): Promise<AgentBrowseResponse> {
+      return apiFetch(
+        `/agent/browse${toSearchParams({
+          scope_path: params.scope_path,
+          kind: params.kind,
+          tag: params.tag,
+          created_by: params.created_by,
+          include_superseded: params.include_superseded,
+          limit: params.limit,
+          cursor: params.cursor,
         })}`,
       );
     },
