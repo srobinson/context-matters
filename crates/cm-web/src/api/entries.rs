@@ -7,10 +7,9 @@ use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
-use cm_cli::shared::{
-    MAX_LIMIT, check_input_size, clamp_limit, entry_has_any_tag, entry_to_recall_json,
-    estimate_tokens, recall_candidates_without_query,
-};
+use cm_capabilities::projection::project_recall_entry;
+use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{
     BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationSource,
     NewEntry, PagedResult, Pagination, ScopePath, UpdateEntry, WriteContext,
@@ -169,118 +168,49 @@ async fn recall(
 ) -> Result<Json<RecallResponse>, ApiError> {
     let rq = parse_recall_query(raw_query.0.as_deref())?;
 
-    if let Some(ref query) = rq.query {
-        check_input_size(query, "query")
-            .map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    if let Some(ref q) = rq.query {
+        check_input_size(q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
 
-    let scope_path = rq
+    let scope = rq
         .scope
-        .map(|scope| ScopePath::parse(&scope))
+        .map(|s| ScopePath::parse(&s))
         .transpose()
         .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
 
-    let kind_filters: Vec<EntryKind> = rq
+    let kinds: Vec<EntryKind> = rq
         .kinds
         .iter()
-        .map(|kind| parse_entry_kind(kind))
+        .map(|k| k.parse::<EntryKind>().map_err(ApiError))
         .collect::<Result<Vec<_>, _>>()?;
 
     let limit = clamp_limit(rq.limit);
-    let has_post_filter = !kind_filters.is_empty() || !rq.tags.is_empty();
-    let fetch_limit = if has_post_filter {
-        limit.saturating_mul(3).min(MAX_LIMIT)
-    } else {
-        limit
-    };
 
-    let entries = match &rq.query {
-        Some(query) => {
-            state
-                .store
-                .search(query, scope_path.as_ref(), fetch_limit)
-                .await?
-        }
-        None => {
-            if !rq.tags.is_empty() {
-                recall_candidates_without_query(
-                    &state.store,
-                    scope_path.as_ref(),
-                    &kind_filters,
-                    &rq.tags,
-                    limit,
-                )
-                .await?
-            } else if let Some(scope_path) = &scope_path {
-                state
-                    .store
-                    .resolve_context(scope_path, &kind_filters, fetch_limit)
-                    .await?
-            } else {
-                let filter = EntryFilter {
-                    kind: if kind_filters.len() == 1 {
-                        Some(kind_filters[0])
-                    } else {
-                        None
-                    },
-                    pagination: Pagination {
-                        limit: fetch_limit,
-                        cursor: None,
-                    },
-                    ..Default::default()
-                };
-                state.store.browse(filter).await?.items
-            }
-        }
-    };
+    let result = recall::recall(
+        &state.store,
+        RecallRequest {
+            query: rq.query,
+            scope,
+            kinds,
+            tags: rq.tags,
+            limit,
+            max_tokens: rq.max_tokens,
+        },
+    )
+    .await
+    .map_err(ApiError)?;
 
-    let entries = if rq.query.is_some() && !kind_filters.is_empty() {
-        entries
-            .into_iter()
-            .filter(|entry| kind_filters.contains(&entry.kind))
-            .collect()
-    } else {
-        entries
-    };
-
-    let entries: Vec<Entry> = if rq.tags.is_empty() {
-        entries
-    } else {
-        entries
-            .into_iter()
-            .filter(|entry| entry_has_any_tag(entry, &rq.tags))
-            .collect()
-    };
-
-    let entries: Vec<Entry> = entries.into_iter().take(limit as usize).collect();
-    let scope_chain: Vec<String> = match &scope_path {
-        Some(scope_path) => scope_path.ancestors().map(String::from).collect(),
-        None => Vec::new(),
-    };
-
-    let mut results = Vec::with_capacity(entries.len());
-    let mut total_tokens = 0;
-
-    for entry in &entries {
-        let entry_json = entry_to_recall_json(entry);
-        let entry_tokens = estimate_tokens(&entry_json.to_string());
-
-        if let Some(budget) = rq.max_tokens
-            && total_tokens + entry_tokens > budget
-            && !results.is_empty()
-        {
-            break;
-        }
-
-        total_tokens += entry_tokens;
-        results.push(entry_json);
-    }
+    let results: Vec<Value> = result
+        .entries
+        .iter()
+        .map(|e| serde_json::to_value(project_recall_entry(e)).expect("RecallEntryView serializes"))
+        .collect();
 
     Ok(Json(RecallResponse {
         returned: results.len(),
         results,
-        scope_chain,
-        token_estimate: total_tokens,
+        scope_chain: result.scope_chain,
+        token_estimate: result.token_estimate,
     }))
 }
 
