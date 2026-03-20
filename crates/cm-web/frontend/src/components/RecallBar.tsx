@@ -84,10 +84,10 @@ export function RecallBar({
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_8rem_8rem]">
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             scope
-          </label>
+          </span>
           <Select value={scope} onValueChange={(value) => onScopeChange(value ?? undefined)}>
             <SelectTrigger className="w-full font-mono text-xs">
               <SelectValue placeholder="Any scope" />
@@ -101,12 +101,12 @@ export function RecallBar({
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
 
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             tags
-          </label>
+          </span>
           <TagInput
             value={tags}
             onChange={onTagsChange}
@@ -114,12 +114,12 @@ export function RecallBar({
             placeholder="Any tags..."
             maxSuggestions={undefined}
           />
-        </div>
+        </label>
 
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             limit
-          </label>
+          </span>
           <Input
             type="number"
             min={1}
@@ -133,12 +133,12 @@ export function RecallBar({
             }}
             className="font-mono text-xs"
           />
-        </div>
+        </label>
 
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             max tokens
-          </label>
+          </span>
           <Input
             type="number"
             min={1}
@@ -157,13 +157,13 @@ export function RecallBar({
             placeholder="none"
             className="font-mono text-xs"
           />
-        </div>
+        </label>
       </div>
 
       <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           kinds
-        </label>
+        </span>
         <div className="flex flex-wrap gap-1.5">
           {ALL_KINDS.map((kind) => {
             const selected = kinds.includes(kind);

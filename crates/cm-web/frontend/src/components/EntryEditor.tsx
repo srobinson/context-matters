@@ -136,21 +136,24 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
   return (
     <div className="space-y-4 border-t border-border pt-3" onClick={(e) => e.stopPropagation()}>
       {/* Title */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           title
-        </label>
+        </span>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           className="font-mono text-xs"
         />
-      </div>
+      </label>
 
       {/* Body with preview toggle */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+          <label
+            htmlFor={`body-${entry.id}`}
+            className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60"
+          >
             body
           </label>
           <button
@@ -167,6 +170,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
           </MarkdownContent>
         ) : (
           <Textarea
+            id={`body-${entry.id}`}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             className="min-h-[120px] font-mono text-xs"
@@ -176,10 +180,10 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
 
       {/* Kind + Confidence row */}
       <div className="flex gap-4">
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             kind
-          </label>
+          </span>
           <Select value={kind} onValueChange={(v) => setKind(v as EntryKind)}>
             <SelectTrigger className="h-7 w-[140px] font-mono text-xs">
               <SelectValue />
@@ -192,12 +196,12 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
 
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             confidence
-          </label>
+          </span>
           <Select value={confidence} onValueChange={(v) => setConfidence(v as Confidence | "none")}>
             <SelectTrigger className="h-7 w-[120px] font-mono text-xs">
               <SelectValue />
@@ -210,14 +214,14 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
       </div>
 
       {/* Scope */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope
-        </label>
+        </span>
         <Select value={entry.scope_path} onValueChange={handleScopeChange}>
           <SelectTrigger className="h-7 w-full font-mono text-xs">
             <SelectValue />
@@ -233,7 +237,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </label>
 
       {/* Scope change confirmation */}
       {pendingScope && (
@@ -273,18 +277,18 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
       )}
 
       {/* Tags */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           tags
-        </label>
+        </span>
         <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} maxSuggestions={8} />
-      </div>
+      </label>
 
       {/* Created by (read-only) */}
       <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           created by
-        </label>
+        </span>
         <p className="font-mono text-xs text-muted-foreground">{entry.created_by}</p>
       </div>
 

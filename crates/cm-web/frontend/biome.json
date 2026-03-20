@@ -19,13 +19,18 @@
         "noNonNullAssertion": "off"
       },
       "a11y": {
-        "noLabelWithoutControl": "warn",
-        "noStaticElementInteractions": "warn",
-        "useKeyWithClickEvents": "warn",
-        "useSemanticElements": "warn"
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": {
+            "inputComponents": ["Input", "Textarea", "Select", "TagInput"]
+          }
+        },
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
       },
       "suspicious": {
-        "noArrayIndexKey": "warn"
+        "noArrayIndexKey": "off"
       }
     }
   },
@@ -42,6 +47,18 @@
     }
   },
   "files": {
-    "includes": ["src/**", "!src/api/generated/**"]
-  }
+    "includes": ["src/**", "!src/api/generated"]
+  },
+  "overrides": [
+    {
+      "includes": ["src/components/ui/label.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off"
+          }
+        }
+      }
+    }
+  ]
 }

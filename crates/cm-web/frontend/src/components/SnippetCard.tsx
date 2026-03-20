@@ -24,7 +24,13 @@ function getAgentName(createdBy: string) {
   return parts.length > 1 ? parts.slice(1).join(":") : createdBy;
 }
 
-function ExpandedBody({ entryId, containerRef }: { entryId: string; containerRef: React.RefObject<HTMLElement | null> }) {
+function ExpandedBody({
+  entryId,
+  containerRef,
+}: {
+  entryId: string;
+  containerRef: React.RefObject<HTMLElement | null>;
+}) {
   const { data: detail, isLoading } = useEntry(entryId);
   const [editing, setEditing] = useState(false);
 
@@ -48,11 +54,7 @@ function ExpandedBody({ entryId, containerRef }: { entryId: string; containerRef
 
   if (editing) {
     return (
-      <EntryEditor
-        entry={detail}
-        onCancel={() => setEditing(false)}
-        onSaved={scrollBackIntoView}
-      />
+      <EntryEditor entry={detail} onCancel={() => setEditing(false)} onSaved={scrollBackIntoView} />
     );
   }
 
