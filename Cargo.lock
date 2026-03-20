@@ -345,6 +345,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "cm-capabilities",
  "cm-core",
  "cm-store",
  "indexmap",

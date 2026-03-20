@@ -3,27 +3,16 @@
 //! Error conversion, input validation, entry formatting, scope management.
 
 use cm_core::{
-    CmError, Confidence, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
-    WriteContext,
+    CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath, WriteContext,
 };
 use serde_json::{Value, json};
 
-// ── Constants ─────────────────────────────────────────────────────
+// ── Re-exports from cm-capabilities ──────────────────────────────
 
-/// Maximum input size for text-accepting tool fields (1 MB).
-pub const MAX_INPUT_BYTES: usize = 1_048_576;
-
-/// Maximum number of IDs in a batch request.
-pub const MAX_BATCH_IDS: usize = 100;
-
-/// Default result limit for retrieval tools.
-pub const DEFAULT_LIMIT: u32 = 20;
-
-/// Maximum result limit.
-pub const MAX_LIMIT: u32 = 200;
-
-/// Snippet length for two-phase retrieval responses.
-pub const SNIPPET_LENGTH: usize = 200;
+pub use cm_capabilities::constants::{
+    DEFAULT_LIMIT, MAX_BATCH_IDS, MAX_INPUT_BYTES, MAX_LIMIT, SNIPPET_LENGTH,
+};
+pub use cm_capabilities::validation::{check_input_size, clamp_limit, parse_confidence};
 
 // ── Error Conversion ──────────────────────────────────────────────
 
@@ -74,20 +63,7 @@ pub fn cm_err_to_string(e: CmError) -> String {
     }
 }
 
-// ── Input Validation ──────────────────────────────────────────────
-
-/// Reject input exceeding the per-field byte limit.
-pub fn check_input_size(value: &str, field: &str) -> Result<(), String> {
-    if value.len() > MAX_INPUT_BYTES {
-        return Err(format!("{field} exceeds {MAX_INPUT_BYTES} byte limit"));
-    }
-    Ok(())
-}
-
-/// Clamp a limit value to the allowed range `[1, MAX_LIMIT]`.
-pub fn clamp_limit(limit: Option<u32>) -> u32 {
-    limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
-}
+// ── Input Validation (re-exported from cm-capabilities above) ────
 
 // ── Text Helpers ──────────────────────────────────────────────────
 
@@ -117,19 +93,7 @@ pub fn json_response(value: Value) -> Result<String, String> {
     serde_json::to_string_pretty(&value).map_err(|e| format!("[json] {e}"))
 }
 
-// ── Confidence ────────────────────────────────────────────────────
-
-/// Parse a confidence string to the Confidence enum.
-pub fn parse_confidence(s: &str) -> Result<Confidence, String> {
-    match s {
-        "high" => Ok(Confidence::High),
-        "medium" => Ok(Confidence::Medium),
-        "low" => Ok(Confidence::Low),
-        other => Err(format!(
-            "Invalid confidence '{other}'. Valid values: high, medium, low."
-        )),
-    }
-}
+// ── Confidence (re-exported from cm-capabilities above) ──────────
 
 // ── Serde Defaults ────────────────────────────────────────────────
 
@@ -335,26 +299,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clamp_limit_defaults_to_20() {
-        assert_eq!(clamp_limit(None), DEFAULT_LIMIT);
-    }
-
-    #[test]
-    fn clamp_limit_caps_at_max() {
-        assert_eq!(clamp_limit(Some(500)), MAX_LIMIT);
-    }
-
-    #[test]
-    fn clamp_limit_floors_at_1() {
-        assert_eq!(clamp_limit(Some(0)), 1);
-    }
-
-    #[test]
-    fn clamp_limit_passes_through_valid() {
-        assert_eq!(clamp_limit(Some(50)), 50);
-    }
-
-    #[test]
     fn snippet_short_text_unchanged() {
         assert_eq!(snippet("hello world", 200), "hello world");
     }
@@ -373,17 +317,6 @@ mod tests {
         assert_eq!(estimate_tokens("abcd"), 1);
         assert_eq!(estimate_tokens("abcdefgh"), 2);
         assert_eq!(estimate_tokens("abc"), 1); // 3 chars rounds up to 1 token
-    }
-
-    #[test]
-    fn check_input_size_accepts_small() {
-        assert!(check_input_size("hello", "field").is_ok());
-    }
-
-    #[test]
-    fn check_input_size_rejects_large() {
-        let big = "x".repeat(MAX_INPUT_BYTES + 1);
-        assert!(check_input_size(&big, "body").is_err());
     }
 
     #[test]
