@@ -97,6 +97,7 @@ pub(crate) struct RecallOutput {
     pub fetch_limit_used: u32,
     pub post_filters_applied: Vec<String>,
     pub token_budget_exhausted: bool,
+    pub hint: Option<String>,
 }
 
 /// Execute a recall against the store, returning all data needed by both
@@ -124,6 +125,9 @@ pub(crate) async fn execute_recall(
         .collect::<Result<Vec<_>, _>>()?;
 
     let limit = clamp_limit(rq.limit);
+
+    // Capture query for hint generation (before move)
+    let original_query = rq.query.clone();
 
     let mut post_filters_applied = Vec::new();
     if !kinds.is_empty() {
@@ -154,6 +158,27 @@ pub(crate) async fn execute_recall(
         result.token_estimate >= budget && entries_len < result.candidates_before_filter
     });
 
+    // Build hint for zero-result queries with too many words
+    let hint = if results.is_empty() {
+        if let Some(ref q) = original_query {
+            let word_count = q.split_whitespace().count();
+            if word_count > 3 {
+                Some(format!(
+                    "Query has {word_count} words with implicit AND. Try fewer keywords (1-3) or use OR between synonyms. Example: instead of '{q}', try '{}'.",
+                    q.split_whitespace().take(2).collect::<Vec<_>>().join(" ")
+                ))
+            } else if word_count > 1 {
+                Some("No matches. Try fewer keywords, prefix matching (e.g. 'migrat*'), or OR between synonyms.".to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     Ok(RecallOutput {
         returned: results.len(),
         results,
@@ -164,6 +189,7 @@ pub(crate) async fn execute_recall(
         fetch_limit_used: result.fetch_limit_used,
         post_filters_applied,
         token_budget_exhausted,
+        hint,
     })
 }
 
@@ -175,6 +201,8 @@ struct AgentRecallResponse {
     returned: usize,
     scope_chain: Vec<String>,
     token_estimate: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
     _trace: RecallTrace,
 }
 
@@ -200,6 +228,7 @@ async fn recall_handler(
         results: output.results,
         scope_chain: output.scope_chain,
         token_estimate: output.token_estimate,
+        hint: output.hint,
         _trace: RecallTrace {
             routing: match output.routing {
                 RecallRouting::Search => "search".to_owned(),

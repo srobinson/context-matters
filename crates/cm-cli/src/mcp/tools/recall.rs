@@ -56,6 +56,9 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
 
     let limit = clamp_limit(params.limit);
 
+    // Capture query for hint generation (before move)
+    let original_query = params.query.clone();
+
     // Delegate to RecallCapability
     let result = recall::recall(
         store,
@@ -74,12 +77,37 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
     // Map entries through the legacy JSON projection for MCP envelope
     let results: Vec<Value> = result.entries.iter().map(entry_to_recall_json).collect();
 
-    let response = json!({
+    // Build hint for zero-result queries with too many words
+    let hint = if results.is_empty() {
+        if let Some(ref q) = original_query {
+            let word_count = q.split_whitespace().count();
+            if word_count > 3 {
+                Some(format!(
+                    "Query has {word_count} words with implicit AND. Try fewer keywords (1-3) or use OR between synonyms. Example: instead of '{q}', try '{}'.",
+                    q.split_whitespace().take(2).collect::<Vec<_>>().join(" ")
+                ))
+            } else if word_count > 1 {
+                Some("No matches. Try fewer keywords, prefix matching (e.g. 'migrat*'), or OR between synonyms.".to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut response = json!({
         "results": results,
         "returned": results.len(),
         "scope_chain": result.scope_chain,
         "token_estimate": result.token_estimate,
     });
+
+    if let Some(hint) = hint {
+        response["hint"] = json!(hint);
+    }
 
     json_response(response)
 }
