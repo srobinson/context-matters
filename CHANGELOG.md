@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.11](https://github.com/srobinson/context-matters/compare/v0.1.10...v0.1.11) (2026-03-20)
+
+
+### Bug Fixes
+
+* improve array parameter docs and error messages ([759e511](https://github.com/srobinson/context-matters/commit/759e5110d2b6b5f7bc47c9bb12a45e010866bd1d))
+* improve cx_recall scope metadata and per-entry token estimates ([4a628c0](https://github.com/srobinson/context-matters/commit/4a628c0bf4c1dc53725ec4a4265ee99ab1c855a9))
+
 ## [0.1.10](https://github.com/srobinson/context-matters/compare/v0.1.9...v0.1.10) (2026-03-20)
 
 
