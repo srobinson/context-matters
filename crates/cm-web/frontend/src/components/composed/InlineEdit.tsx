@@ -91,9 +91,7 @@ export function InlineEdit({
         onClick={handleEnterEdit}
         className={`text-left font-mono text-xs text-foreground hover:bg-accent/30 rounded px-1 -mx-1 py-0.5 transition-colors ${className ?? ""}`}
       >
-        {value || (
-          <span className="text-muted-foreground/40">{placeholder}</span>
-        )}
+        {value || <span className="text-muted-foreground/40">{placeholder}</span>}
       </button>
     );
   }
@@ -113,9 +111,7 @@ export function InlineEdit({
         placeholder={placeholder}
         className={`font-mono text-xs ${mode === "textarea" ? "min-h-[80px]" : ""}`}
       />
-      {error && (
-        <p className="font-mono text-[10px] text-destructive">{error}</p>
-      )}
+      {error && <p className="font-mono text-[10px] text-destructive">{error}</p>}
       <div className="flex items-center gap-1.5">
         <button
           type="button"

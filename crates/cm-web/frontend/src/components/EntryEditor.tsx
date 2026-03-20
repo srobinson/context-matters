@@ -1,12 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-import Markdown from "react-markdown";
+import type { EntryDetail, Stats } from "@/api/client";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { EntryMeta } from "@/api/generated/EntryMeta";
-import type { Stats, EntryDetail } from "@/api/client";
-import { useUpdateEntry, useMergeEntry, useStats } from "@/api/hooks";
+import { useMergeEntry, useStats, useUpdateEntry } from "@/api/hooks";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -14,6 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { MarkdownContent } from "./composed/MarkdownContent";
 import { TagInput } from "./composed/TagInput";
 import { DiffView } from "./DiffView";
 
@@ -28,12 +28,7 @@ const ALL_KINDS: EntryKind[] = [
   "observation",
 ];
 
-const ALL_CONFIDENCES: (Confidence | "none")[] = [
-  "none",
-  "high",
-  "medium",
-  "low",
-];
+const ALL_CONFIDENCES: (Confidence | "none")[] = ["none", "high", "medium", "low"];
 
 interface EntryEditorProps {
   entry: EntryDetail;
@@ -69,8 +64,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
     body !== entry.body ||
     kind !== entry.kind ||
     JSON.stringify(tags) !== JSON.stringify(entry.meta?.tags ?? []) ||
-    (confidence === "none" ? null : confidence) !==
-      (entry.meta?.confidence ?? null);
+    (confidence === "none" ? null : confidence) !== (entry.meta?.confidence ?? null);
 
   const isMutating = updateEntry.isPending || mergeEntry.isPending;
 
@@ -100,7 +94,8 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
   }, [entry, title, body, kind, tags, confidence, updateEntry, onSaved]);
 
   const handleScopeChange = useCallback(
-    (newScope: string) => {
+    (newScope: string | null) => {
+      if (!newScope) return;
       if (newScope !== entry.scope_path) {
         setPendingScope(newScope);
       }
@@ -136,39 +131,29 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
         },
       },
     );
-  }, [
-    pendingScope,
-    entry,
-    kind,
-    title,
-    body,
-    tags,
-    confidence,
-    mergeEntry,
-    onSaved,
-  ]);
+  }, [pendingScope, entry, kind, title, body, tags, confidence, mergeEntry, onSaved]);
 
   return (
-    <div
-      className="space-y-4 border-t border-border pt-3"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="space-y-4 border-t border-border pt-3" onClick={(e) => e.stopPropagation()}>
       {/* Title */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           title
-        </label>
+        </span>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           className="font-mono text-xs"
         />
-      </div>
+      </label>
 
       {/* Body with preview toggle */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+          <label
+            htmlFor={`body-${entry.id}`}
+            className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60"
+          >
             body
           </label>
           <button
@@ -180,11 +165,12 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
           </button>
         </div>
         {showPreview ? (
-          <div className="min-h-[120px] rounded-lg border border-input bg-transparent p-3 prose prose-sm prose-neutral dark:prose-invert max-w-none font-mono text-xs leading-relaxed [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs">
-            <Markdown>{body}</Markdown>
-          </div>
+          <MarkdownContent className="min-h-[120px] rounded-lg border border-input bg-transparent p-3">
+            {body}
+          </MarkdownContent>
         ) : (
           <Textarea
+            id={`body-${entry.id}`}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             className="min-h-[120px] font-mono text-xs"
@@ -194,10 +180,10 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
 
       {/* Kind + Confidence row */}
       <div className="flex gap-4">
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             kind
-          </label>
+          </span>
           <Select value={kind} onValueChange={(v) => setKind(v as EntryKind)}>
             <SelectTrigger className="h-7 w-[140px] font-mono text-xs">
               <SelectValue />
@@ -210,16 +196,13 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
 
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             confidence
-          </label>
-          <Select
-            value={confidence}
-            onValueChange={(v) => setConfidence(v as Confidence | "none")}
-          >
+          </span>
+          <Select value={confidence} onValueChange={(v) => setConfidence(v as Confidence | "none")}>
             <SelectTrigger className="h-7 w-[120px] font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -231,18 +214,15 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
       </div>
 
       {/* Scope */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope
-        </label>
-        <Select
-          value={entry.scope_path}
-          onValueChange={handleScopeChange}
-        >
+        </span>
+        <Select value={entry.scope_path} onValueChange={handleScopeChange}>
           <SelectTrigger className="h-7 w-full font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -251,30 +231,26 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
                 {opt.count != null && (
-                  <span className="ml-1 text-muted-foreground/60">
-                    ({opt.count})
-                  </span>
+                  <span className="ml-1 text-muted-foreground/60">({opt.count})</span>
                 )}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </label>
 
       {/* Scope change confirmation */}
       {pendingScope && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-          <p className="font-mono text-xs text-foreground">
-            Move entry to a different scope?
-          </p>
+          <p className="font-mono text-xs text-foreground">Move entry to a different scope?</p>
           <p className="font-mono text-[11px] text-muted-foreground">
             <span className="line-through">{entry.scope_path}</span>
             {" \u2192 "}
             <span className="font-medium text-foreground">{pendingScope}</span>
           </p>
           <p className="font-mono text-[10px] text-muted-foreground/80">
-            This creates a new entry at the target scope and supersedes the
-            original. The operation cannot be undone.
+            This creates a new entry at the target scope and supersedes the original. The operation
+            cannot be undone.
           </p>
           <div className="flex items-center gap-2 pt-1">
             <button
@@ -294,34 +270,26 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
               cancel
             </button>
             {mergeEntry.isError && (
-              <span className="font-mono text-xs text-destructive">
-                {mergeEntry.error.message}
-              </span>
+              <span className="font-mono text-xs text-destructive">{mergeEntry.error.message}</span>
             )}
           </div>
         </div>
       )}
 
       {/* Tags */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           tags
-        </label>
-        <TagInput
-          value={tags}
-          onChange={setTags}
-          suggestions={tagSuggestions}
-        />
-      </div>
+        </span>
+        <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} maxSuggestions={8} />
+      </label>
 
       {/* Created by (read-only) */}
       <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           created by
-        </label>
-        <p className="font-mono text-xs text-muted-foreground">
-          {entry.created_by}
-        </p>
+        </span>
+        <p className="font-mono text-xs text-muted-foreground">{entry.created_by}</p>
       </div>
 
       {/* Actions / Diff view */}

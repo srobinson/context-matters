@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/cm-core",
     "crates/cm-store",
+    "crates/cm-capabilities",
     "crates/cm-cli",
     "crates/cm-web",
 ]
@@ -14,6 +15,7 @@ license = "MIT"
 repository = "https://github.com/srobinson/context-matters"
 
 [workspace.dependencies]
+cm-capabilities = { path = "crates/cm-capabilities" }
 cm-cli = { path = "crates/cm-cli" }
 cm-core = { path = "crates/cm-core" }
 cm-store = { path = "crates/cm-store" }
@@ -40,7 +42,7 @@ blake3 = "1"
 base64 = "0.22"
 
 # Type generation
-ts-rs = { version = "12.0", features = ["chrono-impl", "uuid-impl", "serde-json-impl"] }
+ts-rs = { version = "12.0", features = ["chrono-impl", "uuid-impl", "serde-json-impl", "no-serde-warnings"] }
 
 # Error handling
 anyhow = "1"

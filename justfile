@@ -23,7 +23,7 @@ fmt:
 clippy:
     cargo clippy --workspace --all-targets --fix --allow-dirty -- -D warnings
 
-check: fmt clippy
+check: fmt clippy web-check
 
 check-pedantic:
     cargo clippy -p cm-core --all-targets -- -W clippy::pedantic -D warnings
@@ -34,6 +34,10 @@ serve-dev:
 # Run with verbose logging
 serve-debug:
     CM_LOG_LEVEL=debug cargo run -p cm-cli -- serve --verbose
+
+# Lint + format check frontend (biome + tsc)
+web-check:
+    cd crates/cm-web/frontend && pnpm run check && pnpm run typecheck
 
 # Install frontend dependencies
 web-install:

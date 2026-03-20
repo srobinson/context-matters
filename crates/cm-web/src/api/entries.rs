@@ -3,10 +3,11 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
+use cm_capabilities::projection::RecallEntryView;
 use cm_core::{
     BrowseSort, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationSource,
     NewEntry, PagedResult, Pagination, ScopePath, UpdateEntry, WriteContext,
@@ -15,12 +16,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::api::agent;
 use crate::api::error::ApiError;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/entries", get(browse).post(create_entry))
         .route("/entries/search", get(search))
+        .route("/entries/recall", get(recall))
         .route("/entries/merge", axum::routing::post(merge_entry))
         .route(
             "/entries/{id}",
@@ -137,6 +140,35 @@ async fn search(
         next_cursor: None,
     }))
 }
+
+// ── Recall compatibility alias ──────────────────────────────────
+//
+// Delegates to the same RecallCapability path as /api/agent/recall
+// but omits the _trace object for backward compatibility.
+
+#[derive(Debug, Serialize)]
+struct RecallResponse {
+    results: Vec<RecallEntryView>,
+    returned: usize,
+    scope_chain: Vec<String>,
+    token_estimate: u32,
+}
+
+async fn recall(
+    State(state): State<Arc<AppState>>,
+    raw_query: RawQuery,
+) -> Result<Json<RecallResponse>, ApiError> {
+    let output = agent::execute_recall(&state.store, raw_query.0.as_deref()).await?;
+
+    Ok(Json(RecallResponse {
+        results: output.results,
+        returned: output.returned,
+        scope_chain: output.scope_chain,
+        token_estimate: output.token_estimate,
+    }))
+}
+
+// ── Single entry operations ─────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 struct EntryDetail {

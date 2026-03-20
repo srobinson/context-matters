@@ -70,9 +70,7 @@ export function DiffView({
         >
           {backLabel}
         </button>
-        {error && (
-          <span className="font-mono text-xs text-destructive">{error}</span>
-        )}
+        {error && <span className="font-mono text-xs text-destructive">{error}</span>}
       </div>
     </div>
   );
@@ -81,8 +79,7 @@ export function DiffView({
 // --- Internal components ---
 
 function FieldDiffRow({ change }: { change: FieldChange }) {
-  const isMultiline =
-    change.original.includes("\n") || change.current.includes("\n");
+  const isMultiline = change.original.includes("\n") || change.current.includes("\n");
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-2.5 space-y-1.5">
@@ -98,13 +95,7 @@ function FieldDiffRow({ change }: { change: FieldChange }) {
   );
 }
 
-function InlineDiff({
-  original,
-  current,
-}: {
-  original: string;
-  current: string;
-}) {
+function InlineDiff({ original, current }: { original: string; current: string }) {
   return (
     <div className="flex items-baseline gap-2 font-mono text-xs">
       <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-red-600 line-through dark:text-red-400">
@@ -118,13 +109,7 @@ function InlineDiff({
   );
 }
 
-function MultilineDiff({
-  original,
-  current,
-}: {
-  original: string;
-  current: string;
-}) {
+function MultilineDiff({ original, current }: { original: string; current: string }) {
   const { removed, added, unchanged } = useMemo(
     () => diffLines(original, current),
     [original, current],
@@ -134,32 +119,20 @@ function MultilineDiff({
     <div className="space-y-1">
       <pre className="overflow-x-auto rounded-md border border-border bg-muted/50 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
         {removed.map((line, i) => (
-          <div
-            key={`r-${i}`}
-            className="bg-red-500/10 text-red-600 dark:text-red-400"
-          >
-            <span className="select-none text-muted-foreground/40 mr-1">
-              -
-            </span>
+          <div key={`r-${i}`} className="bg-red-500/10 text-red-600 dark:text-red-400">
+            <span className="select-none text-muted-foreground/40 mr-1">-</span>
             {line}
           </div>
         ))}
         {unchanged.map((line, i) => (
           <div key={`u-${i}`} className="text-muted-foreground/60">
-            <span className="select-none text-muted-foreground/20 mr-1">
-              {" "}
-            </span>
+            <span className="select-none text-muted-foreground/20 mr-1"> </span>
             {line}
           </div>
         ))}
         {added.map((line, i) => (
-          <div
-            key={`a-${i}`}
-            className="bg-green-500/10 text-green-600 dark:text-green-400"
-          >
-            <span className="select-none text-muted-foreground/40 mr-1">
-              +
-            </span>
+          <div key={`a-${i}`} className="bg-green-500/10 text-green-600 dark:text-green-400">
+            <span className="select-none text-muted-foreground/40 mr-1">+</span>
             {line}
           </div>
         ))}

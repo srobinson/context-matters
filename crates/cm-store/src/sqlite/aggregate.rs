@@ -81,7 +81,7 @@ impl CmStore {
              WHERE e.superseded_by IS NULL \
                AND e.meta IS NOT NULL \
              GROUP BY j.value \
-             ORDER BY cnt DESC",
+             ORDER BY cnt DESC, j.value COLLATE NOCASE ASC, j.value ASC",
         )
         .fetch_all(pool)
         .await

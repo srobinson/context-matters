@@ -1,11 +1,8 @@
 import { useMemo } from "react";
+import type { EntryDetail } from "@/api/client";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import type { EntryDetail } from "@/api/client";
-import {
-  DiffView as ComposedDiffView,
-  type FieldChange,
-} from "./composed/DiffView";
+import { DiffView as ComposedDiffView, type FieldChange } from "./composed/DiffView";
 
 export interface DiffFields {
   title: string;
@@ -24,18 +21,8 @@ interface DiffViewProps {
   error?: string | null;
 }
 
-export function DiffView({
-  entry,
-  edited,
-  onConfirm,
-  onBack,
-  isPending,
-  error,
-}: DiffViewProps) {
-  const changes = useMemo(
-    () => computeChanges(entry, edited),
-    [entry, edited],
-  );
+export function DiffView({ entry, edited, onConfirm, onBack, isPending, error }: DiffViewProps) {
+  const changes = useMemo(() => computeChanges(entry, edited), [entry, edited]);
 
   return (
     <ComposedDiffView
@@ -48,10 +35,7 @@ export function DiffView({
   );
 }
 
-function computeChanges(
-  entry: EntryDetail,
-  edited: DiffFields,
-): FieldChange[] {
+function computeChanges(entry: EntryDetail, edited: DiffFields): FieldChange[] {
   const changes: FieldChange[] = [];
 
   if (edited.title !== entry.title) {

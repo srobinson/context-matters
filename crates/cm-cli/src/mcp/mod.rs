@@ -14,11 +14,14 @@ use cm_core::ContextStore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-// Re-export shared helpers for internal use by tool handlers.
-pub(crate) use crate::shared::{
-    MAX_BATCH_IDS, check_input_size, clamp_limit, cm_err_to_string, ensure_scope_chain,
-    estimate_tokens, json_response, snippet,
-};
+// Re-export helpers for internal use by tool handlers.
+pub(crate) use cm_capabilities::constants::MAX_BATCH_IDS;
+pub(crate) use cm_capabilities::error::cm_err_to_string;
+pub(crate) use cm_capabilities::projection::snippet;
+pub(crate) use cm_capabilities::scope::ensure_scope_chain;
+pub(crate) use cm_capabilities::validation::check_input_size;
+
+pub(crate) use crate::shared::json_response;
 
 // ── Constants ─────────────────────────────────────────────────────
 

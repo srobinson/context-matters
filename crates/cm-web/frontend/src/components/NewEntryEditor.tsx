@@ -1,12 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import type { Stats } from "@/api/client";
 import type { Confidence } from "@/api/generated/Confidence";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { EntryMeta } from "@/api/generated/EntryMeta";
-import type { Stats } from "@/api/client";
 import { useCreateEntry, useStats } from "@/api/hooks";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "./composed/TagInput";
 
 const ALL_KINDS: EntryKind[] = [
@@ -27,12 +27,7 @@ const ALL_KINDS: EntryKind[] = [
   "observation",
 ];
 
-const ALL_CONFIDENCES: (Confidence | "none")[] = [
-  "none",
-  "high",
-  "medium",
-  "low",
-];
+const ALL_CONFIDENCES: (Confidence | "none")[] = ["none", "high", "medium", "low"];
 
 interface NewEntryEditorProps {
   onCancel: () => void;
@@ -95,10 +90,10 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
       </p>
 
       {/* Title */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           title
-        </label>
+        </span>
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -106,27 +101,27 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
           className="font-mono text-xs"
           autoFocus
         />
-      </div>
+      </label>
 
       {/* Body */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           body
-        </label>
+        </span>
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Markdown content..."
           className="min-h-[120px] font-mono text-xs"
         />
-      </div>
+      </label>
 
       {/* Kind + Confidence row */}
       <div className="flex gap-4">
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             kind
-          </label>
+          </span>
           <Select value={kind} onValueChange={(v) => setKind(v as EntryKind)}>
             <SelectTrigger className="h-7 w-[140px] font-mono text-xs">
               <SelectValue />
@@ -139,16 +134,13 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
 
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+        <label className="block space-y-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             confidence
-          </label>
-          <Select
-            value={confidence}
-            onValueChange={(v) => setConfidence(v as Confidence | "none")}
-          >
+          </span>
+          <Select value={confidence} onValueChange={(v) => setConfidence(v as Confidence | "none")}>
             <SelectTrigger className="h-7 w-[120px] font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -160,15 +152,15 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </label>
       </div>
 
       {/* Scope */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           scope
-        </label>
-        <Select value={scopePath} onValueChange={setScopePath}>
+        </span>
+        <Select value={scopePath} onValueChange={(value) => setScopePath(value ?? "global")}>
           <SelectTrigger className="h-7 w-full font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -177,27 +169,21 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
                 {opt.count != null && (
-                  <span className="ml-1 text-muted-foreground/60">
-                    ({opt.count})
-                  </span>
+                  <span className="ml-1 text-muted-foreground/60">({opt.count})</span>
                 )}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </label>
 
       {/* Tags */}
-      <div className="space-y-1">
-        <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
+      <label className="block space-y-1">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
           tags
-        </label>
-        <TagInput
-          value={tags}
-          onChange={setTags}
-          suggestions={tagSuggestions}
-        />
-      </div>
+        </span>
+        <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} maxSuggestions={8} />
+      </label>
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
@@ -218,9 +204,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
           cancel
         </button>
         {createEntry.isError && (
-          <span className="font-mono text-xs text-destructive">
-            {createEntry.error.message}
-          </span>
+          <span className="font-mono text-xs text-destructive">{createEntry.error.message}</span>
         )}
       </div>
     </div>
@@ -228,7 +212,8 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
 }
 
 function buildScopeOptions(stats: Stats | undefined) {
-  if (!stats?.scope_tree) return [{ value: "global", label: "global", count: undefined as number | undefined }];
+  if (!stats?.scope_tree)
+    return [{ value: "global", label: "global", count: undefined as number | undefined }];
   return stats.scope_tree.map((node) => ({
     value: node.path,
     label: node.path,

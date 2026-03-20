@@ -15,6 +15,7 @@ name = "cm"
 path = "src/main.rs"
 
 [dependencies]
+cm-capabilities = { workspace = true }
 cm-core = { workspace = true }
 cm-store = { workspace = true }
 tokio = { workspace = true }

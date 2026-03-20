@@ -326,6 +326,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "cm-capabilities"
+version = "0.1.8"
+dependencies = [
+ "chrono",
+ "cm-core",
+ "cm-store",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "cm-cli"
 version = "0.1.8"
 dependencies = [
@@ -334,6 +348,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "cm-capabilities",
  "cm-core",
  "cm-store",
  "indexmap",
@@ -390,18 +405,22 @@ dependencies = [
  "axum",
  "chrono",
  "clap",
- "cm-cli",
+ "cm-capabilities",
  "cm-core",
  "cm-store",
+ "http-body-util",
  "open",
  "rust-embed",
  "serde",
  "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 

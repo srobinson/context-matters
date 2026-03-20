@@ -11,7 +11,7 @@ export function StatCard({ label, value, detail, className }: StatCardProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-4 space-y-1",
+        "rounded-surface border border-border bg-card p-4 space-y-1 shadow-surface",
         className,
       )}
     >
@@ -21,9 +21,7 @@ export function StatCard({ label, value, detail, className }: StatCardProps) {
       <p className="font-mono text-2xl font-semibold tracking-tight text-card-foreground">
         {value}
       </p>
-      {detail && (
-        <p className="font-mono text-[11px] text-muted-foreground">{detail}</p>
-      )}
+      {detail && <p className="font-mono text-[11px] text-muted-foreground">{detail}</p>}
     </div>
   );
 }

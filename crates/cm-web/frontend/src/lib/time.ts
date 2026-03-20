@@ -5,9 +5,7 @@ const WEEK = 604800;
 const MONTH = 2592000;
 
 export function timeAgo(iso: string): string {
-  const seconds = Math.floor(
-    (Date.now() - new Date(iso).getTime()) / 1000,
-  );
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
 
   if (seconds < 0) return "just now";
   if (seconds < MINUTE) return "just now";

@@ -1,7 +1,7 @@
-import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
-import type { Stats } from "@/api/client";
 import { TriangleAlert } from "lucide-react";
+import { useMemo } from "react";
+import type { Stats } from "@/api/client";
 
 interface QualityAlert {
   label: string;
@@ -49,13 +49,11 @@ export function QualityAlerts({ stats }: { stats: Stats }) {
 
   if (alerts.length === 0) return null;
 
-  const totalCount = alerts.reduce((sum, a) => sum + a.count, 0);
-
   return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-3 flex items-start gap-2.5">
+    <div className="flex items-start gap-2.5 rounded-surface border border-amber-500/30 bg-amber-500/5 p-3 dark:bg-amber-500/10">
       <TriangleAlert className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400 mt-0.5" />
       <div className="font-mono text-xs text-foreground">
-        <span className="font-medium">{totalCount} entries need attention</span>
+        <span className="font-medium">Review signals detected</span>
         <span className="text-muted-foreground">
           {": "}
           {alerts.map((alert, i) => (

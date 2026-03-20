@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import type { MutationAction } from "@/api/generated/MutationAction";
 import type { MutationRecord } from "@/api/generated/MutationRecord";
 import type { MutationSource } from "@/api/generated/MutationSource";
-import type { MutationAction } from "@/api/generated/MutationAction";
 import { useMutationHistory } from "@/api/hooks";
 import { timeAgo } from "@/lib/time";
 
@@ -52,10 +52,7 @@ export function MutationHistory({ entryId }: { entryId: string }) {
     limit: 50,
   });
 
-  const records = useMemo(
-    () => data?.items ?? [],
-    [data],
-  );
+  const records = useMemo(() => data?.items ?? [], [data]);
 
   return (
     <div className="space-y-3">
@@ -131,15 +128,10 @@ function MutationRow({ record }: { record: MutationRecord }) {
         {record.action}
       </span>
       <div className="min-w-0 flex-1">
-        {summary && (
-          <p className="font-mono text-xs text-muted-foreground">{summary}</p>
-        )}
+        {summary && <p className="font-mono text-xs text-muted-foreground">{summary}</p>}
         <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground/60">
           <span className="rounded bg-muted px-1 py-0.5">{record.source}</span>
-          <time
-            dateTime={record.timestamp}
-            title={new Date(record.timestamp).toLocaleString()}
-          >
+          <time dateTime={record.timestamp} title={new Date(record.timestamp).toLocaleString()}>
             {timeAgo(record.timestamp)}
           </time>
         </div>

@@ -5,12 +5,16 @@ edition.workspace = true
 license.workspace = true
 description = "Web monitoring interface for context-matters"
 
+[lib]
+name = "cm_web"
+path = "src/lib.rs"
+
 [[bin]]
 name = "cm-web"
 path = "src/main.rs"
 
 [dependencies]
-cm-cli = { workspace = true }
+cm-capabilities = { workspace = true }
 cm-core = { workspace = true }
 cm-store = { workspace = true }
 
@@ -29,3 +33,9 @@ uuid = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 open = "5"
+url = "2"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+tower = "0.5"

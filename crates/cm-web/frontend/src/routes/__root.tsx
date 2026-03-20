@@ -1,4 +1,4 @@
-import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
+import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/composed/ThemeToggle";
 
 export const rootRoute = createRootRoute({
@@ -35,7 +35,7 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <Link
       to={to}
-      className="rounded-md px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
+      className="rounded-control px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground [&.active]:bg-accent [&.active]:text-foreground"
     >
       {children}
     </Link>

@@ -1,11 +1,11 @@
+import type { BrowseSort } from "./generated/BrowseSort";
 import type { Entry } from "./generated/Entry";
 import type { EntryKind } from "./generated/EntryKind";
 import type { EntryRelation } from "./generated/EntryRelation";
-import type { BrowseSort } from "./generated/BrowseSort";
 import type { MutationRecord } from "./generated/MutationRecord";
 import type { NewEntry } from "./generated/NewEntry";
-import type { UpdateEntry } from "./generated/UpdateEntry";
 import type { StoreStats } from "./generated/StoreStats";
+import type { UpdateEntry } from "./generated/UpdateEntry";
 
 const API_BASE = "/api";
 
@@ -44,10 +44,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // --- Query param serialization ---
 
 function toSearchParams(
-  params: Record<string, string | number | boolean | undefined | null>,
+  params: Record<
+    string,
+    string | number | boolean | undefined | null | Array<string | number | boolean>
+  >,
 ): string {
   const sp = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item != null && item !== "") {
+          sp.append(key, String(item));
+        }
+      }
+      continue;
+    }
     if (value != null && value !== "") {
       sp.set(key, String(value));
     }
@@ -133,6 +144,81 @@ export interface MutationListParams {
   cursor?: string;
 }
 
+export interface RecallHit {
+  id: string;
+  scope_path: string;
+  kind: EntryKind;
+  title: string;
+  snippet: string;
+  created_by: string;
+  updated_at: string;
+  tags?: string[];
+  confidence?: "high" | "medium" | "low";
+}
+
+export interface RecallParams {
+  query?: string;
+  scope?: string;
+  kinds?: EntryKind[];
+  tags?: string[];
+  limit?: number;
+  max_tokens?: number;
+}
+
+export interface RecallResponse {
+  results: RecallHit[];
+  returned: number;
+  scope_chain: string[];
+  token_estimate: number;
+}
+
+export interface RecallTraceInfo {
+  routing: string;
+  candidates_before_filter: number;
+  fetch_limit_used: number;
+  token_budget_exhausted: boolean;
+}
+
+export interface AgentRecallResponse extends RecallResponse {
+  _trace: RecallTraceInfo;
+}
+
+export interface BrowseEntryView {
+  id: string;
+  scope_path: string;
+  kind: EntryKind;
+  title: string;
+  snippet: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  superseded_by?: string | null;
+  tags?: string[];
+}
+
+export interface BrowseTraceInfo {
+  filter_set: string[];
+  sort: string;
+}
+
+export interface AgentBrowseResponse {
+  entries: BrowseEntryView[];
+  total: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+  _trace: BrowseTraceInfo;
+}
+
+export interface AgentBrowseParams {
+  scope_path?: string;
+  kind?: EntryKind;
+  tag?: string;
+  created_by?: string;
+  include_superseded?: boolean;
+  limit?: number;
+  cursor?: string;
+}
+
 // --- API namespace ---
 
 export const api = {
@@ -161,6 +247,19 @@ export const api = {
           tag: params.tag,
           limit: params.limit,
           cursor: params.cursor,
+        })}`,
+      );
+    },
+
+    recall(params: RecallParams): Promise<RecallResponse> {
+      return apiFetch(
+        `/entries/recall${toSearchParams({
+          query: params.query,
+          scope: params.scope,
+          kinds: params.kinds,
+          tags: params.tags,
+          limit: params.limit,
+          max_tokens: params.max_tokens,
         })}`,
       );
     },
@@ -197,6 +296,35 @@ export const api = {
     },
   },
 
+  agent: {
+    recall(params: RecallParams): Promise<AgentRecallResponse> {
+      return apiFetch(
+        `/agent/recall${toSearchParams({
+          query: params.query,
+          scope: params.scope,
+          kinds: params.kinds,
+          tags: params.tags,
+          limit: params.limit,
+          max_tokens: params.max_tokens,
+        })}`,
+      );
+    },
+
+    browse(params: AgentBrowseParams = {}): Promise<AgentBrowseResponse> {
+      return apiFetch(
+        `/agent/browse${toSearchParams({
+          scope_path: params.scope_path,
+          kind: params.kind,
+          tag: params.tag,
+          created_by: params.created_by,
+          include_superseded: params.include_superseded,
+          limit: params.limit,
+          cursor: params.cursor,
+        })}`,
+      );
+    },
+  },
+
   stats: {
     get(): Promise<Stats> {
       return apiFetch("/stats");
@@ -218,9 +346,7 @@ export const api = {
   },
 
   export(scopePath?: string): Promise<Blob> {
-    const params = scopePath
-      ? `?scope_path=${encodeURIComponent(scopePath)}`
-      : "";
+    const params = scopePath ? `?scope_path=${encodeURIComponent(scopePath)}` : "";
     return fetch(`${API_BASE}/export${params}`).then((res) => {
       if (!res.ok) throw new ApiError(res.status, null);
       return res.blob();

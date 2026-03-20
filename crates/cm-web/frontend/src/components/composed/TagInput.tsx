@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export interface TagInputProps {
   /** Current tags */
@@ -7,10 +7,10 @@ export interface TagInputProps {
   /** Called with updated tag array */
   onChange: (tags: string[]) => void;
   /** Available suggestions (excluding current tags) */
-  suggestions?: string[];
+  suggestions?: Array<string | { value: string; label: string }>;
   /** Input placeholder when no tags present */
   placeholder?: string;
-  /** Max visible suggestions in dropdown */
+  /** Max visible suggestions in dropdown. Omit for no cap. */
   maxSuggestions?: number;
 }
 
@@ -19,24 +19,37 @@ export function TagInput({
   onChange,
   suggestions = [],
   placeholder = "Add tags...",
-  maxSuggestions = 8,
+  maxSuggestions,
 }: TagInputProps) {
   const [input, setInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
+  const normalizedSuggestions = useMemo(
+    () =>
+      suggestions.map((suggestion) =>
+        typeof suggestion === "string" ? { value: suggestion, label: suggestion } : suggestion,
+      ),
+    [suggestions],
+  );
+
   const availableSuggestions = useMemo(
-    () => suggestions.filter((s) => !value.includes(s)),
-    [suggestions, value],
+    () => normalizedSuggestions.filter((s) => !value.includes(s.value)),
+    [normalizedSuggestions, value],
   );
 
   const filteredSuggestions = useMemo(() => {
-    if (!input.trim()) return availableSuggestions.slice(0, maxSuggestions);
+    const limit = (items: Array<{ value: string; label: string }>) =>
+      maxSuggestions == null ? items : items.slice(0, maxSuggestions);
+
+    if (!input.trim()) return limit(availableSuggestions);
     const query = input.toLowerCase();
-    return availableSuggestions
-      .filter((s) => s.toLowerCase().includes(query))
-      .slice(0, maxSuggestions);
+    return limit(
+      availableSuggestions.filter(
+        (s) => s.value.toLowerCase().includes(query) || s.label.toLowerCase().includes(query),
+      ),
+    );
   }, [input, availableSuggestions, maxSuggestions]);
 
   const handleAdd = useCallback(
@@ -110,17 +123,17 @@ export function TagInput({
         {showSuggestions && filteredSuggestions.length > 0 && (
           <div
             ref={suggestionsRef}
-            className="absolute left-0 top-full z-50 mt-1 max-h-[160px] w-[200px] overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md"
+            className="absolute left-0 top-full z-50 mt-1 max-h-[160px] w-[200px] overflow-y-auto rounded-overlay border border-border bg-popover p-1 shadow-overlay"
           >
             {filteredSuggestions.map((suggestion) => (
               <button
-                key={suggestion}
+                key={suggestion.value}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleAdd(suggestion)}
+                onClick={() => handleAdd(suggestion.value)}
                 className="block w-full rounded-sm px-2 py-1 text-left font-mono text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
               >
-                {suggestion}
+                {suggestion.label}
               </button>
             ))}
           </div>

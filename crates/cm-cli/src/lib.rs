@@ -3,4 +3,4 @@
 
 pub mod cli;
 pub mod mcp;
-pub mod shared;
+pub(crate) mod shared;

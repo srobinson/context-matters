@@ -1,20 +1,23 @@
 import {
-  useQuery,
+  type UseQueryOptions,
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
-  type UseQueryOptions,
 } from "@tanstack/react-query";
 import {
+  type AgentBrowseParams,
+  type AgentRecallResponse,
   api,
   type BrowseParams,
   type EntryDetail,
-  type SearchParams,
   type MutationListParams,
   type PagedResponse,
+  type RecallParams,
+  type RecallResponse,
+  type SearchParams,
   type Stats,
 } from "./client";
-import type { Entry } from "./generated/Entry";
 import type { MutationRecord } from "./generated/MutationRecord";
 import type { NewEntry } from "./generated/NewEntry";
 import type { UpdateEntry } from "./generated/UpdateEntry";
@@ -26,13 +29,18 @@ export const queryKeys = {
     all: ["entries"] as const,
     browse: (params: BrowseParams) => ["entries", "browse", params] as const,
     detail: (id: string) => ["entries", "detail", id] as const,
+    recall: (params: RecallParams) => ["entries", "recall", params] as const,
     search: (params: SearchParams) => ["entries", "search", params] as const,
+  },
+  agent: {
+    all: ["agent"] as const,
+    recall: (params: RecallParams) => ["agent", "recall", params] as const,
+    browse: (params: AgentBrowseParams) => ["agent", "browse", params] as const,
   },
   stats: ["stats"] as const,
   mutations: {
     all: ["mutations"] as const,
-    list: (params: MutationListParams) =>
-      ["mutations", "list", params] as const,
+    list: (params: MutationListParams) => ["mutations", "list", params] as const,
   },
 };
 
@@ -41,17 +49,13 @@ export const queryKeys = {
 export function useEntries(params: Omit<BrowseParams, "cursor"> = {}) {
   return useInfiniteQuery({
     queryKey: queryKeys.entries.browse(params),
-    queryFn: ({ pageParam }) =>
-      api.entries.browse({ ...params, cursor: pageParam }),
+    queryFn: ({ pageParam }) => api.entries.browse({ ...params, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 }
 
-export function useEntry(
-  id: string,
-  options?: Partial<UseQueryOptions<EntryDetail>>,
-) {
+export function useEntry(id: string, options?: Partial<UseQueryOptions<EntryDetail>>) {
   return useQuery({
     queryKey: queryKeys.entries.detail(id),
     queryFn: () => api.entries.get(id),
@@ -71,11 +75,40 @@ export function useStats(options?: Partial<UseQueryOptions<Stats>>) {
 export function useSearch(params: Omit<SearchParams, "cursor">) {
   return useInfiniteQuery({
     queryKey: queryKeys.entries.search(params),
-    queryFn: ({ pageParam }) =>
-      api.entries.search({ ...params, cursor: pageParam }),
+    queryFn: ({ pageParam }) => api.entries.search({ ...params, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: !!params.query,
+  });
+}
+
+export function useRecall(
+  params: RecallParams,
+  options?: Partial<UseQueryOptions<RecallResponse>>,
+) {
+  return useQuery({
+    queryKey: queryKeys.entries.recall(params),
+    queryFn: () => api.entries.recall(params),
+    ...options,
+  });
+}
+
+export function useAgentRecall(
+  params: RecallParams,
+  options?: Partial<UseQueryOptions<AgentRecallResponse>>,
+) {
+  return useQuery({
+    queryKey: queryKeys.agent.recall(params),
+    queryFn: () => api.agent.recall(params),
+    ...options,
+  });
+}
+
+export function useAgentBrowse(params: AgentBrowseParams, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.agent.browse(params),
+    queryFn: () => api.agent.browse(params),
+    ...options,
   });
 }
 
@@ -98,6 +131,7 @@ export function useCreateEntry() {
     mutationFn: (entry: NewEntry) => api.entries.create(entry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
     },
   });
@@ -111,6 +145,7 @@ export function useUpdateEntry() {
     onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.detail(id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
     },
   });
 }
@@ -122,6 +157,7 @@ export function useMergeEntry() {
       api.entries.merge(oldId, newEntry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
     },
   });
@@ -133,6 +169,7 @@ export function useForgetEntry() {
     mutationFn: (id: string) => api.entries.forget(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats });
     },
   });
