@@ -9,6 +9,23 @@ pub fn json_response(value: Value) -> Result<String, String> {
     serde_json::to_string_pretty(&value).map_err(|e| format!("[json] {e}"))
 }
 
+// ── Parameter Parsing ────────────────────────────────────────────
+
+/// Parse tool parameters from JSON with actionable error messages.
+///
+/// Wraps serde deserialization errors with hints for common mistakes
+/// (e.g., passing a string instead of a JSON array for tags/kinds/ids).
+pub fn parse_params<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, String> {
+    serde_json::from_value(args.clone()).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("expected a sequence") {
+            format!("Invalid parameters: {msg}. Hint: array fields (tags, kinds, ids) must be JSON arrays, e.g. [\"value1\", \"value2\"], not strings.")
+        } else {
+            format!("Invalid parameters: {msg}")
+        }
+    })
+}
+
 // ── Serde Defaults ────────────────────────────────────────────────
 
 /// Serde default for scope_path fields.

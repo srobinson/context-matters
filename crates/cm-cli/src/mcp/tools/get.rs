@@ -4,7 +4,7 @@ use cm_core::ContextStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{cm_err_to_string, json_response};
+use crate::mcp::{cm_err_to_string, json_response, parse_params};
 
 use super::entry_to_full_json;
 
@@ -15,8 +15,7 @@ struct CxGetParams {
 }
 
 pub async fn cx_get(store: &impl ContextStore, args: &Value) -> Result<String, String> {
-    let params: CxGetParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxGetParams = parse_params(args)?;
 
     if params.ids.is_empty() {
         return Err("Validation error: ids cannot be empty".to_owned());

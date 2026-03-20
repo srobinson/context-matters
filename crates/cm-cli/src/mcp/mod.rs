@@ -21,7 +21,7 @@ pub(crate) use cm_capabilities::projection::snippet;
 pub(crate) use cm_capabilities::scope::ensure_scope_chain;
 pub(crate) use cm_capabilities::validation::check_input_size;
 
-pub(crate) use crate::shared::json_response;
+pub(crate) use crate::shared::{json_response, parse_params};
 
 // ── Constants ─────────────────────────────────────────────────────
 

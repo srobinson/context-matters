@@ -4,7 +4,7 @@ use cm_core::{ContextStore, EntryKind, EntryMeta, MutationSource, UpdateEntry, W
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{check_input_size, cm_err_to_string, json_response};
+use crate::mcp::{check_input_size, cm_err_to_string, json_response, parse_params};
 
 use super::parse_confidence;
 
@@ -45,8 +45,7 @@ struct CxMetaInput {
 }
 
 pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<String, String> {
-    let params: CxUpdateParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxUpdateParams = parse_params(args)?;
 
     let id = uuid::Uuid::parse_str(&params.id)
         .map_err(|_| format!("Invalid UUID format: '{}'", params.id))?;

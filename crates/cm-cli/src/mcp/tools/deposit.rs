@@ -7,7 +7,9 @@ use cm_core::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{check_input_size, cm_err_to_string, ensure_scope_chain, json_response, snippet};
+use crate::mcp::{
+    check_input_size, cm_err_to_string, ensure_scope_chain, json_response, parse_params, snippet,
+};
 
 use super::{default_created_by, default_scope};
 
@@ -46,8 +48,7 @@ struct Exchange {
 pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
 
-    let params: CxDepositParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxDepositParams = parse_params(args)?;
 
     if params.exchanges.is_empty() {
         return Err("Validation error: exchanges cannot be empty".to_owned());

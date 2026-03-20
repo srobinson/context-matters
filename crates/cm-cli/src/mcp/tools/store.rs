@@ -6,7 +6,9 @@ use cm_core::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{check_input_size, cm_err_to_string, ensure_scope_chain, json_response};
+use crate::mcp::{
+    check_input_size, cm_err_to_string, ensure_scope_chain, json_response, parse_params,
+};
 
 use super::{default_created_by, default_scope, parse_confidence};
 
@@ -58,8 +60,7 @@ struct CxStoreParams {
 pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
 
-    let params: CxStoreParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxStoreParams = parse_params(args)?;
 
     // Validate input sizes
     check_input_size(&params.title, "title")?;

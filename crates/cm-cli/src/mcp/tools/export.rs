@@ -4,7 +4,7 @@ use cm_core::{ContextStore, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{cm_err_to_string, json_response};
+use crate::mcp::{cm_err_to_string, json_response, parse_params};
 
 #[derive(Debug, Deserialize)]
 struct CxExportParams {
@@ -22,8 +22,7 @@ fn default_format() -> String {
 }
 
 pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<String, String> {
-    let params: CxExportParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxExportParams = parse_params(args)?;
 
     if params.format != "json" {
         return Err(format!(

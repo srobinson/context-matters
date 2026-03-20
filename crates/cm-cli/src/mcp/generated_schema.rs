@@ -33,7 +33,7 @@ serde_json::from_str(r##"{
             "type": "string"
           },
           "tags": {
-            "description": "Filter to entries with any of these tags (OR logic).",
+            "description": "Filter to entries with any of these tags (OR logic). Pass a JSON array: [\"tag1\", \"tag2\"].",
             "items": {
               "type": "string"
             },
@@ -100,7 +100,7 @@ serde_json::from_str(r##"{
             "type": "string"
           },
           "tags": {
-            "description": "Freeform tags for categorization and filtering.",
+            "description": "Freeform tags for categorization and filtering. Pass a JSON array: [\"tag1\", \"tag2\"].",
             "items": {
               "type": "string"
             },

@@ -84,7 +84,7 @@ Search and retrieve context entries relevant to the current task. Primary retrie
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phra... |
 | `scope` | string | no | Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:heli... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
-| `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). |
+| `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
 | `max_tokens` | integer | no | Maximum token budget for the response. Results are trimmed to fit within this budget, prioritizing higher-relevance e... |
 
@@ -99,7 +99,7 @@ Store a single context entry with structured metadata. Scopes are auto-created i
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | yes | Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rat... |
 | `scope_path` | string | no | Target scope path. Auto-created with ancestor chain if it does not exist. Default: 'global'. Format: 'global', 'globa... |
 | `created_by` | string | no | Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolid... |
-| `tags` | array<string> | no | Freeform tags for categorization and filtering. |
+| `tags` | array<string> | no | Freeform tags for categorization and filtering. Pass a JSON array: ["tag1", "tag2"]. |
 | `confidence` | enum: high \| medium \| low | no | Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level. |
 | `source` | string | no | Source URL or file path for reference entries. |
 | `expires_at` | string | no | ISO 8601 expiry timestamp. After this time the entry is considered stale. Stored but not enforced by the storage layer. |

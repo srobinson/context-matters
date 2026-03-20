@@ -6,7 +6,7 @@ use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{cm_err_to_string, json_response};
+use crate::mcp::{cm_err_to_string, json_response, parse_params};
 
 use super::entry_to_recall_json;
 
@@ -33,8 +33,7 @@ struct CxRecallParams {
 }
 
 pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String, String> {
-    let params: CxRecallParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxRecallParams = parse_params(args)?;
 
     // Validate query size if provided
     if let Some(ref q) = params.query {

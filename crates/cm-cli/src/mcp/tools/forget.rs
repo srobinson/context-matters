@@ -4,7 +4,7 @@ use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{cm_err_to_string, json_response};
+use crate::mcp::{cm_err_to_string, json_response, parse_params};
 
 #[derive(Debug, Deserialize)]
 struct CxForgetParams {
@@ -15,8 +15,7 @@ struct CxForgetParams {
 pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
 
-    let params: CxForgetParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxForgetParams = parse_params(args)?;
 
     if params.ids.is_empty() {
         return Err("Validation error: ids cannot be empty".to_owned());

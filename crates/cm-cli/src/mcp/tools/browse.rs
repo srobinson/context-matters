@@ -6,7 +6,7 @@ use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{cm_err_to_string, json_response};
+use crate::mcp::{cm_err_to_string, json_response, parse_params};
 
 use super::entry_to_browse_json;
 
@@ -42,8 +42,7 @@ struct CxBrowseParams {
 }
 
 pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String, String> {
-    let params: CxBrowseParams =
-        serde_json::from_value(args.clone()).map_err(|e| format!("Invalid parameters: {e}"))?;
+    let params: CxBrowseParams = parse_params(args)?;
 
     let scope_path = match &params.scope_path {
         Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
