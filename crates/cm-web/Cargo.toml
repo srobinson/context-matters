@@ -15,7 +15,6 @@ path = "src/main.rs"
 
 [dependencies]
 cm-capabilities = { workspace = true }
-cm-cli = { workspace = true }
 cm-core = { workspace = true }
 cm-store = { workspace = true }
 
