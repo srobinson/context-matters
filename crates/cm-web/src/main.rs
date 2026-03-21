@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     let default_filter = if cli.verbose {
         "cm_web=debug,cm_store=debug,tower_http=debug"
     } else {
-        "cm_web=info,tower_http=info"
+        "cm_web=warn,tower_http=warn"
     };
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
         "cm-web starting",
     );
 
-    let config = cm_store::load_config();
+    let config = cm_store::load_config()?;
     tracing::info!(db = %config.db_path().display(), "opening store");
     let store = open_store_with_config(&config).await?;
     let state = Arc::new(AppState { store });
@@ -121,9 +121,9 @@ async fn main() -> Result<()> {
         .await?;
 
     tracing::info!("shutdown, running WAL checkpoint");
-    cm_store::schema::wal_checkpoint(state.store.write_pool())
-        .await
-        .ok();
+    if let Err(e) = cm_store::schema::wal_checkpoint(state.store.write_pool()).await {
+        tracing::debug!(error = %e, "WAL checkpoint failed");
+    }
 
     Ok(())
 }

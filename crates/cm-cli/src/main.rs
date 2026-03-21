@@ -1,6 +1,6 @@
 use cm_cli::{cli, mcp};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{ColorChoice, Parser, Subcommand};
 use cm_store::CmStore;
 
@@ -22,6 +22,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Generate a commented config file with default values
+    Init {
+        /// Write to ~/.context-matters/ instead of CWD
+        #[arg(long)]
+        global: bool,
+        /// Overwrite an existing config file
+        #[arg(long)]
+        force: bool,
+    },
     /// Start MCP server on stdio transport
     Serve,
     /// Show store statistics
@@ -33,7 +42,7 @@ async fn main() -> Result<()> {
     let cli_args = Cli::parse();
 
     // Initialize tracing (stderr only, never stdout: MCP uses stdout)
-    let filter = if cli_args.verbose { "debug" } else { "info" };
+    let filter = if cli_args.verbose { "debug" } else { "warn" };
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -43,21 +52,43 @@ async fn main() -> Result<()> {
         .init();
 
     match &cli_args.command {
+        Commands::Init { global, force } => cmd_init(*global, *force),
         Commands::Serve => cmd_serve().await,
         Commands::Stats => {
             let store = open_store().await?;
             cli::cmd_stats(&store).await?;
-            cm_store::schema::wal_checkpoint(store.write_pool())
-                .await
-                .ok();
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
             Ok(())
         }
     }
 }
 
+fn cmd_init(global: bool, force: bool) -> Result<()> {
+    let path = if global {
+        let base = cm_store::default_base_dir()?;
+        std::fs::create_dir_all(&base)?;
+        base.join(cm_store::CONFIG_FILENAME)
+    } else {
+        std::env::current_dir()?.join(cm_store::CONFIG_FILENAME)
+    };
+
+    if path.exists() && !force {
+        bail!(
+            "config file already exists: {}\nUse --force to overwrite.",
+            path.display()
+        );
+    }
+
+    std::fs::write(&path, cm_store::config_template())?;
+    println!("{}", path.display());
+    Ok(())
+}
+
 /// Open the database, run migrations, and return a ready-to-use store.
 async fn open_store() -> Result<CmStore> {
-    let config = cm_store::load_config();
+    let config = cm_store::load_config()?;
     let db_path = config.db_path();
 
     // Ensure the data directory exists
@@ -81,9 +112,9 @@ async fn cmd_serve() -> Result<()> {
     server.run().await?;
 
     tracing::info!("shutdown, running WAL checkpoint");
-    cm_store::schema::wal_checkpoint(server.store().write_pool())
-        .await
-        .ok();
+    if let Err(e) = cm_store::schema::wal_checkpoint(server.store().write_pool()).await {
+        tracing::debug!(error = %e, "WAL checkpoint failed");
+    }
 
     Ok(())
 }

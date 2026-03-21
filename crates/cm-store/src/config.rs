@@ -9,9 +9,10 @@
 
 use std::path::PathBuf;
 
+use anyhow::Result;
 use serde::Deserialize;
 
-use crate::project::default_base_dir;
+use crate::project::{default_base_dir, resolve_home_dir};
 
 /// Runtime configuration for the context-matters store.
 #[derive(Debug, Clone)]
@@ -24,9 +25,10 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let data_dir = default_base_dir().unwrap_or_else(|_| PathBuf::from("~/.context-matters"));
         Self {
-            data_dir: default_base_dir(),
-            log_level: "info".to_owned(),
+            data_dir,
+            log_level: "warn".to_owned(),
         }
     }
 }
@@ -37,25 +39,76 @@ impl Config {
     pub fn db_path(&self) -> PathBuf {
         self.data_dir.join("cm.db")
     }
+
+    /// Validate the resolved configuration. Returns an error if any
+    /// semantic rule is violated (fail closed on invalid config).
+    pub fn validate(&self) -> Result<()> {
+        if self.data_dir.as_os_str().is_empty() {
+            anyhow::bail!("data_dir must not be empty");
+        }
+        if !self.data_dir.is_absolute() {
+            anyhow::bail!(
+                "data_dir must be an absolute path after tilde expansion, got: {:?}",
+                self.data_dir
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Config file name used for both loading and generating.
+pub const CONFIG_FILENAME: &str = ".cm.config.toml";
+
+/// Returns a commented TOML config template with all options and defaults.
+#[must_use]
+pub fn config_template() -> String {
+    format!(
+        r#"# context-matters configuration
+#
+# Config file resolution (first found wins):
+#   1. $CWD/{filename}   (project-local)
+#   2. $CM_DATA_DIR/{filename}  (custom data directory)
+#   3. ~/.context-matters/{filename}  (global fallback)
+#
+# Environment variables override all file settings:
+#   CM_DATA_DIR, CM_LOG_LEVEL
+
+# Directory where the database and state files are stored.
+# Override with CM_DATA_DIR env var.
+# data_dir = "~/.context-matters"
+
+# Tracing filter level: "warn", "info", "debug", "trace".
+# Override with CM_LOG_LEVEL env var, or use RUST_LOG for fine-grained control.
+# log_level = "warn"
+"#,
+        filename = CONFIG_FILENAME
+    )
 }
 
 /// Intermediate struct for deserializing the TOML config file.
 /// Fields are all optional because the file itself is optional and
 /// any missing field falls back to the default.
+///
+/// `deny_unknown_fields` treats unknown keys as deserialization errors,
+/// causing `find_and_parse_config` to warn and fall back to defaults.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct FileConfig {
     data_dir: Option<String>,
     log_level: Option<String>,
 }
 
 /// Load configuration with precedence: env vars > TOML file > defaults.
-pub fn load() -> Config {
+///
+/// After merging all three layers, calls `validate()` to reject
+/// semantically invalid resolved config (empty or relative data_dir).
+pub fn load() -> Result<Config> {
     let mut config = Config::default();
 
     // Layer 1: TOML file (lowest precedence after defaults)
     if let Some(file_cfg) = find_and_parse_config() {
         if let Some(dir) = file_cfg.data_dir {
-            config.data_dir = expand_tilde(&dir);
+            config.data_dir = expand_tilde(&dir)?;
         }
         if let Some(level) = file_cfg.log_level {
             config.log_level = level;
@@ -64,16 +117,22 @@ pub fn load() -> Config {
 
     // Layer 2: Environment variables (highest precedence)
     if let Ok(dir) = std::env::var("CM_DATA_DIR") {
-        config.data_dir = PathBuf::from(dir);
+        config.data_dir = expand_tilde(&dir)?;
     }
     if let Ok(level) = std::env::var("CM_LOG_LEVEL") {
         config.log_level = level;
     }
 
-    config
+    config.validate()?;
+    Ok(config)
 }
 
 /// Search for a config file in resolution order, parse the first found.
+///
+/// "First found wins": when a file exists at a higher-precedence path but
+/// fails to read or parse, we warn and fall back to defaults rather than
+/// trying lower-precedence paths. This prevents a broken project-local
+/// config from being silently overridden by a valid global one.
 fn find_and_parse_config() -> Option<FileConfig> {
     let candidates = config_search_paths();
     for path in candidates {
@@ -88,6 +147,7 @@ fn find_and_parse_config() -> Option<FileConfig> {
                             error = %e,
                             "failed to parse config file, using defaults"
                         );
+                        return None;
                     }
                 },
                 Err(e) => {
@@ -96,6 +156,7 @@ fn find_and_parse_config() -> Option<FileConfig> {
                         error = %e,
                         "failed to read config file, using defaults"
                     );
+                    return None;
                 }
             }
         }
@@ -113,26 +174,32 @@ fn config_search_paths() -> Vec<PathBuf> {
         paths.push(cwd.join(filename));
     }
 
-    // 2. $CM_DATA_DIR/.cm.config.toml
-    if let Ok(dir) = std::env::var("CM_DATA_DIR") {
-        paths.push(PathBuf::from(dir).join(filename));
+    // 2. $CM_DATA_DIR/.cm.config.toml (tilde-expanded for consistency)
+    if let Ok(dir) = std::env::var("CM_DATA_DIR")
+        && let Ok(expanded) = expand_tilde(&dir)
+    {
+        paths.push(expanded.join(filename));
     }
 
     // 3. ~/.context-matters/.cm.config.toml
-    paths.push(default_base_dir().join(filename));
+    if let Ok(base) = default_base_dir() {
+        paths.push(base.join(filename));
+    }
 
     paths
 }
 
-/// Expand a leading `~` to the user's home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_owned());
-        PathBuf::from(home).join(rest)
+/// Expand a leading `~/` to the user's home directory.
+///
+/// Absolute paths pass through unchanged. Returns an error if the
+/// home directory cannot be resolved when tilde expansion is needed.
+fn expand_tilde(path: &str) -> Result<PathBuf> {
+    if path == "~" {
+        resolve_home_dir()
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        Ok(resolve_home_dir()?.join(rest))
     } else {
-        PathBuf::from(path)
+        Ok(PathBuf::from(path))
     }
 }
 
@@ -144,7 +211,7 @@ mod tests {
     fn default_config_uses_context_matters_dir() {
         let config = Config::default();
         assert!(config.data_dir.ends_with(".context-matters"));
-        assert_eq!(config.log_level, "info");
+        assert_eq!(config.log_level, "warn");
     }
 
     #[test]
@@ -158,16 +225,34 @@ mod tests {
 
     #[test]
     fn expand_tilde_replaces_home() {
-        let expanded = expand_tilde("~/foo/bar");
+        let expanded = expand_tilde("~/foo/bar").unwrap();
         // Should not start with ~ anymore
         assert!(!expanded.to_string_lossy().starts_with('~'));
         assert!(expanded.to_string_lossy().ends_with("foo/bar"));
     }
 
     #[test]
+    fn expand_tilde_bare_resolves_to_home() {
+        let expanded = expand_tilde("~").unwrap();
+        assert!(expanded.is_absolute());
+        assert!(!expanded.to_string_lossy().contains('~'));
+    }
+
+    #[test]
     fn expand_tilde_leaves_absolute_paths() {
-        let expanded = expand_tilde("/absolute/path");
+        let expanded = expand_tilde("/absolute/path").unwrap();
         assert_eq!(expanded, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn parse_rejects_unknown_keys() {
+        let result = toml::from_str::<FileConfig>(
+            r#"
+            data_dir = "/tmp"
+            unknown_key = "value"
+            "#,
+        );
+        assert!(result.is_err(), "unknown keys should be rejected");
     }
 
     #[test]
@@ -188,5 +273,139 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.data_dir.as_deref(), Some("~/custom-dir"));
         assert_eq!(cfg.log_level.as_deref(), Some("debug"));
+    }
+
+    #[test]
+    fn validate_rejects_empty_data_dir() {
+        let config = Config {
+            data_dir: PathBuf::new(),
+            log_level: "warn".to_owned(),
+        };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("must not be empty"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_relative_data_dir() {
+        let config = Config {
+            data_dir: PathBuf::from("relative/path"),
+            log_level: "warn".to_owned(),
+        };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("must be an absolute path"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_absolute_data_dir() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/cm-test"),
+            log_level: "warn".to_owned(),
+        };
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn load_propagates_validation_error_for_relative_data_dir() {
+        // Set CM_DATA_DIR to a relative path; load() should propagate the validation error
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("relative/path")),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let err = load().unwrap_err();
+                assert!(
+                    err.to_string().contains("must be an absolute path"),
+                    "unexpected error: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn load_propagates_validation_error_for_empty_data_dir() {
+        temp_env::with_vars(
+            [("CM_DATA_DIR", Some("")), ("CM_LOG_LEVEL", None::<&str>)],
+            || {
+                let err = load().unwrap_err();
+                assert!(
+                    err.to_string().contains("must not be empty"),
+                    "unexpected error: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn load_succeeds_with_absolute_cm_data_dir() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("/tmp/cm-test-load")),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(config.data_dir, PathBuf::from("/tmp/cm-test-load"));
+            },
+        );
+    }
+
+    #[test]
+    fn load_expands_tilde_in_cm_data_dir() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("~/custom-cm")),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let config = load().unwrap();
+                assert!(config.data_dir.is_absolute());
+                assert!(config.data_dir.ends_with("custom-cm"));
+                assert!(!config.data_dir.to_string_lossy().contains('~'));
+            },
+        );
+    }
+
+    #[test]
+    fn load_respects_cm_log_level() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("/tmp/cm-test-log")),
+                ("CM_LOG_LEVEL", Some("trace")),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(config.log_level, "trace");
+            },
+        );
+    }
+
+    #[test]
+    fn config_template_is_valid_toml_when_values_uncommented() {
+        let template = config_template();
+        // Uncomment only lines that look like TOML key = value pairs
+        let uncommented: String = template
+            .lines()
+            .filter_map(|line| {
+                if let Some(stripped) = line.strip_prefix("# ")
+                    && stripped.contains(" = ")
+                {
+                    return Some(stripped);
+                }
+                if !line.starts_with('#') && !line.is_empty() {
+                    return Some(line);
+                }
+                None
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result: Result<FileConfig, _> = toml::from_str(&uncommented);
+        assert!(result.is_ok(), "template is not valid TOML: {result:?}");
     }
 }
