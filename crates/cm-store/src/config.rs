@@ -9,9 +9,10 @@
 
 use std::path::PathBuf;
 
+use anyhow::Result;
 use serde::Deserialize;
 
-use crate::project::default_base_dir;
+use crate::project::{default_base_dir, resolve_home_dir};
 
 /// Runtime configuration for the context-matters store.
 #[derive(Debug, Clone)]
@@ -24,8 +25,9 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let data_dir = default_base_dir().unwrap_or_else(|_| PathBuf::from("~/.context-matters"));
         Self {
-            data_dir: default_base_dir(),
+            data_dir,
             log_level: "info".to_owned(),
         }
     }
@@ -55,7 +57,14 @@ pub fn load() -> Config {
     // Layer 1: TOML file (lowest precedence after defaults)
     if let Some(file_cfg) = find_and_parse_config() {
         if let Some(dir) = file_cfg.data_dir {
-            config.data_dir = expand_tilde(&dir);
+            match expand_tilde(&dir) {
+                Ok(expanded) => config.data_dir = expanded,
+                Err(e) => tracing::warn!(
+                    data_dir = %dir,
+                    error = %e,
+                    "failed to expand data_dir from config file, keeping default"
+                ),
+            }
         }
         if let Some(level) = file_cfg.log_level {
             config.log_level = level;
@@ -119,20 +128,22 @@ fn config_search_paths() -> Vec<PathBuf> {
     }
 
     // 3. ~/.context-matters/.cm.config.toml
-    paths.push(default_base_dir().join(filename));
+    if let Ok(base) = default_base_dir() {
+        paths.push(base.join(filename));
+    }
 
     paths
 }
 
-/// Expand a leading `~` to the user's home directory.
-fn expand_tilde(path: &str) -> PathBuf {
+/// Expand a leading `~/` to the user's home directory.
+///
+/// Absolute paths pass through unchanged. Returns an error if the
+/// home directory cannot be resolved when tilde expansion is needed.
+fn expand_tilde(path: &str) -> Result<PathBuf> {
     if let Some(rest) = path.strip_prefix("~/") {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_owned());
-        PathBuf::from(home).join(rest)
+        Ok(resolve_home_dir()?.join(rest))
     } else {
-        PathBuf::from(path)
+        Ok(PathBuf::from(path))
     }
 }
 
@@ -158,7 +169,7 @@ mod tests {
 
     #[test]
     fn expand_tilde_replaces_home() {
-        let expanded = expand_tilde("~/foo/bar");
+        let expanded = expand_tilde("~/foo/bar").unwrap();
         // Should not start with ~ anymore
         assert!(!expanded.to_string_lossy().starts_with('~'));
         assert!(expanded.to_string_lossy().ends_with("foo/bar"));
@@ -166,7 +177,7 @@ mod tests {
 
     #[test]
     fn expand_tilde_leaves_absolute_paths() {
-        let expanded = expand_tilde("/absolute/path");
+        let expanded = expand_tilde("/absolute/path").unwrap();
         assert_eq!(expanded, PathBuf::from("/absolute/path"));
     }
 
