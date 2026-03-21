@@ -56,6 +56,35 @@ impl Config {
     }
 }
 
+/// Config file name used for both loading and generating.
+pub const CONFIG_FILENAME: &str = ".cm.config.toml";
+
+/// Returns a commented TOML config template with all options and defaults.
+#[must_use]
+pub fn config_template() -> String {
+    format!(
+        r#"# context-matters configuration
+#
+# Config file resolution (first found wins):
+#   1. $CWD/{filename}   (project-local)
+#   2. $CM_DATA_DIR/{filename}  (custom data directory)
+#   3. ~/.context-matters/{filename}  (global fallback)
+#
+# Environment variables override all file settings:
+#   CM_DATA_DIR, CM_LOG_LEVEL
+
+# Directory where the database and state files are stored.
+# Override with CM_DATA_DIR env var.
+# data_dir = "~/.context-matters"
+
+# Tracing filter level: "warn", "info", "debug", "trace".
+# Override with CM_LOG_LEVEL env var, or use RUST_LOG for fine-grained control.
+# log_level = "warn"
+"#,
+        filename = CONFIG_FILENAME
+    )
+}
+
 /// Intermediate struct for deserializing the TOML config file.
 /// Fields are all optional because the file itself is optional and
 /// any missing field falls back to the default.

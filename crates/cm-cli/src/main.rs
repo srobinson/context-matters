@@ -1,6 +1,6 @@
 use cm_cli::{cli, mcp};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{ColorChoice, Parser, Subcommand};
 use cm_store::CmStore;
 
@@ -22,6 +22,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Generate a commented config file with default values
+    Init {
+        /// Write to ~/.context-matters/ instead of CWD
+        #[arg(long)]
+        global: bool,
+        /// Overwrite an existing config file
+        #[arg(long)]
+        force: bool,
+    },
     /// Start MCP server on stdio transport
     Serve,
     /// Show store statistics
@@ -43,6 +52,7 @@ async fn main() -> Result<()> {
         .init();
 
     match &cli_args.command {
+        Commands::Init { global, force } => cmd_init(*global, *force),
         Commands::Serve => cmd_serve().await,
         Commands::Stats => {
             let store = open_store().await?;
@@ -53,6 +63,27 @@ async fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn cmd_init(global: bool, force: bool) -> Result<()> {
+    let path = if global {
+        let base = cm_store::default_base_dir()?;
+        std::fs::create_dir_all(&base)?;
+        base.join(cm_store::CONFIG_FILENAME)
+    } else {
+        std::env::current_dir()?.join(cm_store::CONFIG_FILENAME)
+    };
+
+    if path.exists() && !force {
+        bail!(
+            "config file already exists: {}\nUse --force to overwrite.",
+            path.display()
+        );
+    }
+
+    std::fs::write(&path, cm_store::config_template())?;
+    println!("{}", path.display());
+    Ok(())
 }
 
 /// Open the database, run migrations, and return a ready-to-use store.
