@@ -39,6 +39,21 @@ impl Config {
     pub fn db_path(&self) -> PathBuf {
         self.data_dir.join("cm.db")
     }
+
+    /// Validate the resolved configuration. Returns an error if any
+    /// semantic rule is violated (fail closed on invalid config).
+    pub fn validate(&self) -> Result<()> {
+        if self.data_dir.as_os_str().is_empty() {
+            anyhow::bail!("data_dir must not be empty");
+        }
+        if !self.data_dir.is_absolute() {
+            anyhow::bail!(
+                "data_dir must be an absolute path after tilde expansion, got: {:?}",
+                self.data_dir
+            );
+        }
+        Ok(())
+    }
 }
 
 /// Intermediate struct for deserializing the TOML config file.
@@ -52,9 +67,8 @@ struct FileConfig {
 
 /// Load configuration with precedence: env vars > TOML file > defaults.
 ///
-/// Returns an error if tilde expansion fails (unresolvable home directory)
-/// when a config value requires it. Validation errors will be added in a
-/// subsequent step.
+/// After merging all three layers, calls `validate()` to reject
+/// semantically invalid resolved config (empty or relative data_dir).
 pub fn load() -> Result<Config> {
     let mut config = Config::default();
 
@@ -76,6 +90,7 @@ pub fn load() -> Result<Config> {
         config.log_level = level;
     }
 
+    config.validate()?;
     Ok(config)
 }
 
