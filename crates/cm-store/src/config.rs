@@ -51,20 +51,17 @@ struct FileConfig {
 }
 
 /// Load configuration with precedence: env vars > TOML file > defaults.
-pub fn load() -> Config {
+///
+/// Returns an error if tilde expansion fails (unresolvable home directory)
+/// when a config value requires it. Validation errors will be added in a
+/// subsequent step.
+pub fn load() -> Result<Config> {
     let mut config = Config::default();
 
     // Layer 1: TOML file (lowest precedence after defaults)
     if let Some(file_cfg) = find_and_parse_config() {
         if let Some(dir) = file_cfg.data_dir {
-            match expand_tilde(&dir) {
-                Ok(expanded) => config.data_dir = expanded,
-                Err(e) => tracing::warn!(
-                    data_dir = %dir,
-                    error = %e,
-                    "failed to expand data_dir from config file, keeping default"
-                ),
-            }
+            config.data_dir = expand_tilde(&dir)?;
         }
         if let Some(level) = file_cfg.log_level {
             config.log_level = level;
@@ -79,7 +76,7 @@ pub fn load() -> Config {
         config.log_level = level;
     }
 
-    config
+    Ok(config)
 }
 
 /// Search for a config file in resolution order, parse the first found.

@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
         "cm-web starting",
     );
 
-    let config = cm_store::load_config();
+    let config = cm_store::load_config()?;
     tracing::info!(db = %config.db_path().display(), "opening store");
     let store = open_store_with_config(&config).await?;
     let state = Arc::new(AppState { store });

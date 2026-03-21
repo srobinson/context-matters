@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
 
 /// Open the database, run migrations, and return a ready-to-use store.
 async fn open_store() -> Result<CmStore> {
-    let config = cm_store::load_config();
+    let config = cm_store::load_config()?;
     let db_path = config.db_path();
 
     // Ensure the data directory exists
