@@ -28,7 +28,7 @@ impl Default for Config {
         let data_dir = default_base_dir().unwrap_or_else(|_| PathBuf::from("~/.context-matters"));
         Self {
             data_dir,
-            log_level: "info".to_owned(),
+            log_level: "warn".to_owned(),
         }
     }
 }
@@ -196,7 +196,7 @@ mod tests {
     fn default_config_uses_context_matters_dir() {
         let config = Config::default();
         assert!(config.data_dir.ends_with(".context-matters"));
-        assert_eq!(config.log_level, "info");
+        assert_eq!(config.log_level, "warn");
     }
 
     #[test]

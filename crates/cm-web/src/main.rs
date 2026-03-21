@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     let default_filter = if cli.verbose {
         "cm_web=debug,cm_store=debug,tower_http=debug"
     } else {
-        "cm_web=info,tower_http=info"
+        "cm_web=warn,tower_http=warn"
     };
     tracing_subscriber::fmt()
         .with_env_filter(

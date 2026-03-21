@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     let cli_args = Cli::parse();
 
     // Initialize tracing (stderr only, never stdout: MCP uses stdout)
-    let filter = if cli_args.verbose { "debug" } else { "info" };
+    let filter = if cli_args.verbose { "debug" } else { "warn" };
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
