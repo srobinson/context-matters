@@ -57,9 +57,9 @@ async fn main() -> Result<()> {
         Commands::Stats => {
             let store = open_store().await?;
             cli::cmd_stats(&store).await?;
-            cm_store::schema::wal_checkpoint(store.write_pool())
-                .await
-                .ok();
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
             Ok(())
         }
     }
@@ -112,9 +112,9 @@ async fn cmd_serve() -> Result<()> {
     server.run().await?;
 
     tracing::info!("shutdown, running WAL checkpoint");
-    cm_store::schema::wal_checkpoint(server.store().write_pool())
-        .await
-        .ok();
+    if let Err(e) = cm_store::schema::wal_checkpoint(server.store().write_pool()).await {
+        tracing::debug!(error = %e, "WAL checkpoint failed");
+    }
 
     Ok(())
 }

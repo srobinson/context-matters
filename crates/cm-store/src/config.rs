@@ -88,7 +88,11 @@ pub fn config_template() -> String {
 /// Intermediate struct for deserializing the TOML config file.
 /// Fields are all optional because the file itself is optional and
 /// any missing field falls back to the default.
+///
+/// `deny_unknown_fields` treats unknown keys as deserialization errors,
+/// causing `find_and_parse_config` to warn and fall back to defaults.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct FileConfig {
     data_dir: Option<String>,
     log_level: Option<String>,
@@ -124,6 +128,11 @@ pub fn load() -> Result<Config> {
 }
 
 /// Search for a config file in resolution order, parse the first found.
+///
+/// "First found wins": when a file exists at a higher-precedence path but
+/// fails to read or parse, we warn and fall back to defaults rather than
+/// trying lower-precedence paths. This prevents a broken project-local
+/// config from being silently overridden by a valid global one.
 fn find_and_parse_config() -> Option<FileConfig> {
     let candidates = config_search_paths();
     for path in candidates {
@@ -138,6 +147,7 @@ fn find_and_parse_config() -> Option<FileConfig> {
                             error = %e,
                             "failed to parse config file, using defaults"
                         );
+                        return None;
                     }
                 },
                 Err(e) => {
@@ -146,6 +156,7 @@ fn find_and_parse_config() -> Option<FileConfig> {
                         error = %e,
                         "failed to read config file, using defaults"
                     );
+                    return None;
                 }
             }
         }
@@ -163,9 +174,11 @@ fn config_search_paths() -> Vec<PathBuf> {
         paths.push(cwd.join(filename));
     }
 
-    // 2. $CM_DATA_DIR/.cm.config.toml
-    if let Ok(dir) = std::env::var("CM_DATA_DIR") {
-        paths.push(PathBuf::from(dir).join(filename));
+    // 2. $CM_DATA_DIR/.cm.config.toml (tilde-expanded for consistency)
+    if let Ok(dir) = std::env::var("CM_DATA_DIR")
+        && let Ok(expanded) = expand_tilde(&dir)
+    {
+        paths.push(expanded.join(filename));
     }
 
     // 3. ~/.context-matters/.cm.config.toml
@@ -229,6 +242,17 @@ mod tests {
     fn expand_tilde_leaves_absolute_paths() {
         let expanded = expand_tilde("/absolute/path").unwrap();
         assert_eq!(expanded, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn parse_rejects_unknown_keys() {
+        let result = toml::from_str::<FileConfig>(
+            r#"
+            data_dir = "/tmp"
+            unknown_key = "value"
+            "#,
+        );
+        assert!(result.is_err(), "unknown keys should be rejected");
     }
 
     #[test]
@@ -370,9 +394,10 @@ mod tests {
             .lines()
             .filter_map(|line| {
                 if let Some(stripped) = line.strip_prefix("# ")
-                    && stripped.contains(" = ") {
-                        return Some(stripped);
-                    }
+                    && stripped.contains(" = ")
+                {
+                    return Some(stripped);
+                }
                 if !line.starts_with('#') && !line.is_empty() {
                     return Some(line);
                 }

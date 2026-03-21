@@ -121,9 +121,9 @@ async fn main() -> Result<()> {
         .await?;
 
     tracing::info!("shutdown, running WAL checkpoint");
-    cm_store::schema::wal_checkpoint(state.store.write_pool())
-        .await
-        .ok();
+    if let Err(e) = cm_store::schema::wal_checkpoint(state.store.write_pool()).await {
+        tracing::debug!(error = %e, "WAL checkpoint failed");
+    }
 
     Ok(())
 }
