@@ -43,3 +43,75 @@ pub fn ensure_data_dir(dir: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_home_dir_succeeds_with_home_set() {
+        // HOME is set in normal test environments
+        let home = resolve_home_dir().unwrap();
+        assert!(home.is_absolute());
+    }
+
+    #[test]
+    fn resolve_home_dir_errors_when_home_unset() {
+        temp_env::with_vars(
+            [("HOME", None::<&str>), ("USERPROFILE", None::<&str>)],
+            || {
+                let err = resolve_home_dir().unwrap_err();
+                assert!(
+                    err.to_string().contains("neither HOME nor USERPROFILE"),
+                    "unexpected error: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn resolve_home_dir_errors_when_home_empty() {
+        temp_env::with_vars([("HOME", Some("")), ("USERPROFILE", None::<&str>)], || {
+            let err = resolve_home_dir().unwrap_err();
+            assert!(
+                err.to_string().contains("must be an absolute path"),
+                "unexpected error: {err}"
+            );
+        });
+    }
+
+    #[test]
+    fn resolve_home_dir_errors_when_home_relative() {
+        temp_env::with_vars(
+            [
+                ("HOME", Some("relative/path")),
+                ("USERPROFILE", None::<&str>),
+            ],
+            || {
+                let err = resolve_home_dir().unwrap_err();
+                assert!(
+                    err.to_string().contains("must be an absolute path"),
+                    "unexpected error: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn resolve_home_dir_falls_back_to_userprofile() {
+        temp_env::with_vars(
+            [("HOME", None::<&str>), ("USERPROFILE", Some("/fallback"))],
+            || {
+                let home = resolve_home_dir().unwrap();
+                assert_eq!(home, PathBuf::from("/fallback"));
+            },
+        );
+    }
+
+    #[test]
+    fn default_base_dir_appends_context_matters() {
+        let base = default_base_dir().unwrap();
+        assert!(base.ends_with(".context-matters"));
+        assert!(base.is_absolute());
+    }
+}

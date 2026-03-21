@@ -21,5 +21,6 @@ anyhow = { workspace = true }
 
 [dev-dependencies]
 blake3 = { workspace = true }
+temp-env = "0.3"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

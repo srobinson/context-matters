@@ -250,4 +250,137 @@ mod tests {
         assert_eq!(cfg.data_dir.as_deref(), Some("~/custom-dir"));
         assert_eq!(cfg.log_level.as_deref(), Some("debug"));
     }
+
+    #[test]
+    fn validate_rejects_empty_data_dir() {
+        let config = Config {
+            data_dir: PathBuf::new(),
+            log_level: "warn".to_owned(),
+        };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("must not be empty"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_relative_data_dir() {
+        let config = Config {
+            data_dir: PathBuf::from("relative/path"),
+            log_level: "warn".to_owned(),
+        };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("must be an absolute path"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_absolute_data_dir() {
+        let config = Config {
+            data_dir: PathBuf::from("/tmp/cm-test"),
+            log_level: "warn".to_owned(),
+        };
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn load_propagates_validation_error_for_relative_data_dir() {
+        // Set CM_DATA_DIR to a relative path; load() should propagate the validation error
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("relative/path")),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let err = load().unwrap_err();
+                assert!(
+                    err.to_string().contains("must be an absolute path"),
+                    "unexpected error: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn load_propagates_validation_error_for_empty_data_dir() {
+        temp_env::with_vars(
+            [("CM_DATA_DIR", Some("")), ("CM_LOG_LEVEL", None::<&str>)],
+            || {
+                let err = load().unwrap_err();
+                assert!(
+                    err.to_string().contains("must not be empty"),
+                    "unexpected error: {err}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn load_succeeds_with_absolute_cm_data_dir() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("/tmp/cm-test-load")),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(config.data_dir, PathBuf::from("/tmp/cm-test-load"));
+            },
+        );
+    }
+
+    #[test]
+    fn load_expands_tilde_in_cm_data_dir() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("~/custom-cm")),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let config = load().unwrap();
+                assert!(config.data_dir.is_absolute());
+                assert!(config.data_dir.ends_with("custom-cm"));
+                assert!(!config.data_dir.to_string_lossy().contains('~'));
+            },
+        );
+    }
+
+    #[test]
+    fn load_respects_cm_log_level() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some("/tmp/cm-test-log")),
+                ("CM_LOG_LEVEL", Some("trace")),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(config.log_level, "trace");
+            },
+        );
+    }
+
+    #[test]
+    fn config_template_is_valid_toml_when_values_uncommented() {
+        let template = config_template();
+        // Uncomment only lines that look like TOML key = value pairs
+        let uncommented: String = template
+            .lines()
+            .filter_map(|line| {
+                if let Some(stripped) = line.strip_prefix("# ")
+                    && stripped.contains(" = ") {
+                        return Some(stripped);
+                    }
+                if !line.starts_with('#') && !line.is_empty() {
+                    return Some(line);
+                }
+                None
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result: Result<FileConfig, _> = toml::from_str(&uncommented);
+        assert!(result.is_ok(), "template is not valid TOML: {result:?}");
+    }
 }
