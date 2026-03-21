@@ -84,7 +84,7 @@ pub fn load() -> Result<Config> {
 
     // Layer 2: Environment variables (highest precedence)
     if let Ok(dir) = std::env::var("CM_DATA_DIR") {
-        config.data_dir = PathBuf::from(dir);
+        config.data_dir = expand_tilde(&dir)?;
     }
     if let Ok(level) = std::env::var("CM_LOG_LEVEL") {
         config.log_level = level;
