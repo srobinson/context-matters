@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/srobinson/context-matters/compare/v0.1.11...v0.1.12) (2026-03-21)
+
+
+### Bug Fixes
+
+* align config management with helioy ecosystem standard ([#20](https://github.com/srobinson/context-matters/issues/20)) ([e85e3c2](https://github.com/srobinson/context-matters/commit/e85e3c26a014d77399c8fe3ea7b4ca4ff34b8f38))
+
 ## [0.1.11](https://github.com/srobinson/context-matters/compare/v0.1.10...v0.1.11) (2026-03-20)
 
 
