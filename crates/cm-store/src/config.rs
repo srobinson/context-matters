@@ -181,7 +181,9 @@ fn config_search_paths() -> Vec<PathBuf> {
 /// Absolute paths pass through unchanged. Returns an error if the
 /// home directory cannot be resolved when tilde expansion is needed.
 fn expand_tilde(path: &str) -> Result<PathBuf> {
-    if let Some(rest) = path.strip_prefix("~/") {
+    if path == "~" {
+        resolve_home_dir()
+    } else if let Some(rest) = path.strip_prefix("~/") {
         Ok(resolve_home_dir()?.join(rest))
     } else {
         Ok(PathBuf::from(path))
@@ -214,6 +216,13 @@ mod tests {
         // Should not start with ~ anymore
         assert!(!expanded.to_string_lossy().starts_with('~'));
         assert!(expanded.to_string_lossy().ends_with("foo/bar"));
+    }
+
+    #[test]
+    fn expand_tilde_bare_resolves_to_home() {
+        let expanded = expand_tilde("~").unwrap();
+        assert!(expanded.is_absolute());
+        assert!(!expanded.to_string_lossy().contains('~'));
     }
 
     #[test]
