@@ -8,27 +8,33 @@ Provides persistent, hierarchical, scoped context storage so AI agents can recal
 
 ## Architecture
 
-Three-crate Rust workspace following the attention-matters pattern:
+Five-crate Rust workspace following the attention-matters pattern:
 
 ```
 context-matters/
 ├── crates/
-│   ├── cm-core/        # Domain types, ContextStore trait, query logic. Zero I/O.
-│   ├── cm-store/       # SQLite adapter via sqlx. Schema, migrations, config.
-│   └── cm-cli/         # CLI binary (`cm`) and MCP server.
+│   ├── cm-core/           # Domain types, ContextStore trait, query logic. Zero I/O.
+│   ├── cm-store/          # SQLite adapter via sqlx. Schema, migrations, config.
+│   ├── cm-capabilities/   # Shared request/response types, validation, projections.
+│   ├── cm-cli/            # CLI binary (`cm`) and MCP server.
+│   └── cm-web/            # Web monitoring dashboard (Axum + React/Vite frontend).
 ├── npm/
-│   └── context-matters/  # npm wrapper for npx distribution
-├── tools.toml          # Single source of truth for tool + parameter docs
-└── justfile            # Build/test/lint recipes
+│   └── context-matters/   # npm wrapper for npx distribution
+├── tools.toml             # Single source of truth for tool + parameter docs
+└── justfile               # Build/test/lint recipes
 ```
 
 ### Crate Responsibilities
 
 **cm-core**: Pure domain logic. Defines `ContextStore` trait (sync signatures), all domain types (`Entry`, `Scope`, `EntryKind`, `ScopePath`, etc.), and query construction. Testable without a database.
 
-**cm-store**: `SqliteContextStore` implements the `ContextStore` trait. Owns schema (3 SQL migrations), config resolution (TOML + env vars), connection pooling (1 write / 4 read), and all sqlx interaction. Async public API wraps sync trait methods.
+**cm-store**: `SqliteContextStore` implements the `ContextStore` trait. Owns schema (5 SQL migrations), config resolution (TOML + env vars), connection pooling (1 write / 4 read), and all sqlx interaction. Async public API wraps sync trait methods.
+
+**cm-capabilities**: Shared application layer between adapters (MCP, CLI, web). Request/response types (`RecallRequest`, `BrowseRequest`, `StatsRequest`), entry view projections (snippet, full, browse), validation helpers, and scope resolution. Depends on cm-core only.
 
 **cm-cli**: Binary crate producing `cm`. Contains `McpServer` (manual JSON-RPC over stdio, same pattern as fmm) and CLI subcommands. `build.rs` reads `tools.toml` and generates MCP schema + CLI help constants.
+
+**cm-web**: Web monitoring dashboard. Axum backend serves a REST API for entries, agents, stats, mutations, and export. React/Vite frontend embedded via `rust-embed`. Depends on cm-capabilities, cm-core, and cm-store.
 
 ## Key Design Decisions
 
