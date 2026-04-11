@@ -1,8 +1,11 @@
 //! Scope and relation operations.
 
+use std::collections::HashMap;
+
 use cm_core::{
     CmError, EntryRelation, NewScope, RelationKind, Scope, ScopeKind, ScopePath, WriteContext,
 };
+use sqlx::Row;
 use uuid::Uuid;
 
 use super::CmStore;
@@ -85,6 +88,49 @@ impl CmStore {
             .map_err(map_db_err)?;
 
         rows.iter().map(parse_relation).collect()
+    }
+
+    /// Count outgoing relations for each id in `ids` using a single batched
+    /// `IN (?, ?, ...)` query. Empty input short-circuits without touching
+    /// the pool. Ids with zero outgoing relations are omitted from the map
+    /// (`GROUP BY source_id` only emits rows for ids that have at least one
+    /// matching relation).
+    pub(crate) async fn do_count_relations_for(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, u32>, CmError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let pool = &self.read_pool;
+        let id_strs: Vec<String> = ids.iter().map(Uuid::to_string).collect();
+        let placeholders: Vec<&str> = id_strs.iter().map(|_| "?").collect();
+        // Single SELECT, no semicolons, one round-trip. The PRIMARY KEY on
+        // (source_id, target_id, relation) makes the IN-clause lookup an
+        // index-only scan.
+        let sql = format!(
+            "SELECT source_id, COUNT(*) AS cnt FROM entry_relations \
+             WHERE source_id IN ({}) \
+             GROUP BY source_id",
+            placeholders.join(", ")
+        );
+
+        let mut q = sqlx::query(&sql);
+        for s in &id_strs {
+            q = q.bind(s);
+        }
+        let rows = q.fetch_all(pool).await.map_err(map_db_err)?;
+
+        let mut counts = HashMap::with_capacity(rows.len());
+        for row in &rows {
+            let source_str: String = row.get("source_id");
+            let cnt: i64 = row.get("cnt");
+            let id = Uuid::parse_str(&source_str)
+                .map_err(|e| CmError::Internal(format!("invalid uuid in entry_relations: {e}")))?;
+            counts.insert(id, cnt as u32);
+        }
+        Ok(counts)
     }
 
     pub(crate) async fn do_create_scope(

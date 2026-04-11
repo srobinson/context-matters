@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -194,6 +196,26 @@ pub trait ContextStore: Send + Sync + 'static {
 
     /// Get all relations where the given entry is the target.
     async fn get_relations_to(&self, target_id: Uuid) -> Result<Vec<EntryRelation>, CmError>;
+
+    /// Count outgoing relations for each id in `ids`, in a single batched query.
+    ///
+    /// Returns a map from entry id to the number of relations where that
+    /// entry is the `source_id`. Ids with zero outgoing relations are
+    /// **omitted** from the map (callers should treat absence as zero, e.g.
+    /// `map.get(&id).copied().unwrap_or(0)`).
+    ///
+    /// Counts every `RelationKind` together (no per-kind breakdown). Only
+    /// outgoing edges are counted because outgoing edges are what indicate
+    /// an entry elaborates on or otherwise references other entries; revisit
+    /// if incoming counts become useful for projection enrichment.
+    ///
+    /// The default implementation returns an empty map, so adapters that do
+    /// not maintain a relations table can opt out without compile errors.
+    /// `CmStore` overrides with a single batched `IN (?, ?, ...)` query and
+    /// short-circuits to an empty map (no DB access) when `ids` is empty.
+    async fn count_relations_for(&self, _ids: &[Uuid]) -> Result<HashMap<Uuid, u32>, CmError> {
+        Ok(HashMap::new())
+    }
 
     // ── Scopes ──────────────────────────────────────────────────
 

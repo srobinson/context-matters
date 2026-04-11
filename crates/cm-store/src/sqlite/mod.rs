@@ -22,6 +22,8 @@ pub(crate) mod parse;
 mod query;
 mod scope;
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use cm_core::{
     CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationAction,
@@ -138,6 +140,10 @@ impl ContextStore for CmStore {
 
     async fn get_relations_to(&self, target_id: Uuid) -> Result<Vec<EntryRelation>, CmError> {
         self.do_get_relations_to(target_id).await
+    }
+
+    async fn count_relations_for(&self, ids: &[Uuid]) -> Result<HashMap<Uuid, u32>, CmError> {
+        self.do_count_relations_for(ids).await
     }
 
     async fn create_scope(
