@@ -164,17 +164,14 @@ pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBr
         tags_histogram,
     };
 
-    let id_strings: Vec<String> = entries.iter().map(|e| e.id.to_string()).collect();
-
     let rows = entries
         .iter()
-        .zip(id_strings.iter())
-        .map(|(e, id_str)| {
+        .map(|e| {
             let raw_snippet = smart_snippet(&e.body, None, HighlightStyle::None, SNIPPET_MAX_BYTES);
             let snippet = collapse_whitespace(&raw_snippet);
             let tags = e.meta.as_ref().map(|m| m.tags.clone()).unwrap_or_default();
             WebBrowseRow {
-                id: id_str.clone(),
+                id: e.id.to_string(),
                 title: e.title.clone(),
                 snippet,
                 age: relative_age(e.updated_at, now),
@@ -305,8 +302,6 @@ pub fn project_web_recall_at(
         HighlightStyle::None
     };
 
-    let id_strings: Vec<String> = rows.iter().map(|r| r.entry.id.to_string()).collect();
-
     let show_score = is_search && rows.iter().any(|r| r.score.is_some());
     let norm_scores: Vec<f32> = if show_score {
         let raws: Vec<f32> = rows.iter().map(|r| r.score.unwrap_or(0.0)).collect();
@@ -357,8 +352,7 @@ pub fn project_web_recall_at(
     let entries: Vec<WebRecallRow> = rows
         .iter()
         .enumerate()
-        .zip(id_strings.iter())
-        .map(|((idx, row), id_str)| {
+        .map(|(idx, row)| {
             let raw_snippet =
                 smart_snippet(&row.entry.body, query, highlight_style, SNIPPET_MAX_BYTES);
             let snippet = collapse_whitespace(&raw_snippet);
@@ -374,7 +368,7 @@ pub fn project_web_recall_at(
                 None
             };
             WebRecallRow {
-                id: id_str.clone(),
+                id: row.entry.id.to_string(),
                 score,
                 title: row.entry.title.clone(),
                 snippet,
