@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use cm_core::{
     CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery, Pagination, ScopePath,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use uuid::Uuid;
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
@@ -69,6 +72,12 @@ pub struct RecallResult {
     pub tier: Option<SearchTier>,
     pub candidates_before_filter: usize,
     pub fetch_limit_used: u32,
+    /// Outgoing-relation counts per row id, populated by a single
+    /// `ContextStore::count_relations_for` batch call after the row set is
+    /// finalised. Ids with zero outgoing edges are **omitted** from the map
+    /// (per the trait contract); the projection layer treats absence as
+    /// zero and elides the `rels:` annotation entirely.
+    pub relation_counts: HashMap<Uuid, u32>,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -156,6 +165,13 @@ pub async fn recall(
         budget_rows.push(row.clone());
     }
 
+    // Single batched fetch of outgoing-relation counts for the final row
+    // set. Runs after the budget loop so we never count edges for rows the
+    // caller will not see, and contracts to one round-trip regardless of
+    // result-set size (the trait short-circuits on empty input).
+    let relation_count_ids: Vec<Uuid> = budget_rows.iter().map(|r| r.entry.id).collect();
+    let relation_counts = store.count_relations_for(&relation_count_ids).await?;
+
     // Build scope chain and hits
     let (scope_chain, scope_hits) = match &request.scope {
         Some(sp) => {
@@ -202,6 +218,7 @@ pub async fn recall(
         tier,
         candidates_before_filter,
         fetch_limit_used: actual_fetch_limit,
+        relation_counts,
     })
 }
 

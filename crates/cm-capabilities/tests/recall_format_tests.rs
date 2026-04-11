@@ -17,6 +17,8 @@
 //! No SQLite store is involved. The formatter is pure (`RecallResult`
 //! in, `String` out) so every fixture is built inline.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
 
@@ -168,6 +170,7 @@ fn search_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         tier: Some(SearchTier::Exact),
         candidates_before_filter: 47,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
 
     let request = RecallRequest {
@@ -233,6 +236,7 @@ fn browse_fallback_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         tier: None,
         candidates_before_filter: 5,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
 
     let request = RecallRequest {
@@ -303,6 +307,7 @@ fn dedup_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         tier: Some(SearchTier::Exact),
         candidates_before_filter: 5,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
 
     let request = RecallRequest {
@@ -330,6 +335,7 @@ fn empty_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         tier: Some(SearchTier::None),
         candidates_before_filter: 0,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
     let request = RecallRequest {
         query: Some("extremely obscure search phrase".to_owned()),

@@ -12,10 +12,7 @@ async fn make_entry(store: &CmStore, scope: &str, title: &str) -> Entry {
     // Body must be unique per call: the store rejects duplicate content_hash.
     let body = format!("body for {title}");
     store
-        .create_entry(
-            new_entry(scope, EntryKind::Fact, title, &body),
-            &test_ctx(),
-        )
+        .create_entry(new_entry(scope, EntryKind::Fact, title, &body), &test_ctx())
         .await
         .unwrap()
 }

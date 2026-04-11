@@ -11,10 +11,12 @@
 //! once at the entry point and injected into [`format_browse_view_at`]
 //! so snapshot tests can pin the `age:` column.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
 use chrono::{DateTime, Utc};
 use cm_core::{BrowseSort, Entry};
+use uuid::Uuid;
 
 use super::{
     HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES, collapse_whitespace,
@@ -52,7 +54,7 @@ pub fn format_browse_view_at(
     out.push_str("---\n");
     render_header(&mut out, result, request, entries, &hoists);
     out.push('\n');
-    render_entries(&mut out, entries, now, &hoists);
+    render_entries(&mut out, entries, now, &hoists, &result.relation_counts);
     render_pagination_hint(&mut out, result, request);
     out
 }
@@ -104,7 +106,13 @@ fn render_header(
     }
 }
 
-fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoists: &Hoists) {
+fn render_entries(
+    out: &mut String,
+    entries: &[Entry],
+    now: DateTime<Utc>,
+    hoists: &Hoists,
+    relation_counts: &HashMap<Uuid, u32>,
+) {
     out.push_str("entries:\n");
 
     if entries.is_empty() {
@@ -144,7 +152,8 @@ fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoist
         let dup_of = dedup
             .get(&entry.id)
             .map(|leader_uuid| short_id(&leader_uuid.to_string(), id_len).to_owned());
-        let comment = render_row_comment(entry, now, hoists, dup_of.as_deref());
+        let rels = relation_counts.get(&entry.id).copied().unwrap_or(0);
+        let comment = render_row_comment(entry, now, hoists, dup_of.as_deref(), rels);
         let _ = writeln!(out, "{cont_indent}# {comment}");
     }
 }
@@ -154,8 +163,9 @@ fn render_row_comment(
     now: DateTime<Utc>,
     hoists: &Hoists,
     dup_of: Option<&str>,
+    rels: u32,
 ) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(5);
+    let mut parts: Vec<String> = Vec::with_capacity(6);
     if hoists.scope.is_none() {
         parts.push(format!("scope: {}", entry.scope_path));
     }
@@ -173,6 +183,9 @@ fn render_row_comment(
     }
     if let Some(dup) = dup_of {
         parts.push(format!("dup_of: {dup}"));
+    }
+    if rels > 0 {
+        parts.push(format!("rels: {rels}"));
     }
     parts.join("  ")
 }

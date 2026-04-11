@@ -9,6 +9,8 @@
 //! No SQLite store is involved. The formatter is pure (`BrowseResult`
 //! in, `String` out) so every fixture is built inline.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
 
@@ -100,6 +102,7 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
         next_cursor: Some("eyJzb3J0IjoicmVjZW50IiwibGFzdCI6ImZvbyJ9".to_owned()),
         has_more: true,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
 
     let request = BrowseRequest {
@@ -141,6 +144,7 @@ fn format_browse_view_empty_result_renders_clean() {
         next_cursor: None,
         has_more: false,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
     let request = BrowseRequest {
         limit: 50,
@@ -188,6 +192,7 @@ fn format_browse_view_single_entry_hoists_all_uniform_fields() {
         next_cursor: None,
         has_more: false,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
     let request = BrowseRequest {
         limit: 50,

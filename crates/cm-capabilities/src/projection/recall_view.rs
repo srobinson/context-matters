@@ -20,10 +20,12 @@
 //! an inversion, so the best match always renders as `1.00` regardless
 //! of the raw range. See [`normalise_bm25`] for the formula.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
 use chrono::{DateTime, Utc};
 use cm_core::Entry;
+use uuid::Uuid;
 
 use super::{
     HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
@@ -109,12 +111,19 @@ struct Layout<'a> {
     /// `age:` value even if the underlying system clock drifts during
     /// the render call.
     now: DateTime<Utc>,
+    /// Outgoing-relation counts per row id, sourced from the
+    /// [`RecallResult::relation_counts`] map produced by the single
+    /// batched `count_relations_for` call in the recall capability.
+    /// Borrowed so [`render_row_comment`] can do an `O(1)` lookup per
+    /// row without cloning the map. Ids absent from the map carry zero
+    /// outgoing edges and suppress the `rels:` annotation entirely.
+    relation_counts: &'a HashMap<Uuid, u32>,
 }
 
 impl<'a> Layout<'a> {
     fn new(
         rows: &'a [RecallRow],
-        result: &RecallResult,
+        result: &'a RecallResult,
         request: &'a RecallRequest,
         now: DateTime<Utc>,
     ) -> Self {
@@ -147,6 +156,7 @@ impl<'a> Layout<'a> {
             query,
             highlight_style,
             now,
+            relation_counts: &result.relation_counts,
         }
     }
 }
@@ -273,13 +283,23 @@ fn render_entries(out: &mut String, layout: &Layout) {
         let dup_of = dedup
             .get(&row.entry.id)
             .map(|leader_uuid| short_id(&leader_uuid.to_string(), layout.id_len).to_owned());
-        let comment = render_row_comment(&row.entry, layout.now, dup_of.as_deref());
+        let rels = layout
+            .relation_counts
+            .get(&row.entry.id)
+            .copied()
+            .unwrap_or(0);
+        let comment = render_row_comment(&row.entry, layout.now, dup_of.as_deref(), rels);
         let _ = writeln!(out, "{cont_indent}# {comment}");
     }
 }
 
-fn render_row_comment(entry: &Entry, now: DateTime<Utc>, dup_of: Option<&str>) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(5);
+fn render_row_comment(
+    entry: &Entry,
+    now: DateTime<Utc>,
+    dup_of: Option<&str>,
+    rels: u32,
+) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(6);
     parts.push(format!("scope: {}", entry.scope_path));
     parts.push(format!("kind: {}", entry.kind.as_str()));
     let tags: &[String] = entry
@@ -293,6 +313,9 @@ fn render_row_comment(entry: &Entry, now: DateTime<Utc>, dup_of: Option<&str>) -
     parts.push(format!("age: {}", relative_age(entry.updated_at, now)));
     if let Some(dup) = dup_of {
         parts.push(format!("dup_of: {dup}"));
+    }
+    if rels > 0 {
+        parts.push(format!("rels: {rels}"));
     }
     parts.join("  ")
 }

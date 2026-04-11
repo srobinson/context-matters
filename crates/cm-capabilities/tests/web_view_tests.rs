@@ -15,6 +15,8 @@
 //! every fixture is built inline, matching the precedent in
 //! `browse_format_tests.rs` / `recall_format_tests.rs`.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
 
@@ -120,6 +122,7 @@ fn web_browse_view_hoists_uniform_scope() {
         next_cursor: None,
         has_more: false,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -173,6 +176,7 @@ fn web_browse_view_mixed_scope() {
         next_cursor: None,
         has_more: false,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -217,6 +221,7 @@ fn web_recall_view_brackets_snippets_on_search() {
         tier: Some(SearchTier::Exact),
         candidates_before_filter: 1,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
     let request = RecallRequest {
         query: Some("snippet".to_owned()),
@@ -287,6 +292,7 @@ fn web_recall_view_histograms_populated() {
         tier: None,
         candidates_before_filter: 3,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
     let request = RecallRequest {
         query: None,
