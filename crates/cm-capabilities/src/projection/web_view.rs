@@ -50,6 +50,7 @@ use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 /// and each row drops it. When the column varies, the header field is
 /// `None` and rows carry their own value.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct WebBrowseHeader {
     /// Human-legible SQL form of the sort order actually applied,
     /// e.g. `"updated_at desc"`. Matches the YAML `sort:` header.
@@ -82,6 +83,7 @@ pub struct WebBrowseHeader {
 /// `kind` are hoisted to `None` when the header carries the same
 /// value for every row.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct WebBrowseRow {
     pub short_id: String,
     pub id: String,
@@ -106,6 +108,7 @@ pub struct WebBrowseRow {
 /// header fields, same row shape, same pagination hint. Frontends that
 /// render this view see the exact mental model the MCP adapter shows.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct WebBrowseView {
     pub header: WebBrowseHeader,
     pub entries: Vec<WebBrowseRow>,
@@ -214,6 +217,7 @@ pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBr
 /// [`super::recall_view::search_tier_header_tag`], sharing the source
 /// of truth with the YAML renderer.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct WebRecallHeader {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
@@ -240,6 +244,7 @@ pub struct WebRecallHeader {
 /// renders as `1.00` regardless of raw FTS5 range; non-search routings
 /// leave `score` as `None`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct WebRecallRow {
     pub short_id: String,
     pub id: String,
@@ -263,6 +268,7 @@ pub struct WebRecallRow {
 /// `advisories` is a forward-compatible slot for the dominance /
 /// drill-down hints landing in ALP-1758; this issue leaves it empty.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct WebRecallView {
     pub header: WebRecallHeader,
     pub entries: Vec<WebRecallRow>,

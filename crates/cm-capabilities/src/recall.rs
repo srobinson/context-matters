@@ -2,6 +2,7 @@ use cm_core::{
     CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery, Pagination, ScopePath,
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
@@ -38,7 +39,8 @@ pub enum RecallRouting {
 /// reserved for the case where all three tiers were tried and none
 /// returned rows (distinct from `RecallResult.tier == None`, which signals
 /// the cascade was never entered because the routing was not `Search`).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchTier {
     Exact,

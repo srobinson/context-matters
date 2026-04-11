@@ -47,9 +47,10 @@ web-install:
 web: web-install
     overmind start -f Procfile.dev
 
-# Regenerate TypeScript types from cm-core via ts-rs
+# Regenerate TypeScript types from cm-core + cm-capabilities via ts-rs
 gen-types:
     cargo test -p cm-core export_bindings_ 2>/dev/null; true
+    cargo test -p cm-capabilities export_bindings_ 2>/dev/null; true
 
 # Regenerate sqlx offline query cache (commit .sqlx/ after running)
 sqlx-prepare:
