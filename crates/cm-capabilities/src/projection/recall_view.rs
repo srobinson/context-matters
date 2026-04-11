@@ -416,7 +416,7 @@ fn render_trailers(out: &mut String, result: &RecallResult, layout: &Layout) {
 /// `0.00`. When every raw score is equal (including the single-row case)
 /// the formula's divisor is zero; this function emits `1.00` for every
 /// row in that case rather than returning NaN.
-pub(crate) fn normalise_bm25(scores: &[f32]) -> Vec<f32> {
+pub fn normalise_bm25(scores: &[f32]) -> Vec<f32> {
     if scores.is_empty() {
         return Vec::new();
     }
