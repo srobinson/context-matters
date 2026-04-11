@@ -1,9 +1,14 @@
+import { useQueries } from "@tanstack/react-query";
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { GitMerge, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { api, type EntryDetail } from "@/api/client";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import { useAgentBrowse, useAgentRecall, useEntries } from "@/api/hooks";
+import type { WebBrowseRow } from "@/api/generated/WebBrowseRow";
+import { queryKeys, useAgentRecall, useEntries } from "@/api/hooks";
+import { BrowsePane } from "@/components/BrowsePane";
+import { HoistedHeader } from "@/components/composed/HoistedHeader";
 import { type FeedMode, FeedModeSelect } from "@/components/domain/FeedModeSelect";
 import { SortSelect } from "@/components/domain/SortSelect";
 import { EntryCard } from "@/components/EntryCard";
@@ -61,12 +66,6 @@ function FeedPage() {
   const [recallTags, setRecallTags] = useState<string[]>([]);
   const [recallLimit, setRecallLimit] = useState(20);
   const [recallMaxTokens, setRecallMaxTokens] = useState<number | undefined>(undefined);
-  const [browseScope, setBrowseScope] = useState<string | undefined>(undefined);
-  const [browseKind, setBrowseKind] = useState<EntryKind | undefined>(undefined);
-  const [browseTag, setBrowseTag] = useState<string | undefined>(undefined);
-  const [browseAgent, setBrowseAgent] = useState<string | undefined>(undefined);
-  const [browseForgotten, setBrowseForgotten] = useState(false);
-  const [browseCursor, setBrowseCursor] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const entryRefs = useRef(new Map<string, HTMLDivElement>());
   const debouncedQuery = useDebounce(searchInput, 300);
@@ -125,19 +124,11 @@ function FeedPage() {
       setRecallLimit(20);
       setRecallMaxTokens(undefined);
     }
-    if (!isBrowseMode) {
-      setBrowseScope(undefined);
-      setBrowseKind(undefined);
-      setBrowseTag(undefined);
-      setBrowseAgent(undefined);
-      setBrowseForgotten(false);
-      setBrowseCursor(undefined);
-    }
     if (activeMode !== "curate" && mergeMode) {
       setMergeMode(false);
       setSelectedIds(new Set());
     }
-  }, [activeMode, isRecallMode, isBrowseMode, mergeMode]);
+  }, [activeMode, isRecallMode, mergeMode]);
 
   const handleModeChange = useCallback(
     (nextMode: FeedMode) => {
@@ -179,15 +170,6 @@ function FeedPage() {
   const handleClearSearch = useCallback(() => {
     setSearchInput("");
     inputRef.current?.focus();
-  }, []);
-
-  const handleBrowseFilterChange = useCallback((update: Partial<FilterState>) => {
-    if ("scope_path" in update) setBrowseScope(update.scope_path);
-    if ("kind" in update) setBrowseKind(update.kind);
-    if ("tag" in update) setBrowseTag(update.tag);
-    if ("created_by" in update) setBrowseAgent(update.created_by);
-    if ("show_forgotten" in update) setBrowseForgotten(!!update.show_forgotten);
-    setBrowseCursor(undefined);
   }, []);
 
   const toggleMergeMode = useCallback(() => {
@@ -270,48 +252,48 @@ function FeedPage() {
     },
   );
 
-  const agentBrowseQuery = useAgentBrowse(
-    {
-      scope_path: browseScope,
-      kind: browseKind,
-      tag: browseTag,
-      created_by: browseAgent,
-      include_superseded: browseForgotten || undefined,
-      limit: 20,
-      cursor: browseCursor,
-    },
-    {
-      enabled: isBrowseMode,
-    },
-  );
-
-  const handleBrowseNext = useCallback(() => {
-    const cursor = agentBrowseQuery.data?.next_cursor;
-    if (cursor) setBrowseCursor(cursor);
-  }, [agentBrowseQuery.data?.next_cursor]);
-
-  const handleBrowseReset = useCallback(() => {
-    setBrowseCursor(undefined);
-  }, []);
-
   const browseData = browseQuery.data;
-  const browseEntries = useMemo(
-    () => browseData?.pages.flatMap((page) => page.items) ?? [],
+  const browseEntries = useMemo<WebBrowseRow[]>(
+    () => browseData?.pages.flatMap((page) => page.entries) ?? [],
     [browseData],
   );
-  const recallResults = recallQuery.data?.results ?? [];
+  // The first page's header carries the hoisted constants that every row on
+  // that page shares. Later pages might hoist slightly different values if
+  // filters or the underlying data shift, but for a visible strip above the
+  // whole list we pin on the first page — it matches what the user saw when
+  // they first scrolled in, and stays stable as they load more.
+  const browseHeader = browseData?.pages[0]?.header;
+  const recallEntries = recallQuery.data?.entries ?? [];
 
-  // Curate mode uses browseEntries; recall mode uses recallResults rendered separately
+  // Curate mode uses browseEntries; recall mode uses recallEntries rendered separately.
   const entries = isRecallMode ? [] : browseEntries;
   const totalCount = isRecallMode
-    ? (recallQuery.data?.returned ?? 0)
-    : (browseData?.pages[0]?.total ?? 0);
+    ? (recallQuery.data?.header.returned ?? 0)
+    : (browseData?.pages[0]?.header.total ?? 0);
   const isLoading = isRecallMode ? recallQuery.isLoading : browseQuery.isLoading;
   const isError = isRecallMode ? recallQuery.isError : browseQuery.isError;
   const error = isRecallMode ? recallQuery.error : browseQuery.error;
   const hasNextPage = browseQuery.hasNextPage;
   const fetchNextPage = browseQuery.fetchNextPage;
   const isFetchingNextPage = browseQuery.isFetchingNextPage;
+
+  // Merge mode hydrates selected rows into full EntryDetails. The curate list
+  // now carries only projection rows (no body), so MergePanel — which wants
+  // the full Entry shape — must fetch its own details. Shared queryClient
+  // cache means this is usually instant if the row was already expanded.
+  const selectedIdList = useMemo(() => [...selectedIds], [selectedIds]);
+  const selectedEntryQueries = useQueries({
+    queries: selectedIdList.map((id) => ({
+      queryKey: queryKeys.entries.detail(id),
+      queryFn: () => api.entries.get(id),
+      enabled: mergeMode && selectedIdList.length >= 2,
+    })),
+  });
+  const hydratedSelectedEntries = selectedEntryQueries
+    .map((q) => q.data)
+    .filter((d): d is EntryDetail => !!d);
+  const selectionHydrated =
+    hydratedSelectedEntries.length === selectedIdList.length && selectedIdList.length > 0;
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -370,23 +352,10 @@ function FeedPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {(isRecallMode
-            ? recallResults.length > 0
-            : isBrowseMode
-              ? (agentBrowseQuery.data?.entries.length ?? 0) > 0
-              : entries.length > 0) && (
+          {activeMode === "curate" && entries.length > 0 && (
             <span className="font-mono text-xs text-muted-foreground">
-              {isRecallMode
-                ? recallResults.length
-                : isBrowseMode
-                  ? (agentBrowseQuery.data?.entries.length ?? 0)
-                  : entries.length}
-              {isBrowseMode && agentBrowseQuery.data
-                ? ` / ${agentBrowseQuery.data.total}`
-                : !isRecallMode && totalCount > entries.length
-                  ? ` / ${totalCount}`
-                  : ""}
-              {isRecallMode ? " results" : " entries"}
+              {entries.length}
+              {totalCount > entries.length ? ` / ${totalCount}` : ""} entries
             </span>
           )}
           <button
@@ -491,13 +460,11 @@ function FeedPage() {
           <TracePanel
             data={{
               kind: "recall",
-              trace: recallQuery.data._trace,
-              scope_chain: recallQuery.data.scope_chain,
-              token_estimate: recallQuery.data.token_estimate,
-              returned: recallQuery.data.returned,
+              header: recallQuery.data.header,
+              advisories: recallQuery.data.advisories,
             }}
           />
-          {recallResults.length === 0 ? (
+          {recallEntries.length === 0 ? (
             <div className="rounded-lg border border-border bg-card p-8 text-center">
               <p className="text-sm text-muted-foreground">
                 {debouncedQuery ? `No results for "${debouncedQuery}".` : "No recall results."}
@@ -505,97 +472,33 @@ function FeedPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {recallResults.map((hit) => (
+              {recallEntries.map((hit) => (
                 <SnippetCard
                   key={hit.id}
-                  entry={hit}
+                  row={hit}
+                  highlightMatches
                   isExpanded={expandedIds.has(hit.id)}
                   onToggle={() => toggleExpanded(hit.id)}
                 />
               ))}
             </div>
           )}
-        </>
-      )}
-
-      {isBrowseMode && (
-        <FilterBar
-          filters={{
-            scope_path: browseScope,
-            kind: browseKind,
-            tag: browseTag,
-            created_by: browseAgent,
-            show_forgotten: browseForgotten,
-          }}
-          onChange={handleBrowseFilterChange}
-        />
-      )}
-
-      {isBrowseMode && agentBrowseQuery.isLoading && (
-        <div className="rounded-lg border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">Browsing...</p>
-        </div>
-      )}
-
-      {isBrowseMode && agentBrowseQuery.isError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-          <p className="text-sm text-destructive">
-            Browse failed: {agentBrowseQuery.error?.message ?? "Unknown error"}
-          </p>
-        </div>
-      )}
-
-      {isBrowseMode && agentBrowseQuery.data && (
-        <>
-          <TracePanel
-            data={{
-              kind: "browse",
-              trace: agentBrowseQuery.data._trace,
-              total: agentBrowseQuery.data.total,
-              has_more: agentBrowseQuery.data.has_more,
-            }}
-          />
-          {agentBrowseQuery.data.entries.length === 0 ? (
-            <div className="rounded-lg border border-border bg-card p-8 text-center">
-              <p className="text-sm text-muted-foreground">No entries match the current filters.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {agentBrowseQuery.data.entries.map((entry) => (
-                <SnippetCard
-                  key={entry.id}
-                  entry={entry}
-                  isExpanded={expandedIds.has(entry.id)}
-                  onToggle={() => toggleExpanded(entry.id)}
-                />
-              ))}
+          {recallQuery.data.advisories.length > 0 && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+              <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-amber-600/80 dark:text-amber-400/80">
+                advisories
+              </div>
+              <ul className="space-y-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-300">
+                {recallQuery.data.advisories.map((msg) => (
+                  <li key={msg}>{msg}</li>
+                ))}
+              </ul>
             </div>
           )}
-
-          <div className="flex items-center justify-between">
-            {browseCursor ? (
-              <button
-                type="button"
-                onClick={handleBrowseReset}
-                className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                first page
-              </button>
-            ) : (
-              <div />
-            )}
-            {agentBrowseQuery.data.has_more && agentBrowseQuery.data.next_cursor && (
-              <button
-                type="button"
-                onClick={handleBrowseNext}
-                className="rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                next page
-              </button>
-            )}
-          </div>
         </>
       )}
+
+      {isBrowseMode && <BrowsePane expandedIds={expandedIds} onToggleExpanded={toggleExpanded} />}
 
       {activeMode === "curate" && isLoading && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
@@ -623,13 +526,20 @@ function FeedPage() {
               </span>
             )}
           </div>
-          {selectedIds.size >= 2 && (
-            <MergePanel
-              entries={entries.filter((e) => selectedIds.has(e.id))}
-              onComplete={handleMergeComplete}
-              onCancel={toggleMergeMode}
-            />
-          )}
+          {selectedIds.size >= 2 &&
+            (selectionHydrated ? (
+              <MergePanel
+                entries={hydratedSelectedEntries}
+                onComplete={handleMergeComplete}
+                onCancel={toggleMergeMode}
+              />
+            ) : (
+              <div className="rounded-lg border border-border bg-card p-4 text-center">
+                <p className="font-mono text-xs text-muted-foreground">
+                  Loading selected entries...
+                </p>
+              </div>
+            ))}
         </div>
       )}
 
@@ -652,24 +562,31 @@ function FeedPage() {
 
       {activeMode === "curate" && entries.length > 0 && (
         <div className="space-y-2">
-          {entries.map((entry) => (
+          {browseHeader && (
+            <HoistedHeader
+              scope={browseHeader.scope}
+              kind={browseHeader.kind}
+              createdBy={browseHeader.created_by}
+            />
+          )}
+          {entries.map((row) => (
             <div
-              key={entry.id}
-              ref={setEntryRef(entry.id)}
+              key={row.id}
+              ref={setEntryRef(row.id)}
               className="flex items-start gap-2 scroll-mt-16"
             >
               {mergeMode && (
                 <button
                   type="button"
-                  onClick={() => toggleSelection(entry.id)}
+                  onClick={() => toggleSelection(row.id)}
                   className={`mt-4 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                    selectedIds.has(entry.id)
+                    selectedIds.has(row.id)
                       ? "border-ring bg-foreground text-background"
                       : "border-border bg-card hover:border-ring/50"
                   }`}
-                  aria-label={`Select ${entry.title} for merge`}
+                  aria-label={`Select ${row.title} for merge`}
                 >
-                  {selectedIds.has(entry.id) && (
+                  {selectedIds.has(row.id) && (
                     <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                       <path
                         d="M2.5 6L5 8.5L9.5 3.5"
@@ -684,17 +601,17 @@ function FeedPage() {
               )}
               <div className="min-w-0 flex-1">
                 <EntryCard
-                  entry={entry}
-                  isExpanded={!mergeMode && expandedIds.has(entry.id)}
+                  row={row}
+                  isExpanded={!mergeMode && expandedIds.has(row.id)}
                   className={
-                    expandedIds.has(entry.id)
-                      ? highlightedId === entry.id
+                    expandedIds.has(row.id)
+                      ? highlightedId === row.id
                         ? "border-amber-400/40 bg-amber-500/8 ring-2 ring-amber-300/30 transition-all duration-500"
                         : "border-border/90 bg-accent/10 ring-1 ring-ring/25 transition-all duration-300"
                       : undefined
                   }
                   onToggle={
-                    mergeMode ? () => toggleSelection(entry.id) : () => toggleExpanded(entry.id)
+                    mergeMode ? () => toggleSelection(row.id) : () => toggleExpanded(row.id)
                   }
                 />
               </div>

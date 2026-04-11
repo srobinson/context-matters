@@ -6,6 +6,8 @@ import type { MutationRecord } from "./generated/MutationRecord";
 import type { NewEntry } from "./generated/NewEntry";
 import type { StoreStats } from "./generated/StoreStats";
 import type { UpdateEntry } from "./generated/UpdateEntry";
+import type { WebBrowseView } from "./generated/WebBrowseView";
+import type { WebRecallView } from "./generated/WebRecallView";
 
 const API_BASE = "/api";
 
@@ -107,6 +109,15 @@ export type Stats = Omit<
   };
 };
 
+// ts-rs maps Rust u64 to bigint, but wire JSON carries a plain number.
+// Override the one bigint field on WebBrowseHeader so the rest of the
+// app can rely on a pure-number contract without coercion at every
+// call site. Recall header is already all numbers.
+export type BrowseView = Omit<WebBrowseView, "header"> & {
+  header: Omit<WebBrowseView["header"], "total"> & { total: number };
+};
+export type RecallView = WebRecallView;
+
 // --- Entry detail (GET /entries/:id response) ---
 
 export type EntryDetail = Entry & {
@@ -144,18 +155,6 @@ export interface MutationListParams {
   cursor?: string;
 }
 
-export interface RecallHit {
-  id: string;
-  scope_path: string;
-  kind: EntryKind;
-  title: string;
-  snippet: string;
-  created_by: string;
-  updated_at: string;
-  tags?: string[];
-  confidence?: "high" | "medium" | "low";
-}
-
 export interface RecallParams {
   query?: string;
   scope?: string;
@@ -163,50 +162,6 @@ export interface RecallParams {
   tags?: string[];
   limit?: number;
   max_tokens?: number;
-}
-
-export interface RecallResponse {
-  results: RecallHit[];
-  returned: number;
-  scope_chain: string[];
-  token_estimate: number;
-}
-
-export interface RecallTraceInfo {
-  routing: string;
-  candidates_before_filter: number;
-  fetch_limit_used: number;
-  token_budget_exhausted: boolean;
-}
-
-export interface AgentRecallResponse extends RecallResponse {
-  _trace: RecallTraceInfo;
-}
-
-export interface BrowseEntryView {
-  id: string;
-  scope_path: string;
-  kind: EntryKind;
-  title: string;
-  snippet: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  superseded_by?: string | null;
-  tags?: string[];
-}
-
-export interface BrowseTraceInfo {
-  filter_set: string[];
-  sort: string;
-}
-
-export interface AgentBrowseResponse {
-  entries: BrowseEntryView[];
-  total: number;
-  has_more: boolean;
-  next_cursor?: string | null;
-  _trace: BrowseTraceInfo;
 }
 
 export interface AgentBrowseParams {
@@ -223,7 +178,7 @@ export interface AgentBrowseParams {
 
 export const api = {
   entries: {
-    browse(params: BrowseParams = {}): Promise<PagedResponse<Entry>> {
+    browse(params: BrowseParams = {}): Promise<BrowseView> {
       return apiFetch(
         `/entries${toSearchParams({
           scope_path: params.scope_path,
@@ -238,7 +193,7 @@ export const api = {
       );
     },
 
-    search(params: SearchParams): Promise<PagedResponse<Entry>> {
+    search(params: SearchParams): Promise<RecallView> {
       return apiFetch(
         `/entries/search${toSearchParams({
           query: params.query,
@@ -251,7 +206,7 @@ export const api = {
       );
     },
 
-    recall(params: RecallParams): Promise<RecallResponse> {
+    recall(params: RecallParams): Promise<RecallView> {
       return apiFetch(
         `/entries/recall${toSearchParams({
           query: params.query,
@@ -297,7 +252,7 @@ export const api = {
   },
 
   agent: {
-    recall(params: RecallParams): Promise<AgentRecallResponse> {
+    recall(params: RecallParams): Promise<RecallView> {
       return apiFetch(
         `/agent/recall${toSearchParams({
           query: params.query,
@@ -310,7 +265,7 @@ export const api = {
       );
     },
 
-    browse(params: AgentBrowseParams = {}): Promise<AgentBrowseResponse> {
+    browse(params: AgentBrowseParams = {}): Promise<BrowseView> {
       return apiFetch(
         `/agent/browse${toSearchParams({
           scope_path: params.scope_path,

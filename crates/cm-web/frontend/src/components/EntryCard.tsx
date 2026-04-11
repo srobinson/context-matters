@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryRelation } from "@/api/generated/EntryRelation";
+import type { WebBrowseRow } from "@/api/generated/WebBrowseRow";
 import { useEntry, useForgetEntry } from "@/api/hooks";
 import {
   AlertDialog,
@@ -227,23 +228,20 @@ function ExpandedContent({ entryId, onForgotten }: { entryId: string; onForgotte
 }
 
 export function EntryCard({
-  entry,
+  row,
   isExpanded,
   onToggle,
   className,
 }: {
-  entry: Entry;
+  row: WebBrowseRow;
   isExpanded?: boolean;
   onToggle?: () => void;
   className?: string;
 }) {
-  const isForgotten = entry.superseded_by != null;
-
   return (
     <article
       className={cn(
         "group rounded-lg border border-border bg-card p-4 transition-all duration-200 hover:border-border/80 hover:bg-accent/30 dark:hover:bg-accent/20",
-        isForgotten && "opacity-40",
         isExpanded && "ring-1 ring-ring/20 dark:ring-ring/30",
         className,
       )}
@@ -261,12 +259,12 @@ export function EntryCard({
         }}
       >
         <div className="min-w-0 flex-1">
-          <EntrySummary entry={entry} showQuality={!isExpanded} />
+          <EntrySummary row={row} />
         </div>
       </div>
 
       {/* Expanded content */}
-      {isExpanded && <ExpandedContent entryId={entry.id} onForgotten={onToggle} />}
+      {isExpanded && <ExpandedContent entryId={row.id} onForgotten={onToggle} />}
     </article>
   );
 }
