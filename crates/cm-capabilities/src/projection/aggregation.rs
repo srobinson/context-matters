@@ -140,6 +140,25 @@ pub fn render_histogram(hist: &BTreeMap<String, usize>) -> String {
     out
 }
 
+/// Format an integer with comma thousands separators (`3420` -> `3,420`).
+///
+/// Accepts `impl Into<u64>` so callers can pass `u32`, `u64`, or any smaller
+/// unsigned type without explicit casts. Used by the recall formatter for
+/// token budgets (`u32`) and by the stats formatter for entry counts and
+/// byte sizes (`u64`). Pure ASCII; no locale dependency.
+pub fn fmt_with_commas(n: impl Into<u64>) -> String {
+    let s = n.into().to_string();
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(bytes.len() + bytes.len() / 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 && (bytes.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(*b as char);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +291,20 @@ mod tests {
     fn render_histogram_empty_is_empty_string() {
         let hist: BTreeMap<String, usize> = BTreeMap::new();
         assert_eq!(render_histogram(&hist), "");
+    }
+
+    #[test]
+    fn fmt_with_commas_inserts_thousands_separators() {
+        assert_eq!(fmt_with_commas(0_u32), "0");
+        assert_eq!(fmt_with_commas(42_u32), "42");
+        assert_eq!(fmt_with_commas(999_u32), "999");
+        assert_eq!(fmt_with_commas(1_000_u32), "1,000");
+        assert_eq!(fmt_with_commas(3_420_u32), "3,420");
+        assert_eq!(fmt_with_commas(1_234_567_u32), "1,234,567");
+        assert_eq!(fmt_with_commas(10_000_000_u32), "10,000,000");
+        // Widening from u32 and direct u64 must produce the same output.
+        assert_eq!(fmt_with_commas(1_234_567_u64), "1,234,567");
+        assert_eq!(fmt_with_commas(u64::from(1_234_567_u32)), "1,234,567");
     }
 
     #[test]

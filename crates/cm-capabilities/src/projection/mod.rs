@@ -7,17 +7,20 @@
 //! - [`browse_view`] — YAML-text formatter for `BrowseResult` MCP responses.
 //! - [`recall_view`] — YAML-text formatter for `RecallResult` MCP responses.
 //! - [`get_view`] — YAML-text formatter for `cx_get` MCP responses.
+//! - [`stats_view`] — YAML-text formatter for `cx_stats` MCP responses.
 
 mod aggregation;
 mod browse_view;
 mod get_view;
 mod recall_view;
+mod stats_view;
 mod text;
 
 pub use aggregation::*;
 pub use browse_view::*;
 pub use get_view::*;
 pub use recall_view::*;
+pub use stats_view::*;
 pub use text::*;
 
 use chrono::{DateTime, Utc};

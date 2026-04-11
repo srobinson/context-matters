@@ -1,0 +1,27 @@
+---
+active: 1,342
+superseded: 89
+scopes: 17
+relations: 201
+db_size: 4.2 MB
+
+kinds:
+  observation  748
+  fact         201
+  decision     87
+  lesson       81
+  preference   34
+  feedback     12
+
+top_tags:
+  session-log  113
+  helioy       98
+  cm           41
+  projection   28
+
+scope_tree:
+  global                             1,042
+    project:helioy                     203
+      repo:context-matters              78
+      repo:fmm                          45
+    project:nancyr                      97

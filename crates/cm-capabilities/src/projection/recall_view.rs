@@ -26,8 +26,8 @@ use chrono::{DateTime, Utc};
 use cm_core::Entry;
 
 use super::{
-    RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens, kind_histogram,
-    relative_age, render_histogram, short_id, smart_snippet,
+    RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas,
+    kind_histogram, relative_age, render_histogram, short_id, smart_snippet,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 
@@ -358,23 +358,6 @@ fn routing_advice(routing: &RecallRouting) -> (&'static str, &'static str) {
     (tag, advice)
 }
 
-/// Format a `u32` with comma thousands separators (`3420` -> `3,420`).
-///
-/// Used for the `tokens:` header line so a 3-4 digit budget reads at a
-/// glance. Pure ASCII; no locale dependency.
-fn fmt_with_commas(n: u32) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let mut out = String::with_capacity(bytes.len() + bytes.len() / 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (bytes.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(*b as char);
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,13 +447,12 @@ mod tests {
 
     #[test]
     fn fmt_with_commas_inserts_thousands_separators() {
-        assert_eq!(fmt_with_commas(0), "0");
-        assert_eq!(fmt_with_commas(42), "42");
-        assert_eq!(fmt_with_commas(999), "999");
-        assert_eq!(fmt_with_commas(1_000), "1,000");
-        assert_eq!(fmt_with_commas(3_420), "3,420");
-        assert_eq!(fmt_with_commas(1_234_567), "1,234,567");
-        assert_eq!(fmt_with_commas(10_000_000), "10,000,000");
+        // Canonical behaviour is tested in the aggregation module; this
+        // test only guards the recall-side call sites against a regression
+        // that would stop accepting `u32` through the `impl Into<u64>`
+        // signature when the helper moved out of this file.
+        assert_eq!(fmt_with_commas(0_u32), "0");
+        assert_eq!(fmt_with_commas(3_420_u32), "3,420");
     }
 
     /// Round to two decimal places for assertion-friendly comparisons
