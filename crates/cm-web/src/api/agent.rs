@@ -153,7 +153,11 @@ pub(crate) async fn execute_recall(
     .map_err(ApiError)?;
 
     let entries_len = result.entries.len();
-    let results: Vec<RecallEntryView> = result.entries.iter().map(project_recall_entry).collect();
+    let results: Vec<RecallEntryView> = result
+        .entries
+        .iter()
+        .map(|row| project_recall_entry(&row.entry))
+        .collect();
 
     let token_budget_exhausted = rq.max_tokens.is_some_and(|budget| {
         result.token_estimate >= budget && entries_len < result.candidates_before_filter

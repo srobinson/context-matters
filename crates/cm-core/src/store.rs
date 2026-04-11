@@ -7,6 +7,20 @@ use crate::{
     StoreStats, UpdateEntry, WriteContext,
 };
 
+/// An `Entry` paired with a raw FTS5 relevance score.
+///
+/// Returned by [`ContextStore::search`]. The `score` field carries the raw
+/// SQLite FTS5 `bm25(entries_fts)` / `rank` value as `f32`: a negative
+/// float where **lower values indicate higher relevance** (better match).
+/// The value is intentionally unnormalised at this layer so that downstream
+/// callers can apply per-query or per-slice normalisation (e.g. min-max
+/// scaling to `0..=1`) without losing ranking information.
+#[derive(Debug, Clone)]
+pub struct ScoredEntry {
+    pub entry: Entry,
+    pub score: f32,
+}
+
 /// Async storage interface for context entries.
 ///
 /// All methods are async and return `Result<T, CmError>`. Uses native
@@ -90,7 +104,9 @@ pub trait ContextStore: Send + Sync + 'static {
     /// Full-text search using FTS5.
     ///
     /// Searches `title` and `body` fields using SQLite FTS5 `MATCH` syntax.
-    /// Results are ranked by FTS5 relevance score.
+    /// Results are ranked by FTS5 relevance score and returned as
+    /// [`ScoredEntry`], ordered best-match first (most negative `score`
+    /// first).
     ///
     /// # Arguments
     ///
@@ -104,7 +120,7 @@ pub trait ContextStore: Send + Sync + 'static {
         query: &str,
         scope_path: Option<&ScopePath>,
         limit: u32,
-    ) -> Result<Vec<Entry>, CmError>;
+    ) -> Result<Vec<ScoredEntry>, CmError>;
 
     /// Browse entries with filtering and pagination.
     ///

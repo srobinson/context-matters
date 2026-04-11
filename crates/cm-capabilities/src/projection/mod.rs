@@ -26,6 +26,23 @@ pub fn entry_has_any_tag(entry: &Entry, tags: &[String]) -> bool {
     }
 }
 
+// ── Recall Row ───────────────────────────────────────────────────
+
+/// An `Entry` paired with an optional FTS5 relevance score.
+///
+/// Produced by the recall pipeline. The `score` field carries the raw
+/// BM25 value (negative float, lower = better) on the `Search` routing
+/// branch and is `None` on every other branch (`TagScopeWalk`,
+/// `ScopeResolve`, `BrowseFallback`) where no relevance ranking applies.
+///
+/// Normalisation to `0..=1` happens later, in the recall formatter, so
+/// that scaling is per-query and per-slice rather than per-entry.
+#[derive(Debug, Clone)]
+pub struct RecallRow {
+    pub entry: Entry,
+    pub score: Option<f32>,
+}
+
 // ── Typed View Structs ───────────────────────────────────────────
 
 /// Two-phase recall view: snippet instead of full body, minimal metadata.

@@ -1,6 +1,7 @@
 //! Read-only query operations: resolve_context, search, browse.
 
-use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath};
+use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath, ScoredEntry};
+use sqlx::Row;
 
 use super::CmStore;
 use super::cursor::{append_cursor_conditions, decode_cursor, encode_cursor, order_by_clause};
@@ -71,7 +72,7 @@ impl CmStore {
         query: &str,
         scope_path: Option<&ScopePath>,
         limit: u32,
-    ) -> Result<Vec<Entry>, CmError> {
+    ) -> Result<Vec<ScoredEntry>, CmError> {
         let fts_query = cm_core::FtsQuery::new(query);
         let fts_str = fts_query.as_str().to_owned();
 
@@ -81,11 +82,14 @@ impl CmStore {
 
         let pool = &self.read_pool;
 
+        // Both branches select `f.rank` as the trailing column so the row
+        // decoder can pair each `Entry` with its raw BM25 score. SQLite's
+        // FTS5 `rank` is a negative float (lower = more relevant).
         let rows = if let Some(sp) = scope_path {
             let ancestors: Vec<&str> = sp.ancestors().collect();
             let placeholders: Vec<&str> = ancestors.iter().map(|_| "?").collect();
             let sql = format!(
-                "SELECT e.* FROM entries e \
+                "SELECT e.*, f.rank AS fts_rank FROM entries e \
                  JOIN entries_fts f ON e.rowid = f.rowid \
                  WHERE f.entries_fts MATCH ? \
                  AND e.superseded_by IS NULL \
@@ -104,7 +108,7 @@ impl CmStore {
                 .map_err(map_db_err)?
         } else {
             sqlx::query(
-                "SELECT e.* FROM entries e \
+                "SELECT e.*, f.rank AS fts_rank FROM entries e \
                  JOIN entries_fts f ON e.rowid = f.rowid \
                  WHERE f.entries_fts MATCH ? \
                  AND e.superseded_by IS NULL \
@@ -118,7 +122,16 @@ impl CmStore {
             .map_err(map_db_err)?
         };
 
-        rows.iter().map(parse_entry).collect()
+        rows.iter()
+            .map(|row| {
+                let entry = parse_entry(row)?;
+                let rank: f64 = row.get("fts_rank");
+                Ok(ScoredEntry {
+                    entry,
+                    score: rank as f32,
+                })
+            })
+            .collect()
     }
 
     pub(crate) async fn do_browse(

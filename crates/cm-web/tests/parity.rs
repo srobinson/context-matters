@@ -145,7 +145,7 @@ async fn capability_recall(store: &CmStore, request: RecallRequest) -> Value {
     let results: Vec<Value> = result
         .entries
         .iter()
-        .map(|e| serde_json::to_value(project_recall_entry(e)).unwrap())
+        .map(|row| serde_json::to_value(project_recall_entry(&row.entry)).unwrap())
         .collect();
 
     let scope_hits: std::collections::BTreeMap<String, usize> =

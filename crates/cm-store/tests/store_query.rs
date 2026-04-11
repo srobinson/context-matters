@@ -210,7 +210,7 @@ async fn c19_fts_search_finds_by_title() {
     let results = store.search("photosynthesis", None, 10).await.unwrap();
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].title, "Photosynthesis in plants");
+    assert_eq!(results[0].entry.title, "Photosynthesis in plants");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -234,7 +234,64 @@ async fn c19_fts_search_finds_by_body() {
     let results = store.search("mitochondria", None, 10).await.unwrap();
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].title, "Generic title");
+    assert_eq!(results[0].entry.title, "Generic title");
+}
+
+/// FTS5 `rank` (== `bm25(entries_fts)`) is a negative float where
+/// **lower values indicate higher relevance**. Seed two entries with
+/// different keyword densities for the same query term and assert the
+/// denser match ranks first and carries the more-negative score.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fts_search_surfaces_bm25_score_and_preserves_ranking() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    // Dense match: query term appears in both title and body, multiple times.
+    store
+        .create_entry(
+            new_entry(
+                "global",
+                EntryKind::Fact,
+                "sqlx migration guide",
+                "sqlx migration sqlx migration sqlx",
+            ),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    // Sparse match: query term appears once, in body only.
+    store
+        .create_entry(
+            new_entry(
+                "global",
+                EntryKind::Fact,
+                "Unrelated title",
+                "A passing mention of sqlx somewhere in the text.",
+            ),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let results = store.search("sqlx", None, 10).await.unwrap();
+    assert_eq!(results.len(), 2);
+
+    // Every row carries a score (not NaN, not zero — a real BM25 value).
+    for scored in &results {
+        assert!(scored.score.is_finite());
+        assert!(scored.score < 0.0, "bm25 rank should be negative");
+    }
+
+    // Best match first: lower (more negative) score ranks higher.
+    assert_eq!(results[0].entry.title, "sqlx migration guide");
+    assert_eq!(results[1].entry.title, "Unrelated title");
+    assert!(
+        results[0].score < results[1].score,
+        "dense match should have the more-negative bm25 score: {} vs {}",
+        results[0].score,
+        results[1].score,
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -415,7 +472,10 @@ async fn search_with_scope_filter() {
         .unwrap();
     assert_eq!(results.len(), 2);
 
-    let scopes: Vec<&str> = results.iter().map(|e| e.scope_path.as_str()).collect();
+    let scopes: Vec<&str> = results
+        .iter()
+        .map(|s| s.entry.scope_path.as_str())
+        .collect();
     assert!(scopes.contains(&"global/project:scoped"));
     assert!(scopes.contains(&"global"));
     assert!(!scopes.contains(&"global/project:other"));

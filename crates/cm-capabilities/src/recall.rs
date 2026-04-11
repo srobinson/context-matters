@@ -2,7 +2,7 @@ use cm_core::{CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, 
 use serde::{Deserialize, Serialize};
 
 use crate::constants::MAX_LIMIT;
-use crate::projection::{entry_has_any_tag, estimate_tokens, project_recall_entry};
+use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens, project_recall_entry};
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -30,7 +30,10 @@ pub enum RecallRouting {
 /// Result of a recall operation.
 #[derive(Debug, Clone)]
 pub struct RecallResult {
-    pub entries: Vec<Entry>,
+    /// Recall rows, each pairing an `Entry` with an optional FTS5 score.
+    /// Scores are populated only on the `Search` routing branch; every
+    /// other branch leaves `score` as `None`.
+    pub entries: Vec<RecallRow>,
     pub scope_chain: Vec<String>,
     /// Per-scope hit counts. When scope is provided, ordered from most specific
     /// ancestor to broadest. When scope is omitted, derived from returned entries
@@ -60,65 +63,66 @@ pub async fn recall(
         request.limit
     };
 
-    // Route to the appropriate query path
-    let (raw_entries, routing, actual_fetch_limit) =
-        route_query(store, &request, fetch_limit).await?;
-    let candidates_before_filter = raw_entries.len();
+    // Route to the appropriate query path. The result is already wrapped in
+    // `RecallRow`: the `Search` branch populates `score`; every other branch
+    // leaves it `None`.
+    let (raw_rows, routing, actual_fetch_limit) = route_query(store, &request, fetch_limit).await?;
+    let candidates_before_filter = raw_rows.len();
 
     // Post-filter by kinds. Some routing paths (ScopeResolve, TagScopeWalk)
     // already filter internally, making this a no-op for those paths.
     // BrowseFallback and Search need this when kinds.len() > 1 since
     // EntryFilter.kind only accepts a single Option<EntryKind>.
-    let entries = if !request.kinds.is_empty() {
-        raw_entries
+    let rows: Vec<RecallRow> = if !request.kinds.is_empty() {
+        raw_rows
             .into_iter()
-            .filter(|e| request.kinds.contains(&e.kind))
+            .filter(|r| request.kinds.contains(&r.entry.kind))
             .collect()
     } else {
-        raw_entries
+        raw_rows
     };
 
     // Post-filter by tags
-    let entries: Vec<Entry> = if request.tags.is_empty() {
-        entries
+    let rows: Vec<RecallRow> = if request.tags.is_empty() {
+        rows
     } else {
-        entries
-            .into_iter()
-            .filter(|e| entry_has_any_tag(e, &request.tags))
+        rows.into_iter()
+            .filter(|r| entry_has_any_tag(&r.entry, &request.tags))
             .collect()
     };
 
     // Sort by scope depth descending (most specific first).
     // Stable sort preserves the store's native ordering (relevance or recency) within each scope level.
-    let mut entries: Vec<Entry> = entries;
-    entries.sort_by(|a, b| {
-        b.scope_path
+    let mut rows: Vec<RecallRow> = rows;
+    rows.sort_by(|a, b| {
+        b.entry
+            .scope_path
             .as_str()
             .len()
-            .cmp(&a.scope_path.as_str().len())
+            .cmp(&a.entry.scope_path.as_str().len())
     });
 
     // Apply limit after post-filtering and sorting
-    let entries: Vec<Entry> = entries.into_iter().take(request.limit as usize).collect();
+    let rows: Vec<RecallRow> = rows.into_iter().take(request.limit as usize).collect();
 
     // Token budget tracking
-    let mut budget_entries = Vec::with_capacity(entries.len());
+    let mut budget_rows = Vec::with_capacity(rows.len());
     let mut total_tokens: u32 = 0;
 
-    for entry in &entries {
-        let view = project_recall_entry(entry);
+    for row in &rows {
+        let view = project_recall_entry(&row.entry);
         let entry_str = serde_json::to_string(&view).unwrap_or_default();
         let entry_tokens = estimate_tokens(&entry_str);
 
         if let Some(budget) = request.max_tokens
             && total_tokens + entry_tokens > budget
-            && !budget_entries.is_empty()
+            && !budget_rows.is_empty()
         {
             break;
         }
 
         total_tokens += entry_tokens;
-        budget_entries.push(entry.clone());
+        budget_rows.push(row.clone());
     }
 
     // Build scope chain and hits
@@ -129,9 +133,9 @@ pub async fn recall(
             let hits: Vec<(String, usize)> = chain
                 .iter()
                 .map(|s| {
-                    let count = budget_entries
+                    let count = budget_rows
                         .iter()
-                        .filter(|e| e.scope_path.as_str() == s)
+                        .filter(|r| r.entry.scope_path.as_str() == s)
                         .count();
                     (s.clone(), count)
                 })
@@ -141,9 +145,9 @@ pub async fn recall(
         None => {
             // No scope provided: derive from returned entries
             let mut seen = std::collections::BTreeMap::<String, usize>::new();
-            for entry in &budget_entries {
+            for row in &budget_rows {
                 *seen
-                    .entry(entry.scope_path.as_str().to_owned())
+                    .entry(row.entry.scope_path.as_str().to_owned())
                     .or_default() += 1;
             }
             let mut hits: Vec<(String, usize)> = seen.into_iter().collect();
@@ -159,7 +163,7 @@ pub async fn recall(
     };
 
     Ok(RecallResult {
-        entries: budget_entries,
+        entries: budget_rows,
         scope_chain,
         scope_hits,
         token_estimate: total_tokens,
@@ -171,7 +175,18 @@ pub async fn recall(
 
 // ── Routing ──────────────────────────────────────────────────────
 
-/// Returns `(entries, routing, actual_fetch_limit)`.
+/// Wrap a plain `Entry` iterator as score-less `RecallRow`s.
+///
+/// Non-search routing branches do not carry relevance scores, so every
+/// resulting row has `score: None`.
+fn wrap_scoreless(entries: Vec<Entry>) -> Vec<RecallRow> {
+    entries
+        .into_iter()
+        .map(|entry| RecallRow { entry, score: None })
+        .collect()
+}
+
+/// Returns `(rows, routing, actual_fetch_limit)`.
 ///
 /// The third element is the SQL LIMIT actually used in the fetch, which differs
 /// from the top-level `fetch_limit` for `TagScopeWalk` (uses `MAX_LIMIT` per page).
@@ -179,13 +194,20 @@ async fn route_query(
     store: &impl ContextStore,
     request: &RecallRequest,
     fetch_limit: u32,
-) -> Result<(Vec<Entry>, RecallRouting, u32), CmError> {
+) -> Result<(Vec<RecallRow>, RecallRouting, u32), CmError> {
     match &request.query {
         Some(query) => {
-            let entries = store
+            let scored = store
                 .search(query, request.scope.as_ref(), fetch_limit)
                 .await?;
-            Ok((entries, RecallRouting::Search, fetch_limit))
+            let rows: Vec<RecallRow> = scored
+                .into_iter()
+                .map(|s| RecallRow {
+                    entry: s.entry,
+                    score: Some(s.score),
+                })
+                .collect();
+            Ok((rows, RecallRouting::Search, fetch_limit))
         }
         None => {
             if !request.tags.is_empty() {
@@ -197,14 +219,22 @@ async fn route_query(
                     request.limit,
                 )
                 .await?;
-                Ok((entries, RecallRouting::TagScopeWalk, MAX_LIMIT))
+                Ok((
+                    wrap_scoreless(entries),
+                    RecallRouting::TagScopeWalk,
+                    MAX_LIMIT,
+                ))
             } else {
                 match &request.scope {
                     Some(sp) => {
                         let entries = store
                             .resolve_context(sp, &request.kinds, fetch_limit)
                             .await?;
-                        Ok((entries, RecallRouting::ScopeResolve, fetch_limit))
+                        Ok((
+                            wrap_scoreless(entries),
+                            RecallRouting::ScopeResolve,
+                            fetch_limit,
+                        ))
                     }
                     None => {
                         let filter = EntryFilter {
@@ -220,7 +250,11 @@ async fn route_query(
                             ..Default::default()
                         };
                         let paged = store.browse(filter).await?;
-                        Ok((paged.items, RecallRouting::BrowseFallback, fetch_limit))
+                        Ok((
+                            wrap_scoreless(paged.items),
+                            RecallRouting::BrowseFallback,
+                            fetch_limit,
+                        ))
                     }
                 }
             }

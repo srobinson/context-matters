@@ -74,7 +74,11 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
     .map_err(cm_err_to_string)?;
 
     // Map entries through the legacy JSON projection for MCP envelope
-    let results: Vec<Value> = result.entries.iter().map(entry_to_recall_json).collect();
+    let results: Vec<Value> = result
+        .entries
+        .iter()
+        .map(|row| entry_to_recall_json(&row.entry))
+        .collect();
 
     // Build hint for zero-result queries with too many words
     let hint = if results.is_empty() {
