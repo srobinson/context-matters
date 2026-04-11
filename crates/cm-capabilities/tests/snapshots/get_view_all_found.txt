@@ -1,0 +1,24 @@
+---
+requested: 2
+found: 2
+
+entries:
+  - id: 019d8a01-0000-7000-8000-000000000001
+    title: Snippet truncation at word boundaries
+    scope: global/project:helioy
+    kind: decision
+    tags: [projection, snippet]
+    confidence: high
+    age: 1d
+    body: |
+      The byte-prefix snippet drops mid-word; floor_char_boundary
+      plus a word-boundary walk gives a snippet strategy that
+      keeps tokens whole.
+  - id: 019d8a01-0000-7000-8000-000000000002
+    title: Always round down to char boundaries
+    scope: global
+    kind: lesson
+    age: 3h
+    body: |
+      Str indexing at a byte offset that lands inside a multi-byte
+      character panics at runtime.
