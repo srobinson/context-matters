@@ -17,6 +17,10 @@ test:
 test-doc:
     cargo test --workspace --doc
 
+# Run criterion benchmarks for cm-capabilities hot paths (ALP-1762)
+bench:
+    cargo bench -p cm-capabilities
+
 fmt:
     cargo fmt --all
 

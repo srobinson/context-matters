@@ -17,3 +17,26 @@ ts-rs = { workspace = true }
 cm-store = { workspace = true }
 tokio = { workspace = true }
 tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# ── Benchmarks (ALP-1762) ─────────────────────────────────────────
+# Each bench file targets one cm-capabilities hot path. ALP-1763
+# replaces the placeholder bodies with real fixtures and assertions.
+# `harness = false` is required so criterion can install its own
+# harness in place of libtest.
+
+[[bench]]
+name = "smart_snippet_bench"
+harness = false
+
+[[bench]]
+name = "normalise_bm25_bench"
+harness = false
+
+[[bench]]
+name = "aggregation_bench"
+harness = false
+
+[[bench]]
+name = "format_views_bench"
+harness = false
