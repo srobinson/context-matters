@@ -157,6 +157,24 @@ fn protocol_tools_list() {
         assert!(tool["inputSchema"].is_object(), "tool missing inputSchema");
     }
 
+    // ALP-1759: read tools advertise outputSchema so MCP 2025-06-18 clients can
+    // validate structuredContent. Write tools stay text-only (no structured
+    // receipt payload to describe).
+    let read_tools = ["cx_recall", "cx_browse", "cx_get", "cx_stats", "cx_export"];
+    let write_tools = ["cx_store", "cx_deposit", "cx_update", "cx_forget"];
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap();
+        let has_output_schema = tool.get("outputSchema").is_some_and(|v| v.is_object());
+        if read_tools.contains(&name) {
+            assert!(has_output_schema, "read tool {name} missing outputSchema");
+        } else if write_tools.contains(&name) {
+            assert!(
+                !has_output_schema,
+                "write tool {name} unexpectedly declares outputSchema"
+            );
+        }
+    }
+
     shutdown(child, stdin);
 }
 
