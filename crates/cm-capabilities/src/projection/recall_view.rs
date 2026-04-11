@@ -106,6 +106,13 @@ struct Layout<'a> {
     /// `None` when the caller did not supply one (tag-/scope-only recall)
     /// or when the query is an empty string.
     query: Option<&'a str>,
+    /// Per-row snippet highlight style. [`HighlightStyle::Bracketed`] only
+    /// when the routing branch is `Search` and `query` is populated, so
+    /// matched terms render as `«term»`. Any other routing (browse
+    /// fallback, tag/scope walk) renders with [`HighlightStyle::None`]
+    /// because the caller did not supply a query context the highlighter
+    /// could meaningfully mark up.
+    highlight_style: HighlightStyle,
     /// Reference instant for relative-age formatting. Captured once by
     /// the public entry point so every row renders with a consistent
     /// `age:` value even if the underlying system clock drifts during
@@ -126,8 +133,8 @@ impl<'a> Layout<'a> {
         } else {
             SHORT_ID_LEN
         };
-        let show_score = matches!(result.routing, RecallRouting::Search)
-            && rows.iter().any(|r| r.score.is_some());
+        let is_search = matches!(result.routing, RecallRouting::Search);
+        let show_score = is_search && rows.iter().any(|r| r.score.is_some());
         let norm_scores = if show_score {
             let raws: Vec<f32> = rows.iter().map(|r| r.score.unwrap_or(0.0)).collect();
             normalise_bm25(&raws)
@@ -135,6 +142,11 @@ impl<'a> Layout<'a> {
             Vec::new()
         };
         let query = request.query.as_deref().filter(|q| !q.trim().is_empty());
+        let highlight_style = if is_search && query.is_some() {
+            HighlightStyle::Bracketed
+        } else {
+            HighlightStyle::None
+        };
         Self {
             rows,
             id_strings,
@@ -142,6 +154,7 @@ impl<'a> Layout<'a> {
             show_score,
             norm_scores,
             query,
+            highlight_style,
             now,
         }
     }
@@ -251,7 +264,7 @@ fn render_entries(out: &mut String, layout: &Layout) {
         let snippet = smart_snippet(
             &row.entry.body,
             layout.query,
-            HighlightStyle::None,
+            layout.highlight_style,
             SNIPPET_MAX_BYTES,
         );
         let snippet_line = collapse_whitespace(&snippet);
