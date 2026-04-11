@@ -17,8 +17,8 @@ use chrono::{DateTime, Utc};
 use cm_core::{BrowseSort, Entry};
 
 use super::{
-    collapse_whitespace, detect_id_collisions, hoist_uniform, kind_histogram, relative_age,
-    render_histogram, scope_histogram, short_id, smart_snippet,
+    HighlightStyle, collapse_whitespace, detect_id_collisions, hoist_uniform, kind_histogram,
+    relative_age, render_histogram, scope_histogram, short_id, smart_snippet,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
 
@@ -137,7 +137,7 @@ fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoist
         let sid = short_id(id_str, id_len);
         let _ = writeln!(out, "  - {sid}  {}", entry.title);
 
-        let snippet = smart_snippet(&entry.body, None, SNIPPET_MAX_BYTES);
+        let snippet = smart_snippet(&entry.body, None, HighlightStyle::None, SNIPPET_MAX_BYTES);
         let snippet_line = collapse_whitespace(&snippet);
         if !snippet_line.is_empty() {
             let _ = writeln!(out, "{cont_indent}{snippet_line}");

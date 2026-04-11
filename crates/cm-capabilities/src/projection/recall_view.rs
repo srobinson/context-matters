@@ -26,8 +26,9 @@ use chrono::{DateTime, Utc};
 use cm_core::Entry;
 
 use super::{
-    RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas,
-    kind_histogram, relative_age, render_histogram, short_id, smart_snippet, tag_histogram,
+    HighlightStyle, RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens,
+    fmt_with_commas, kind_histogram, relative_age, render_histogram, short_id, smart_snippet,
+    tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 
@@ -247,7 +248,12 @@ fn render_entries(out: &mut String, layout: &Layout) {
             let _ = writeln!(out, "  - {sid}  {}", row.entry.title);
         }
 
-        let snippet = smart_snippet(&row.entry.body, layout.query, SNIPPET_MAX_BYTES);
+        let snippet = smart_snippet(
+            &row.entry.body,
+            layout.query,
+            HighlightStyle::None,
+            SNIPPET_MAX_BYTES,
+        );
         let snippet_line = collapse_whitespace(&snippet);
         if !snippet_line.is_empty() {
             let _ = writeln!(out, "{cont_indent}{snippet_line}");
