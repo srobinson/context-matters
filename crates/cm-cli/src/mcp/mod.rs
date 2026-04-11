@@ -28,7 +28,15 @@ pub(crate) use crate::shared::{
 // ── Constants ─────────────────────────────────────────────────────
 
 /// MCP protocol version.
-const PROTOCOL_VERSION: &str = "2024-11-05";
+///
+/// Bumped to `2025-06-18` (ALP-1761) so the dual-channel envelope from
+/// ALP-1760 and the per-tool `outputSchema` declarations from ALP-1759
+/// land under a coherent advertised protocol. Clean break: there is no
+/// fallback to `2024-11-05`. The dual-channel envelope is structurally
+/// backward-compatible (new clients pick up `structuredContent`, old
+/// clients ignore the unknown field), but the protocol version we
+/// *advertise* is the version whose semantics we guarantee.
+const PROTOCOL_VERSION: &str = "2025-06-18";
 
 /// Byte cap applied to every MCP tool response except `cx_export`.
 ///
