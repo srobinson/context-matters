@@ -20,7 +20,7 @@
 //! an inversion, so the best match always renders as `1.00` regardless
 //! of the raw range. See [`normalise_bm25`] for the formula.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
 use chrono::{DateTime, Utc};
@@ -28,10 +28,10 @@ use cm_core::Entry;
 use uuid::Uuid;
 
 use super::{
-    HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
-    collapse_whitespace, compute_dedup_hints, detect_id_collisions, estimate_tokens,
-    fmt_with_commas, kind_histogram, relative_age, render_histogram, short_id, smart_snippet,
-    tag_histogram,
+    DrillDownHint, HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED,
+    SNIPPET_MAX_BYTES, collapse_whitespace, compute_dedup_hints, compute_drill_down_hint,
+    detect_id_collisions, estimate_tokens, fmt_with_commas, kind_histogram, relative_age,
+    render_histogram, short_id, smart_snippet, tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 
@@ -118,6 +118,17 @@ struct Layout<'a> {
     /// row without cloning the map. Ids absent from the map carry zero
     /// outgoing edges and suppress the `rels:` annotation entirely.
     relation_counts: &'a HashMap<Uuid, u32>,
+    /// Per-result-set kind histogram, computed once at layout time so
+    /// that [`render_header`] and [`render_trailers`] read the same
+    /// `BTreeMap` instead of recomputing it. The trailer needs the
+    /// histogram to feed [`compute_drill_down_hint`] without paging
+    /// over `rows` a second time.
+    kind_hist: BTreeMap<String, usize>,
+    /// Per-result-set tag histogram, computed once at layout time for
+    /// the same reason as `kind_hist`. Each tag on each row contributes
+    /// one bucket increment, mirroring the histogram the header line
+    /// has always rendered.
+    tag_hist: BTreeMap<String, usize>,
 }
 
 impl<'a> Layout<'a> {
@@ -147,6 +158,14 @@ impl<'a> Layout<'a> {
         } else {
             HighlightStyle::None
         };
+        let kind_hist = kind_histogram(rows, |row| row.entry.kind.as_str());
+        let tag_hist = tag_histogram(rows, |row| {
+            row.entry
+                .meta
+                .as_ref()
+                .map(|m| m.tags.as_slice())
+                .unwrap_or(&[])
+        });
         Self {
             rows,
             id_strings,
@@ -157,6 +176,8 @@ impl<'a> Layout<'a> {
             highlight_style,
             now,
             relation_counts: &result.relation_counts,
+            kind_hist,
+            tag_hist,
         }
     }
 }
@@ -202,23 +223,17 @@ fn render_header(
         let _ = writeln!(out, "scope_hits: {}", rendered.join(", "));
     }
     if !result.entries.is_empty() {
-        let kind_hist = kind_histogram(result.entries.as_slice(), |row| row.entry.kind.as_str());
-        if !kind_hist.is_empty() {
-            let _ = writeln!(out, "kinds: {}", render_histogram(&kind_hist));
+        // Histograms are precomputed once on `Layout` so the header
+        // and the trailer's drill-down advisory read the same data.
+        if !layout.kind_hist.is_empty() {
+            let _ = writeln!(out, "kinds: {}", render_histogram(&layout.kind_hist));
         }
         // Per-tag histogram mirrors `kinds:` so agents can scan tag
         // density on the result set without paging through rows.
         // Falls through when no row carries any tag so the header
         // does not sprout an empty `tags:` line on tag-free stores.
-        let tag_hist = tag_histogram(result.entries.as_slice(), |row| {
-            row.entry
-                .meta
-                .as_ref()
-                .map(|m| m.tags.as_slice())
-                .unwrap_or(&[])
-        });
-        if !tag_hist.is_empty() {
-            let _ = writeln!(out, "tags: {}", render_histogram(&tag_hist));
+        if !layout.tag_hist.is_empty() {
+            let _ = writeln!(out, "tags: {}", render_histogram(&layout.tag_hist));
         }
     }
     match request.max_tokens {
@@ -336,6 +351,19 @@ fn render_trailers(out: &mut String, result: &RecallResult, layout: &Layout) {
         && let Some(line) = search_tier_trailer(tier)
     {
         let _ = writeln!(out, "{line}");
+    }
+
+    // Faceted drill-down advisory: when one kind or tag accounts for
+    // ≥60% of the result set, append a one-line `narrow:` hint that
+    // shows the caller the exact `cx_recall(...)` shape to re-issue
+    // pre-narrowed to that facet. The advisory is suppressed for
+    // empty / single-row result sets via the `total < 2` guard inside
+    // `compute_drill_down_hint`, so this call is safe to make
+    // unconditionally before the empty-result early return below.
+    if let Some(hint) =
+        compute_drill_down_hint(&layout.kind_hist, &layout.tag_hist, layout.rows.len())
+    {
+        let _ = writeln!(out, "{}", format_recall_drill_down(&hint, layout.query));
     }
 
     if layout.rows.is_empty() {
@@ -462,6 +490,36 @@ pub(crate) fn search_tier_header_tag(tier: SearchTier) -> Option<&'static str> {
         SearchTier::SplitOr => Some("split_or"),
         SearchTier::None => None,
     }
+}
+
+/// Render the recall-side drill-down advisory line for a populated
+/// [`DrillDownHint`]. The output shape mirrors the cx_recall MCP
+/// surface so the caller can copy the suggested call verbatim:
+///
+/// ```text
+/// # narrow: cx_recall(query="snippet strategy", kinds=["decision"]) - 2 of 3 results are decision
+/// # narrow: cx_recall(query="snippet strategy", tags=["session-log"]) - 14 of 20 results are tagged session-log
+/// # narrow: cx_recall(kinds=["fact"]) - 2 of 2 results are fact
+/// ```
+///
+/// `query` is `None` when the recall request had no free-text query
+/// (tag/scope-only routing), in which case the rendered call drops the
+/// `query=...` argument entirely. The trailing prose qualifier toggles
+/// `tagged ` for tag dominance so the line reads naturally for both
+/// facets ("results are decision" / "results are tagged session-log").
+fn format_recall_drill_down(hint: &DrillDownHint, query: Option<&str>) -> String {
+    let DrillDownHint {
+        facet,
+        value,
+        count,
+        total,
+    } = hint;
+    let call = match query {
+        Some(q) => format!("cx_recall(query={q:?}, {facet}=[{value:?}])"),
+        None => format!("cx_recall({facet}=[{value:?}])"),
+    };
+    let qualifier = if facet == "tags" { "tagged " } else { "" };
+    format!("# narrow: {call} - {count} of {total} results are {qualifier}{value}")
 }
 
 /// Trailer advisory line for the cascade's winning [`SearchTier`].

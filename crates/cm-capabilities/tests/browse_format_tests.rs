@@ -221,6 +221,30 @@ fn format_browse_view_rels_annotation_fires_only_for_populated_rows() {
 }
 
 #[test]
+fn format_browse_view_drill_down_advisory_fires_on_dominant_kind() {
+    // Faceted drill-down advisory: the session-log fixture carries
+    // 3/3 `observation` rows (100%), well above the 60% dominance
+    // threshold, so the trailer must append a `# narrow: cx_browse(...)`
+    // line keyed on the dominant kind. Browse uses singular filter
+    // args (`kind=observation`, no brackets) where recall would emit
+    // the plural array form, so the rendered call shape differs from
+    // the recall-side advisory by design.
+    let (result, request, now) = session_log_fixture();
+    let rendered = format_browse_view_at(&result, &request, now);
+    let expected = "# narrow: cx_browse(kind=observation) - 3 of 3 results are observation";
+    assert!(
+        rendered.contains(expected),
+        "drill-down advisory line missing or malformed:\n{rendered}",
+    );
+    // The advisory must fire exactly once per response.
+    assert_eq!(
+        rendered.matches("# narrow:").count(),
+        1,
+        "exactly one drill-down advisory expected:\n{rendered}",
+    );
+}
+
+#[test]
 fn format_browse_view_single_entry_hoists_all_uniform_fields() {
     let now = fixed_now();
     let entry = make_entry(

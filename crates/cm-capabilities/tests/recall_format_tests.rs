@@ -551,6 +551,30 @@ fn format_recall_view_matches_rels_golden() {
 }
 
 #[test]
+fn format_recall_view_drill_down_advisory_fires_on_dominant_kind() {
+    // Faceted drill-down advisory: the search fixture carries 2/3
+    // `decision` rows (66.7%), which clears the 60% dominance
+    // threshold, so the trailer must append a `# narrow: cx_recall(...)`
+    // line keyed on the dominant kind. Asserted behaviourally on top
+    // of the byte-for-byte search-golden check above so the intent
+    // stays legible if the golden ever drifts.
+    let (result, request, now) = search_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    let expected = "# narrow: cx_recall(query=\"snippet strategy\", \
+                    kinds=[\"decision\"]) - 2 of 3 results are decision";
+    assert!(
+        rendered.contains(expected),
+        "drill-down advisory line missing or malformed:\n{rendered}",
+    );
+    // The advisory must fire exactly once per response.
+    assert_eq!(
+        rendered.matches("# narrow:").count(),
+        1,
+        "exactly one drill-down advisory expected:\n{rendered}",
+    );
+}
+
+#[test]
 fn format_recall_view_search_fixture_stays_under_2000_bytes() {
     let (result, request, now) = search_fixture();
     let rendered = format_recall_view_at(&result, &request, now);

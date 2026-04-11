@@ -19,9 +19,10 @@ use cm_core::{BrowseSort, Entry};
 use uuid::Uuid;
 
 use super::{
-    HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES, collapse_whitespace,
-    compute_dedup_hints, detect_id_collisions, hoist_uniform, kind_histogram, relative_age,
-    render_histogram, scope_histogram, short_id, smart_snippet,
+    DrillDownHint, HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
+    collapse_whitespace, compute_dedup_hints, compute_drill_down_hint, detect_id_collisions,
+    hoist_uniform, kind_histogram, relative_age, render_histogram, scope_histogram, short_id,
+    smart_snippet, tag_histogram,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
 
@@ -55,6 +56,7 @@ pub fn format_browse_view_at(
     render_header(&mut out, result, request, entries, &hoists);
     out.push('\n');
     render_entries(&mut out, entries, now, &hoists, &result.relation_counts);
+    render_advisories(&mut out, entries);
     render_pagination_hint(&mut out, result, request);
     out
 }
@@ -188,6 +190,62 @@ fn render_row_comment(
         parts.push(format!("rels: {rels}"));
     }
     parts.join("  ")
+}
+
+/// Faceted drill-down advisory: when one kind or tag accounts for at
+/// least the [`super::DRILL_DOWN_THRESHOLD`] share of the result set,
+/// emit a one-line `# narrow: cx_browse(...)` hint that shows the
+/// caller the singular-arg shape to re-issue the browse pre-narrowed
+/// to that facet.
+///
+/// Computes both histograms locally rather than threading them through
+/// `render_header` because the browse header currently surfaces only
+/// the kind histogram on the rendered output, and the tag histogram
+/// is otherwise unused. Walking the rows twice (once in `render_header`
+/// for `kinds:`, once here for both `kinds:` and `tags:` drill-down)
+/// is cheaper than rewriting the header signature.
+///
+/// Suppressed for empty / single-row result sets via the `total < 2`
+/// guard inside [`compute_drill_down_hint`].
+fn render_advisories(out: &mut String, entries: &[Entry]) {
+    let kind_hist = kind_histogram(entries, |e| e.kind.as_str());
+    let tag_hist = tag_histogram(entries, |e| {
+        e.meta.as_ref().map(|m| m.tags.as_slice()).unwrap_or(&[])
+    });
+    if let Some(hint) = compute_drill_down_hint(&kind_hist, &tag_hist, entries.len()) {
+        let _ = writeln!(out, "\n{}", format_browse_drill_down(&hint));
+    }
+}
+
+/// Render the browse-side drill-down advisory line for a populated
+/// [`DrillDownHint`]. Mirrors the cx_browse MCP surface, which takes
+/// **singular** filter args (`kind=...`, `tag=...`) instead of the
+/// plural JSON-array args that recall uses, so the rendered call
+/// drops the brackets and quotes:
+///
+/// ```text
+/// # narrow: cx_browse(kind=observation) - 3 of 3 results are observation
+/// # narrow: cx_browse(tag=session-log) - 14 of 20 results are tagged session-log
+/// ```
+///
+/// The advisory does not echo the existing filter set back to the
+/// caller — the caller already knows the filters they supplied, and
+/// the suggestion is the *additional* facet to add. Recall's advisory
+/// echoes the free-text query because that arg is the variable
+/// part of every recall call; browse has no analogous `query` arg
+/// (only filter fields), so this would be redundant.
+fn format_browse_drill_down(hint: &DrillDownHint) -> String {
+    let DrillDownHint {
+        facet,
+        value,
+        count,
+        total,
+    } = hint;
+    let arg = if facet == "kinds" { "kind" } else { "tag" };
+    let qualifier = if facet == "tags" { "tagged " } else { "" };
+    format!(
+        "# narrow: cx_browse({arg}={value}) - {count} of {total} results are {qualifier}{value}"
+    )
 }
 
 fn render_pagination_hint(out: &mut String, result: &BrowseResult, request: &BrowseRequest) {

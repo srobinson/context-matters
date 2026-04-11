@@ -16,3 +16,4 @@ entries:
               # scope: global  kind: fact  tags: fts, bug  age: 1d
 
 # routing: browse_fallback - no FTS match in scope; falling back to most-recent entries anywhere
+# narrow: cx_recall(kinds=["fact"]) - 2 of 2 results are fact

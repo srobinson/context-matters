@@ -21,3 +21,4 @@ entries:
 
 # routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth
 # tier: prefix - original query had zero exact hits, tried prefix match
+# narrow: cx_recall(query="snippet strategy", kinds=["decision"]) - 2 of 3 results are decision

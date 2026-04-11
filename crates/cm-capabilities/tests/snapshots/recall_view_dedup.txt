@@ -20,3 +20,4 @@ entries:
                     # scope: global  kind: lesson  tags: lesson-log  age: 1d  dup_of: 019dedaa
 
 # routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth
+# narrow: cx_recall(query="lesson", kinds=["lesson"]) - 3 of 3 results are lesson
