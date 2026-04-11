@@ -1,0 +1,5 @@
+---
+forgotten: 3
+already_inactive: 1
+not_found: 0
+# all requested ids handled, no further action required

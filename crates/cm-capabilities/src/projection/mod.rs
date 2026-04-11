@@ -8,6 +8,7 @@
 //! - [`recall_view`] — YAML-text formatter for `RecallResult` MCP responses.
 //! - [`get_view`] — YAML-text formatter for `cx_get` MCP responses.
 //! - [`stats_view`] — YAML-text formatter for `cx_stats` MCP responses.
+//! - [`write_ack`] — YAML-text formatters for `cx_store`/`update`/`deposit`/`forget` acks.
 
 mod aggregation;
 mod browse_view;
@@ -15,6 +16,7 @@ mod get_view;
 mod recall_view;
 mod stats_view;
 mod text;
+mod write_ack;
 
 pub use aggregation::*;
 pub use browse_view::*;
@@ -22,6 +24,7 @@ pub use get_view::*;
 pub use recall_view::*;
 pub use stats_view::*;
 pub use text::*;
+pub use write_ack::*;
 
 use chrono::{DateTime, Utc};
 use cm_core::{Confidence, Entry, EntryMeta};
