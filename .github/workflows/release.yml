@@ -28,7 +28,7 @@ jobs:
 
       - name: Update Cargo.lock on release PR
         if: steps.release.outputs.pr
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
           token: ${{ secrets.HELIOY_PAT }}
@@ -78,7 +78,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -101,7 +101,7 @@ jobs:
           tar czf ../../../cm-${{ matrix.target }}.tar.gz cm
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cm-${{ matrix.target }}
           path: cm-${{ matrix.target }}.tar.gz
@@ -114,7 +114,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
           merge-multiple: true
@@ -137,9 +137,9 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
