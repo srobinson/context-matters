@@ -503,11 +503,11 @@ serde_json::from_str(r##"{
       }
     },
     {
-      "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. IDs that do not exist are silently omitted. Maximum 100 IDs per request.",
+      "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts the full hyphenated UUIDv7 or the short prefix (≥ 8 hex chars) surfaced in cx_recall / cx_browse row headers. IDs that do not exist are silently omitted; an ambiguous prefix that matches multiple entries errors the whole batch with a listing. Maximum 100 IDs per request.",
       "inputSchema": {
         "properties": {
           "ids": {
-            "description": "Entry IDs to retrieve (UUIDv7 format). Maximum 100 per request. Missing IDs are silently omitted.",
+            "description": "Entry IDs to retrieve. Each item is either a full hyphenated UUIDv7 or a short prefix (≥ 8 hex chars) as shown in cx_recall / cx_browse row headers. Missing IDs are silently omitted. An ambiguous prefix fails the request with the list of matching full UUIDs so the caller can retry with a longer prefix. Maximum 100 per request.",
             "items": {
               "type": "string"
             },

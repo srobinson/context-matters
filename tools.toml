@@ -381,7 +381,7 @@ cli_flag        = "--cursor"
 
 [tools.cx_get]
 cli_name        = "get"
-mcp_description = "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. IDs that do not exist are silently omitted. Maximum 100 IDs per request."
+mcp_description = "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts the full hyphenated UUIDv7 or the short prefix (≥ 8 hex chars) surfaced in cx_recall / cx_browse row headers. IDs that do not exist are silently omitted; an ambiguous prefix that matches multiple entries errors the whole batch with a listing. Maximum 100 IDs per request."
 cli_about       = "Fetch full entry content by ID.\n\nReturns complete entries including body. Use after cx_recall or cx_browse for full content."
 # JSON Schema mirrors the structured shape that `crates/cm-capabilities/src/projection/get_view.rs::format_get_view`
 # renders to YAML today. `WebGetView` itself is not yet a Rust type — the §3 parity pass only produced
@@ -429,8 +429,8 @@ name            = "ids"
 type            = "array"
 items_type      = "string"
 required        = true
-mcp_description = "Entry IDs to retrieve (UUIDv7 format). Maximum 100 per request. Missing IDs are silently omitted."
-cli_help        = "Entry IDs to retrieve (space-separated, max 100)"
+mcp_description = "Entry IDs to retrieve. Each item is either a full hyphenated UUIDv7 or a short prefix (≥ 8 hex chars) as shown in cx_recall / cx_browse row headers. Missing IDs are silently omitted. An ambiguous prefix fails the request with the list of matching full UUIDs so the caller can retry with a longer prefix. Maximum 100 per request."
+cli_help        = "Entry IDs to retrieve (full UUID or ≥8-char prefix, space-separated, max 100)"
 cli_flag        = "ids"
 
 [tools.cx_update]
