@@ -742,6 +742,63 @@ async fn e2e_store_recall_get_flow() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn e2e_recall_id_round_trips_through_get() {
+    // ALP-1767 regression: after ripping the short-id prefix input path
+    // out of `cx_get`, only full hyphenated UUIDv7s parse. This test
+    // proves the id that `cx_recall` surfaces in its structured payload
+    // is directly usable against `cx_get` with no trimming, padding, or
+    // hex manipulation in between.
+    //
+    // The YAML text channel does not render the uuid in row lines, so
+    // the id must come from the JSON `structuredContent` payload that
+    // the dual-channel response carries alongside the text.
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    tools::cx_store(
+        &store,
+        &json!({
+            "title": "Round trip probe",
+            "body": "Round trip probe body with unique marker widgetflange.",
+            "kind": "reference"
+        }),
+    )
+    .await
+    .unwrap();
+
+    let recall = tools::cx_recall(&store, &json!({"query": "widgetflange"}))
+        .await
+        .unwrap();
+    let structured = recall
+        .structured
+        .as_ref()
+        .expect("cx_recall must emit a structured payload");
+    let entries = structured["entries"]
+        .as_array()
+        .expect("structured.entries must be an array");
+    assert!(!entries.is_empty(), "recall must return at least one row");
+    let recall_id = entries[0]["id"]
+        .as_str()
+        .expect("recall row must carry a string id")
+        .to_owned();
+
+    // The id returned by recall must parse as a full UUID and route
+    // cleanly through cx_get without any pre-processing by the caller.
+    assert!(
+        uuid::Uuid::parse_str(&recall_id).is_ok(),
+        "recall id `{recall_id}` must be a full hyphenated UUIDv7"
+    );
+
+    let get = tools::cx_get(&store, &json!({"ids": [&recall_id]}))
+        .await
+        .unwrap()
+        .text;
+    assert!(get.contains("found: 1"), "expected found: 1, got:\n{get}");
+    assert!(!get.contains("missing: ["));
+    assert!(get.contains("widgetflange"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn e2e_store_update_verify() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
