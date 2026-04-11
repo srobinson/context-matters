@@ -1,12 +1,11 @@
 //! Handler for the `cx_get` tool.
 
+use cm_capabilities::projection::format_get_view;
 use cm_core::ContextStore;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::mcp::{cm_err_to_string, json_response, parse_params};
-
-use super::entry_to_full_json;
+use crate::mcp::{cm_err_to_string, parse_params, yaml_response};
 
 #[derive(Debug, Deserialize)]
 struct CxGetParams {
@@ -34,16 +33,6 @@ pub async fn cx_get(store: &impl ContextStore, args: &Value) -> Result<String, S
         .collect::<Result<Vec<_>, _>>()?;
 
     let entries = store.get_entries(&uuids).await.map_err(cm_err_to_string)?;
-    let found = entries.len();
-    let missing = uuids.len() - found;
 
-    let entries_json: Vec<Value> = entries.iter().map(entry_to_full_json).collect();
-
-    let response = json!({
-        "entries": entries_json,
-        "found": found,
-        "missing": missing,
-    });
-
-    json_response(response)
+    yaml_response(format_get_view(&entries, &params.ids))
 }
