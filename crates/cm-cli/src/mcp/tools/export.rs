@@ -4,7 +4,7 @@ use cm_core::{ContextStore, ScopePath};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::{cm_err_to_string, json_response, parse_params};
+use crate::mcp::{ToolResult, cm_err_to_string, json_response, parse_params};
 
 #[derive(Debug, Deserialize)]
 struct CxExportParams {
@@ -21,7 +21,7 @@ fn default_format() -> String {
     "json".to_owned()
 }
 
-pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let params: CxExportParams = parse_params(args)?;
 
     if params.format != "json" {

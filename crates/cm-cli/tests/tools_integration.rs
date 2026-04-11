@@ -31,7 +31,7 @@ async fn store_creates_entry_at_global_scope() {
     )
     .await;
 
-    let text = result.unwrap();
+    let text = result.unwrap().text;
     assert!(text.contains("scope: global"));
     assert!(text.contains("kind: fact"));
     // The YAML envelope carries the full uuid on its `stored:` line; the
@@ -55,7 +55,7 @@ async fn store_auto_creates_scope_chain() {
     )
     .await;
 
-    let text = result.unwrap();
+    let text = result.unwrap().text;
     assert!(text.contains("scope: global/project:helioy/repo:nancyr"));
 
     // Verify ancestor scopes were created
@@ -80,7 +80,8 @@ async fn store_with_supersedes() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let old_id = extract_stored_id(&r1);
 
     let r2 = tools::cx_store(
@@ -93,7 +94,8 @@ async fn store_with_supersedes() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // The ack carries `superseded: <old_id>` right after the new `stored:`
     // line when `supersedes` was passed on the request.
     assert!(r2.contains(&format!("superseded: {old_id}")));
@@ -113,7 +115,7 @@ async fn store_rejects_empty_title() {
         }),
     )
     .await;
-    assert!(result.is_err() || result.unwrap().contains("empty"));
+    assert!(result.is_err() || result.unwrap().text.contains("empty"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -193,7 +195,8 @@ async fn recall_with_query_searches_fts() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // YAML envelope: routing: search header, at least one row, no full body key.
     assert!(result.contains("routing: search"));
     assert!(result.contains("SQLx migration guide"));
@@ -236,7 +239,8 @@ async fn recall_without_query_uses_scope_resolution() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // Scope-resolve routing walks ancestors: chain renders both levels and
     // the body returns both project-level and global entries.
     assert!(result.contains("scope_chain: [global/project:helioy, global]"));
@@ -268,7 +272,8 @@ async fn recall_filters_by_kinds() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // Every row should carry `kind: fact` in its trailing comment; no
     // `kind: decision` should appear anywhere in the rendered body.
     assert!(result.contains("A fact"));
@@ -303,7 +308,8 @@ async fn recall_respects_max_tokens_budget() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // With a very small budget, should return fewer than all 10 rows.
     assert!(count_row_lines(&result) < 10);
     // Header surfaces the budget so callers see how the clamp was applied.
@@ -326,10 +332,14 @@ async fn get_returns_full_body() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
-    let result = tools::cx_get(&store, &json!({"ids": [&id]})).await.unwrap();
+    let result = tools::cx_get(&store, &json!({"ids": [&id]}))
+        .await
+        .unwrap()
+        .text;
     assert!(result.contains("found: 1"));
     assert!(!result.contains("missing: ["));
     assert!(result.contains("complete body"));
@@ -342,7 +352,8 @@ async fn get_reports_missing_ids() {
     let fake_id = "01950000-0000-7000-8000-000000000000";
     let result = tools::cx_get(&store, &json!({"ids": [fake_id]}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     assert!(result.contains("found: 0"));
     assert!(result.contains(&format!("missing: [{fake_id}]")));
     assert!(result.contains("1 missing"));
@@ -386,7 +397,8 @@ async fn browse_returns_paginated_results() {
 
     let result = tools::cx_browse(&store, &json!({"limit": 2}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     assert!(result.contains("total: 5"));
     assert!(result.contains("returned: 2"));
     assert_eq!(count_row_lines(&result), 2);
@@ -395,7 +407,8 @@ async fn browse_returns_paginated_results() {
     let cursor = extract_browse_cursor(&result).expect("cursor in pagination trailer");
     let result2 = tools::cx_browse(&store, &json!({"limit": 2, "cursor": cursor}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     assert_eq!(count_row_lines(&result2), 2);
 }
 
@@ -419,7 +432,8 @@ async fn browse_filters_by_kind() {
 
     let result = tools::cx_browse(&store, &json!({"kind": "lesson"}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     // Filter leaves one row: total + returned both equal 1, and the
     // reconstructed filter header echoes the kind back to the caller.
     assert!(result.contains("total: 1"));
@@ -441,7 +455,8 @@ async fn update_changes_title_and_body() {
         &json!({"title": "Original", "body": "Original body.", "kind": "fact"}),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
     let result = tools::cx_update(
@@ -453,7 +468,8 @@ async fn update_changes_title_and_body() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // `format_update_ack` emits just `updated: <id>` + `content_hash: <prefix>`
     // by design — scope/kind never change, title lives in the entry body.
     // The body/title round-trip is covered by `e2e_store_update_verify`.
@@ -485,19 +501,21 @@ async fn forget_soft_deletes_entry() {
         &json!({"title": "To forget", "body": "Will be forgotten.", "kind": "fact"}),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
     let result = tools::cx_forget(&store, &json!({"ids": [&id]}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     // `format_forget_ack` renders the three disposition counters
     // unconditionally, each on its own line.
     assert!(result.contains("forgotten: 1"));
     assert!(result.contains("already_inactive: 0"));
 
     // Recall searches by short-id prefix against the rendered row list.
-    let recall = tools::cx_recall(&store, &json!({})).await.unwrap();
+    let recall = tools::cx_recall(&store, &json!({})).await.unwrap().text;
     let sid_prefix = &id[..8];
     assert!(!recall.contains(sid_prefix));
 }
@@ -512,7 +530,8 @@ async fn forget_reports_already_inactive() {
         &json!({"title": "Double forget", "body": "Body.", "kind": "fact"}),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
     tools::cx_forget(&store, &json!({"ids": [&id]}))
@@ -520,7 +539,8 @@ async fn forget_reports_already_inactive() {
         .unwrap();
     let result = tools::cx_forget(&store, &json!({"ids": [&id]}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     assert!(result.contains("forgotten: 0"));
     assert!(result.contains("already_inactive: 1"));
 }
@@ -534,7 +554,8 @@ async fn forget_reports_not_found() {
         &json!({"ids": ["01950000-0000-7000-8000-000000000000"]}),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     assert!(result.contains("not_found: 1"));
 }
 
@@ -555,7 +576,8 @@ async fn deposit_creates_exchange_entries() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // `format_deposit_ack` pluralises `exchange` and, without a summary,
     // renders an inline `entry_ids: [id1, id2]` list of 8-char shorts.
     assert!(result.contains("deposited: 2 exchanges"));
@@ -585,7 +607,8 @@ async fn deposit_with_summary_creates_relations() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     // Single exchange renders singular `exchange` (no `s`). With a summary
     // present, `format_deposit_ack` suppresses the per-entry `entry_ids`
     // list and surfaces the summary's full uuid instead.
@@ -628,7 +651,7 @@ async fn stats_returns_correct_counts() {
     .await
     .unwrap();
 
-    let result = tools::cx_stats(&store, &json!({})).await.unwrap();
+    let result = tools::cx_stats(&store, &json!({})).await.unwrap().text;
     // Counters: 3 active entries. Kinds block carries a `fact  2` row
     // and a `decision  1` row (column-aligned by max-kind-width).
     assert!(result.contains("active: 3"));
@@ -655,7 +678,11 @@ async fn export_returns_all_entries() {
     .unwrap();
 
     let result = tools::cx_export(&store, &json!({})).await.unwrap();
-    let resp: Value = serde_json::from_str(&result).unwrap();
+    // cx_export emits structured-only: text channel is empty, the JSON
+    // payload lives in the structured channel for backup/restore fidelity.
+    let resp: Value = result
+        .structured
+        .expect("cx_export must emit a structured payload");
     assert_eq!(resp["count"], 1);
     assert!(resp["exported_at"].as_str().is_some());
     assert!(!resp["scopes"].as_array().unwrap().is_empty());
@@ -687,18 +714,23 @@ async fn e2e_store_recall_get_flow() {
         }),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
     // Recall by query (use a term without hyphens to avoid FTS5 parsing issues)
     let recall = tools::cx_recall(&store, &json!({"query": "verification"}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     assert!(recall.contains("routing: search"));
     assert!(count_row_lines(&recall) >= 1);
 
     // Get full content
-    let get = tools::cx_get(&store, &json!({"ids": [&id]})).await.unwrap();
+    let get = tools::cx_get(&store, &json!({"ids": [&id]}))
+        .await
+        .unwrap()
+        .text;
     assert!(get.contains("found: 1"));
     assert!(get.contains("End-to-end"));
 }
@@ -713,7 +745,8 @@ async fn e2e_store_update_verify() {
         &json!({"title": "Before update", "body": "Original.", "kind": "fact"}),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
     tools::cx_update(
@@ -723,7 +756,10 @@ async fn e2e_store_update_verify() {
     .await
     .unwrap();
 
-    let get = tools::cx_get(&store, &json!({"ids": [&id]})).await.unwrap();
+    let get = tools::cx_get(&store, &json!({"ids": [&id]}))
+        .await
+        .unwrap()
+        .text;
     assert!(get.contains("title: After update"));
     assert!(get.contains("Modified."));
 }
@@ -738,7 +774,8 @@ async fn e2e_store_forget_exclusion() {
         &json!({"title": "Will vanish", "body": "Gone soon.", "kind": "observation"}),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .text;
     let id = extract_stored_id(&r);
 
     tools::cx_forget(&store, &json!({"ids": [&id]}))
@@ -748,12 +785,13 @@ async fn e2e_store_forget_exclusion() {
     // Browse should not include it by default; rows render only the
     // short-id prefix, so substring-check the first 8 bytes of the uuid.
     let sid_prefix = &id[..8];
-    let browse = tools::cx_browse(&store, &json!({})).await.unwrap();
+    let browse = tools::cx_browse(&store, &json!({})).await.unwrap().text;
     assert!(!browse.contains(sid_prefix));
 
     // Browse with include_superseded should include it.
     let browse2 = tools::cx_browse(&store, &json!({"include_superseded": true}))
         .await
-        .unwrap();
+        .unwrap()
+        .text;
     assert!(browse2.contains(sid_prefix));
 }

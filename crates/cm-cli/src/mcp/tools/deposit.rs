@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::mcp::{
-    check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, snippet, yaml_response,
+    ToolResult, check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, snippet,
+    yaml_response,
 };
 
 use super::{default_created_by, default_scope};
@@ -46,7 +47,7 @@ struct Exchange {
     title: Option<String>,
 }
 
-pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
 
     let params: CxDepositParams = parse_params(args)?;

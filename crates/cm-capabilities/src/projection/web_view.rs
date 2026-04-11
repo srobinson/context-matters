@@ -24,13 +24,15 @@
 //! that were promoted to `pub(crate)` specifically so this module could
 //! reuse them verbatim.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use cm_core::Entry;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::browse_view::sort_as_str;
+use super::get_view::confidence_as_str;
 use super::recall_view::{normalise_bm25, routing_explanation, search_tier_header_tag};
 use super::{
     HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES, collapse_whitespace,
@@ -39,6 +41,7 @@ use super::{
 };
 use crate::browse::BrowseResult;
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
+use crate::stats::StatsResult;
 
 // ── Browse view ──────────────────────────────────────────────────
 
@@ -400,6 +403,229 @@ pub fn project_web_recall_at(
         // stable for the ts-rs export in ALP-1753 and lets the frontend
         // render a deterministic (possibly empty) list.
         advisories: Vec::new(),
+    }
+}
+
+// ── Get view ─────────────────────────────────────────────────────
+
+/// Full-body row shape for a [`WebGetView`] response.
+///
+/// Mirrors the YAML `format_get_view` output: full UUID in `id`, full
+/// body in `body`, scope/kind stringified, relative age, tags and
+/// confidence when metadata is present. Structurally parallel to
+/// [`WebBrowseRow`] and [`WebRecallRow`] so the frontend can reuse
+/// row-rendering primitives across the three views.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebGetRow {
+    pub id: String,
+    pub title: String,
+    pub scope: String,
+    pub kind: String,
+    pub age: String,
+    pub body: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
+}
+
+/// Full projection of a `cx_get` response for the cm-web HTTP API and
+/// the MCP 2025-06-18 `structuredContent` channel.
+///
+/// Structurally parallel to `format_get_view` output: `requested` and
+/// `found` are counters, `missing` is the explicit diff of requested
+/// IDs the store did not return, and `entries` carries the full-body
+/// row list. `missing` is omitted when every requested ID was found;
+/// `entries` is omitted when the store returned nothing.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebGetView {
+    pub requested: usize,
+    pub found: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub entries: Vec<WebGetRow>,
+}
+
+/// Project store-returned entries and the raw requested-id list into a
+/// [`WebGetView`].
+///
+/// Takes the same `(found, requested)` arity as `format_get_view` so
+/// the two projections stay in lock-step on the missing-id diff. No
+/// short-id computation: the get view always carries the full UUID in
+/// `id` because the caller already knows the ID it asked for and the
+/// row is keyed by it.
+///
+/// Captures `Utc::now()` once for relative-age formatting and
+/// delegates to [`project_web_get_at`] so tests can pin the age column.
+pub fn project_web_get(found: &[Entry], requested: &[String]) -> WebGetView {
+    project_web_get_at(found, requested, Utc::now())
+}
+
+/// Deterministic variant of [`project_web_get`] that takes an explicit
+/// reference `now` for relative-age rendering. Production callers
+/// should prefer [`project_web_get`].
+pub fn project_web_get_at(found: &[Entry], requested: &[String], now: DateTime<Utc>) -> WebGetView {
+    let found_ids: HashSet<String> = found.iter().map(|e| e.id.to_string()).collect();
+    // Preserve requested-id order so the frontend sees the same order
+    // the caller asked for. The YAML view renders `missing:` in the
+    // same order for the same reason.
+    let missing: Vec<String> = requested
+        .iter()
+        .filter(|id| !found_ids.contains(id.as_str()))
+        .cloned()
+        .collect();
+
+    let entries: Vec<WebGetRow> = found
+        .iter()
+        .map(|entry| {
+            let tags = entry
+                .meta
+                .as_ref()
+                .map(|m| m.tags.clone())
+                .unwrap_or_default();
+            let confidence = entry
+                .meta
+                .as_ref()
+                .and_then(|m| m.confidence)
+                .map(|c| confidence_as_str(c).to_owned());
+            WebGetRow {
+                id: entry.id.to_string(),
+                title: entry.title.clone(),
+                scope: entry.scope_path.as_str().to_owned(),
+                kind: entry.kind.as_str().to_owned(),
+                age: relative_age(entry.updated_at, now),
+                body: entry.body.clone(),
+                tags,
+                confidence,
+            }
+        })
+        .collect();
+
+    WebGetView {
+        requested: requested.len(),
+        found: found.len(),
+        missing,
+        entries,
+    }
+}
+
+// ── Stats view ───────────────────────────────────────────────────
+
+/// One `{tag, count}` pair in a [`WebStatsView::top_tags`] list.
+///
+/// Mirrors `cm_core::TagCount` one-to-one but lives on the projection
+/// layer so the web surface does not leak the storage type across the
+/// ts-rs boundary.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebStatsTagCount {
+    pub tag: String,
+    pub count: u64,
+}
+
+/// One node in a [`WebStatsView::scope_tree`] list.
+///
+/// Mirrors `crate::stats::ScopeTreeNode` for the same
+/// storage-layer-isolation reason as [`WebStatsTagCount`]. The tree is
+/// a flat list (sorted breadth-first lexicographically) so callers can
+/// render it without recursing; the `path` field is the full scope
+/// path, so structural reconstruction is deterministic from path alone.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebStatsScopeNode {
+    pub path: String,
+    pub kind: String,
+    pub label: String,
+    pub entry_count: u64,
+}
+
+/// Full projection of a `cx_stats` response for the cm-web HTTP API
+/// and the MCP 2025-06-18 `structuredContent` channel.
+///
+/// Mirrors the YAML `format_stats_view` counters, kind histogram, top
+/// tags, and scope tree. `db_size_bytes` is the raw integer for
+/// machine consumers; the YAML renderer humanises the same number to
+/// a `"4.2 MB"` string, which is intentional: the text channel is
+/// for humans, the structured channel is for type-checked clients that
+/// want to arithmetic on the value.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebStatsView {
+    pub active: u64,
+    pub superseded: u64,
+    pub scopes: u64,
+    pub relations: u64,
+    pub db_size_bytes: u64,
+    pub kinds: BTreeMap<String, u64>,
+    pub top_tags: Vec<WebStatsTagCount>,
+    pub scope_tree: Vec<WebStatsScopeNode>,
+}
+
+/// Maximum tags surfaced in `top_tags`.
+///
+/// Kept in lock-step with `stats_view::TOP_TAGS_LIMIT`. `stats::stats()`
+/// already sorts `entries_by_tag` by the requested order (name or
+/// count) before building `StatsResult`, so this projection just takes
+/// the prefix; it does not re-sort.
+const WEB_STATS_TOP_TAGS_LIMIT: usize = 10;
+
+/// Project a [`StatsResult`] into a [`WebStatsView`].
+///
+/// Pure transformation; no I/O and no recomputation. All the raw
+/// aggregates it needs — `entries_by_kind`, `entries_by_tag`,
+/// `scope_tree` — are already built by `stats::stats()` from the
+/// storage layer, so this factory just maps field-for-field into the
+/// ts-rs-derivable shape. The field-rename story is:
+///
+/// - `active_entries` → `active`
+/// - `superseded_entries` → `superseded`
+/// - `entries_by_kind` (`HashMap<String, u64>`) → `kinds` (`BTreeMap`
+///   for stable serialisation order)
+/// - `entries_by_tag` (`Vec<TagCount>`) → `top_tags` (bounded to 10)
+/// - `scope_tree` (`Vec<ScopeTreeNode>`) → `scope_tree`
+///   (`Vec<WebStatsScopeNode>`, field-renamed one-to-one)
+pub fn project_web_stats(result: &StatsResult) -> WebStatsView {
+    let kinds: BTreeMap<String, u64> = result
+        .stats
+        .entries_by_kind
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+
+    let top_tags: Vec<WebStatsTagCount> = result
+        .stats
+        .entries_by_tag
+        .iter()
+        .take(WEB_STATS_TOP_TAGS_LIMIT)
+        .map(|t| WebStatsTagCount {
+            tag: t.tag.clone(),
+            count: t.count,
+        })
+        .collect();
+
+    let scope_tree: Vec<WebStatsScopeNode> = result
+        .scope_tree
+        .iter()
+        .map(|node| WebStatsScopeNode {
+            path: node.path.clone(),
+            kind: node.kind.clone(),
+            label: node.label.clone(),
+            entry_count: node.entry_count,
+        })
+        .collect();
+
+    WebStatsView {
+        active: result.stats.active_entries,
+        superseded: result.stats.superseded_entries,
+        scopes: result.stats.scopes,
+        relations: result.stats.relations,
+        db_size_bytes: result.stats.db_size_bytes,
+        kinds,
+        top_tags,
+        scope_tree,
     }
 }
 

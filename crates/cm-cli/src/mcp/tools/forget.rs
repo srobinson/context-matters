@@ -5,7 +5,7 @@ use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{cm_err_to_string, parse_params, yaml_response};
+use crate::mcp::{ToolResult, cm_err_to_string, parse_params, yaml_response};
 
 #[derive(Debug, Deserialize)]
 struct CxForgetParams {
@@ -13,7 +13,7 @@ struct CxForgetParams {
     ids: Vec<String>,
 }
 
-pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
 
     let params: CxForgetParams = parse_params(args)?;
