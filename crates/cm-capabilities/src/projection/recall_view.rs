@@ -29,7 +29,7 @@ use super::{
     RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas,
     kind_histogram, relative_age, render_histogram, short_id, smart_snippet, tag_histogram,
 };
-use crate::recall::{RecallRequest, RecallResult, RecallRouting};
+use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 
 /// Maximum snippet width (bytes) shown per row in the recall view. Sized
 /// to fit one wide terminal row without wrapping.
@@ -156,7 +156,19 @@ fn render_header(
         let _ = writeln!(out, "query: {q}");
     }
     let (routing_str, routing_explain) = routing_explanation(&result.routing);
-    let _ = writeln!(out, "routing: {routing_str}  # {routing_explain}");
+    let tier_suffix = if matches!(result.routing, RecallRouting::Search) {
+        result
+            .tier
+            .and_then(search_tier_header_tag)
+            .map(|tag| format!(", tier: {tag}"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let _ = writeln!(
+        out,
+        "routing: {routing_str}  # {routing_explain}{tier_suffix}"
+    );
     let _ = writeln!(
         out,
         "candidates: {before} -> {shown} shown",
@@ -268,6 +280,18 @@ fn render_trailers(out: &mut String, result: &RecallResult, layout: &Layout) {
     let (routing_str, routing_advice) = routing_advice(&result.routing);
     let _ = writeln!(out, "# routing: {routing_str} - {routing_advice}");
 
+    // Tier advisory teaches the caller that the result set was
+    // produced by a fallback query shape (prefix or split_or) rather
+    // than the exact implicit-AND that they wrote. Fires only on the
+    // two fallback tiers; exact is the happy path, none already
+    // surfaces through the `no matches` trailer below.
+    if matches!(result.routing, RecallRouting::Search)
+        && let Some(tier) = result.tier
+        && let Some(line) = search_tier_trailer(tier)
+    {
+        let _ = writeln!(out, "{line}");
+    }
+
     if layout.rows.is_empty() {
         let _ = writeln!(
             out,
@@ -372,6 +396,40 @@ fn routing_advice(routing: &RecallRouting) -> (&'static str, &'static str) {
     (tag, advice)
 }
 
+/// Header suffix tag for the cascade's winning [`SearchTier`]. Returns
+/// the snake_case name for the three winning tiers and `None` for
+/// [`SearchTier::None`], so the header stays clean when all three
+/// tiers were exhausted (the empty-result trailer covers that case).
+fn search_tier_header_tag(tier: SearchTier) -> Option<&'static str> {
+    match tier {
+        SearchTier::Exact => Some("exact"),
+        SearchTier::Prefix => Some("prefix"),
+        SearchTier::SplitOr => Some("split_or"),
+        SearchTier::None => None,
+    }
+}
+
+/// Trailer advisory line for the cascade's winning [`SearchTier`].
+/// Fires only on `Prefix` and `SplitOr`: those tiers produced a result
+/// set from a query shape the caller did not write, so the LLM needs
+/// to be told about the rewrite to learn what succeeded. `Exact` is
+/// the happy path (silent); `None` is covered by the `no matches`
+/// trailer, so a tier advisory there would be redundant noise.
+fn search_tier_trailer(tier: SearchTier) -> Option<String> {
+    let (tag, advice) = match tier {
+        SearchTier::Prefix => (
+            "prefix",
+            "original query had zero exact hits, tried prefix match",
+        ),
+        SearchTier::SplitOr => (
+            "split_or",
+            "original query had zero prefix hits, OR-joined tokens",
+        ),
+        SearchTier::Exact | SearchTier::None => return None,
+    };
+    Some(format!("# tier: {tag} - {advice}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,6 +515,48 @@ mod tests {
             );
             assert!(!routing_advice(&routing).1.is_empty());
         }
+    }
+
+    #[test]
+    fn search_tier_header_tag_hides_none_variant() {
+        // Exact / Prefix / SplitOr surface in the header; SearchTier::None
+        // returns None so the header omits the tier suffix when the
+        // cascade exhausted every tier without a hit.
+        assert_eq!(search_tier_header_tag(SearchTier::Exact), Some("exact"));
+        assert_eq!(search_tier_header_tag(SearchTier::Prefix), Some("prefix"));
+        assert_eq!(
+            search_tier_header_tag(SearchTier::SplitOr),
+            Some("split_or"),
+        );
+        assert_eq!(search_tier_header_tag(SearchTier::None), None);
+    }
+
+    #[test]
+    fn search_tier_trailer_fires_only_on_fallback_tiers() {
+        // Exact is the happy path (no advisory). None is already covered
+        // by the `no matches` trailer, so duplicating it would be noise.
+        assert!(search_tier_trailer(SearchTier::Exact).is_none());
+        assert!(search_tier_trailer(SearchTier::None).is_none());
+        // Prefix and SplitOr emit a trailing advisory describing the
+        // rewrite so the LLM learns which fallback succeeded.
+        let prefix = search_tier_trailer(SearchTier::Prefix).expect("prefix emits");
+        assert!(
+            prefix.starts_with("# tier: prefix - "),
+            "prefix advisory shape: {prefix}",
+        );
+        assert!(
+            prefix.contains("zero exact hits"),
+            "prefix advisory text: {prefix}",
+        );
+        let split_or = search_tier_trailer(SearchTier::SplitOr).expect("split_or emits");
+        assert!(
+            split_or.starts_with("# tier: split_or - "),
+            "split_or advisory shape: {split_or}",
+        );
+        assert!(
+            split_or.contains("OR-joined"),
+            "split_or advisory text: {split_or}",
+        );
     }
 
     #[test]

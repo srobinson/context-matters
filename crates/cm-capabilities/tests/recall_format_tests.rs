@@ -25,6 +25,10 @@ use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, Search
 use cm_core::{Entry, EntryKind, EntryMeta, ScopePath};
 
 const GOLDEN_SEARCH: &str = include_str!("snapshots/recall_view_search.txt");
+const GOLDEN_SEARCH_PREFIX_TIER: &str =
+    include_str!("snapshots/recall_view_search_prefix_tier.txt");
+const GOLDEN_SEARCH_SPLIT_OR_TIER: &str =
+    include_str!("snapshots/recall_view_search_split_or_tier.txt");
 const GOLDEN_BROWSE_FALLBACK: &str = include_str!("snapshots/recall_view_browse_fallback.txt");
 const GOLDEN_EMPTY: &str = include_str!("snapshots/recall_view_empty.txt");
 
@@ -135,6 +139,18 @@ fn search_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
     (result, request, now)
 }
 
+/// Cascade-tier override on top of [`search_fixture`]. Used by the
+/// prefix and split_or tier snapshot tests so the three tier
+/// renderings stay byte-identical except for the header suffix and
+/// trailing advisory. Mutating the tier in place keeps the row data
+/// and scores in one place (DRY) and means any future change to
+/// `search_fixture` automatically propagates to every tier test.
+fn search_fixture_with_tier(tier: SearchTier) -> (RecallResult, RecallRequest, DateTime<Utc>) {
+    let (mut result, request, now) = search_fixture();
+    result.tier = Some(tier);
+    (result, request, now)
+}
+
 /// `BrowseFallback` routing fixture: two rows, `score` is `None` on
 /// every row (no FTS rank was computed), so the formatter must skip
 /// the score column entirely. No query was supplied. The trailer
@@ -220,6 +236,34 @@ fn format_recall_view_matches_search_golden() {
     assert_eq!(
         rendered, GOLDEN_SEARCH,
         "rendered recall search view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_search_prefix_tier_golden() {
+    // Prefix tier: header carries `, tier: prefix` and the trailer
+    // emits a `# tier: prefix - ...` advisory teaching the caller
+    // that the exact implicit-AND query returned zero rows and the
+    // cascade advanced to the prefix-match tier.
+    let (result, request, now) = search_fixture_with_tier(SearchTier::Prefix);
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_SEARCH_PREFIX_TIER,
+        "rendered recall search (prefix tier) view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_search_split_or_tier_golden() {
+    // SplitOr tier: header carries `, tier: split_or` and the
+    // trailer emits a `# tier: split_or - ...` advisory teaching
+    // the caller that both the exact and prefix tiers returned
+    // zero rows before the OR-joined cascade arm succeeded.
+    let (result, request, now) = search_fixture_with_tier(SearchTier::SplitOr);
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_SEARCH_SPLIT_OR_TIER,
+        "rendered recall search (split_or tier) view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
     );
 }
 

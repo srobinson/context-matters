@@ -1,6 +1,6 @@
 ---
 query: snippet strategy
-routing: search  # FTS5 ranking, tier: exact
+routing: search  # FTS5 ranking, tier: prefix
 candidates: 47 -> 3 shown
 scope_chain: [global/project:helioy, global]
 scope_hits: global/project:helioy=2, global=1
@@ -20,3 +20,4 @@ entries:
                     # scope: global  kind: lesson  tags: projection  age: 5d
 
 # routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth
+# tier: prefix - original query had zero exact hits, tried prefix match
