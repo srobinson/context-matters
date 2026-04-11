@@ -2,8 +2,8 @@
 //!
 //! Consumed by the cm-web Curator UI. Mirrors the information surfaced
 //! by the YAML `format_browse_view` and `format_recall_view` formatters
-//! as serialisable structs, so the web front-end renders the same short
-//! ids, smart snippets, relative ages, and hoisted headers that the MCP
+//! as serialisable structs, so the web front-end renders the same
+//! smart snippets, relative ages, and hoisted headers that the MCP
 //! adapter shows. HTTP wiring, ts-rs regeneration, and frontend
 //! consumption land in the follow-on issues ALP-1752 / 1753 / 1754.
 //!
@@ -13,9 +13,9 @@
 //! (and its originating request, where one is needed) to a view
 //! struct.
 //!
-//! Every shared computation — short-id collision detection, snippet
-//! windowing, histogram aggregation, uniform-key hoisting, BM25
-//! normalisation, routing/tier tagging — is delegated to the existing
+//! Every shared computation — snippet windowing, histogram
+//! aggregation, uniform-key hoisting, BM25 normalisation, routing/tier
+//! tagging — is delegated to the existing
 //! helpers in the sibling projection modules. The YAML and web views
 //! cannot drift on any of these because they read from the same source
 //! of truth. See the DRY notes on [`super::browse_view::sort_as_str`],
@@ -35,9 +35,8 @@ use super::browse_view::sort_as_str;
 use super::get_view::confidence_as_str;
 use super::recall_view::{normalise_bm25, routing_explanation, search_tier_header_tag};
 use super::{
-    HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES, collapse_whitespace,
-    detect_id_collisions, hoist_uniform, kind_histogram, relative_age, short_id, smart_snippet,
-    tag_histogram,
+    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, hoist_uniform, kind_histogram,
+    relative_age, smart_snippet, tag_histogram,
 };
 use crate::browse::BrowseResult;
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
@@ -80,15 +79,12 @@ pub struct WebBrowseHeader {
 
 /// One row in a browse result, shaped for the cm-web UI.
 ///
-/// The `short_id` field is the 8-char (12-char on collision) prefix
-/// used for visual identification; the full `id` is preserved so the
-/// client can pass it back to `cx_get` / `cx_update`. `scope` and
-/// `kind` are hoisted to `None` when the header carries the same
-/// value for every row.
+/// The full `id` is preserved so the client can pass it back to
+/// `cx_get` / `cx_update`. `scope` and `kind` are hoisted to `None`
+/// when the header carries the same value for every row.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct WebBrowseRow {
-    pub short_id: String,
     pub id: String,
     pub title: String,
     /// Smart snippet (frontmatter/heading stripped, windowed to
@@ -168,19 +164,14 @@ pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBr
         tags_histogram,
     };
 
-    let id_strings: Vec<String> = entries.iter().map(|e| e.id.to_string()).collect();
-    let id_len = resolve_id_len(&id_strings);
-
     let rows = entries
         .iter()
-        .zip(id_strings.iter())
-        .map(|(e, id_str)| {
+        .map(|e| {
             let raw_snippet = smart_snippet(&e.body, None, HighlightStyle::None, SNIPPET_MAX_BYTES);
             let snippet = collapse_whitespace(&raw_snippet);
             let tags = e.meta.as_ref().map(|m| m.tags.clone()).unwrap_or_default();
             WebBrowseRow {
-                short_id: short_id(id_str, id_len).to_owned(),
-                id: id_str.clone(),
+                id: e.id.to_string(),
                 title: e.title.clone(),
                 snippet,
                 age: relative_age(e.updated_at, now),
@@ -249,7 +240,6 @@ pub struct WebRecallHeader {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct WebRecallRow {
-    pub short_id: String,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f32>,
@@ -312,9 +302,6 @@ pub fn project_web_recall_at(
         HighlightStyle::None
     };
 
-    let id_strings: Vec<String> = rows.iter().map(|r| r.entry.id.to_string()).collect();
-    let id_len = resolve_id_len(&id_strings);
-
     let show_score = is_search && rows.iter().any(|r| r.score.is_some());
     let norm_scores: Vec<f32> = if show_score {
         let raws: Vec<f32> = rows.iter().map(|r| r.score.unwrap_or(0.0)).collect();
@@ -365,8 +352,7 @@ pub fn project_web_recall_at(
     let entries: Vec<WebRecallRow> = rows
         .iter()
         .enumerate()
-        .zip(id_strings.iter())
-        .map(|((idx, row), id_str)| {
+        .map(|(idx, row)| {
             let raw_snippet =
                 smart_snippet(&row.entry.body, query, highlight_style, SNIPPET_MAX_BYTES);
             let snippet = collapse_whitespace(&raw_snippet);
@@ -382,8 +368,7 @@ pub fn project_web_recall_at(
                 None
             };
             WebRecallRow {
-                short_id: short_id(id_str, id_len).to_owned(),
-                id: id_str.clone(),
+                id: row.entry.id.to_string(),
                 score,
                 title: row.entry.title.clone(),
                 snippet,
@@ -453,10 +438,9 @@ pub struct WebGetView {
 /// [`WebGetView`].
 ///
 /// Takes the same `(found, requested)` arity as `format_get_view` so
-/// the two projections stay in lock-step on the missing-id diff. No
-/// short-id computation: the get view always carries the full UUID in
-/// `id` because the caller already knows the ID it asked for and the
-/// row is keyed by it.
+/// the two projections stay in lock-step on the missing-id diff. The
+/// get view always carries the full UUID in `id` because the caller
+/// already knows the ID it asked for and the row is keyed by it.
 ///
 /// Captures `Utc::now()` once for relative-age formatting and
 /// delegates to [`project_web_get_at`] so tests can pin the age column.
@@ -630,19 +614,6 @@ pub fn project_web_stats(result: &StatsResult) -> WebStatsView {
 }
 
 // ── Private helpers ──────────────────────────────────────────────
-
-/// Pick the active short-id length for a result slice.
-///
-/// Keeps the browse/recall/web views in lock-step on the 8-vs-12 byte
-/// rule without each caller re-implementing the branch. Returns 8 on
-/// the empty slice because no collision is possible there.
-fn resolve_id_len(id_strings: &[String]) -> usize {
-    if detect_id_collisions(id_strings.iter().map(String::as_str), SHORT_ID_LEN) {
-        SHORT_ID_LEN_EXTENDED
-    } else {
-        SHORT_ID_LEN
-    }
-}
 
 /// Convert the `usize`-valued histograms returned by
 /// [`super::kind_histogram`], [`super::tag_histogram`], and

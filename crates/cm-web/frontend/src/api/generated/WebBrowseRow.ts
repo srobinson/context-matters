@@ -3,13 +3,11 @@
 /**
  * One row in a browse result, shaped for the cm-web UI.
  *
- * The `short_id` field is the 8-char (12-char on collision) prefix
- * used for visual identification; the full `id` is preserved so the
- * client can pass it back to `cx_get` / `cx_update`. `scope` and
- * `kind` are hoisted to `None` when the header carries the same
- * value for every row.
+ * The full `id` is preserved so the client can pass it back to
+ * `cx_get` / `cx_update`. `scope` and `kind` are hoisted to `None`
+ * when the header carries the same value for every row.
  */
-export type WebBrowseRow = { short_id: string, id: string, title: string, 
+export type WebBrowseRow = { id: string, title: string, 
 /**
  * Smart snippet (frontmatter/heading stripped, windowed to
  * [`SNIPPET_MAX_BYTES`], whitespace collapsed). Browse has no

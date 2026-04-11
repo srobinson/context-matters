@@ -30,10 +30,8 @@ const GOLDEN_DEPOSIT_IDS: &str = include_str!("snapshots/write_ack_deposit_ids.t
 const GOLDEN_FORGET_HAPPY: &str = include_str!("snapshots/write_ack_forget_happy.txt");
 const GOLDEN_FORGET_ERRORS: &str = include_str!("snapshots/write_ack_forget_errors.txt");
 
-/// Deterministic UUIDs used across the snapshot fixtures. Hand-crafted so
-/// each per-entry id is clearly distinct at its first 8-char prefix, which
-/// lets the inline deposit id list render as five unique short ids
-/// without triggering any collision auto-extend logic.
+/// Deterministic UUIDs used across the snapshot fixtures. The inline
+/// deposit id list renders each entry as its full hyphenated UUID.
 const STORED_ID: &str = "019d8a01-9c4f-7891-8abc-000000000000";
 const SUPERSEDED_ID: &str = "019d7f3e-0000-7000-8abc-000000000000";
 const SUMMARY_ID: &str = "019d8b01-0000-7000-8abc-000000000001";

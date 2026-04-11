@@ -368,176 +368,17 @@ async fn get_rejects_empty_ids() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn get_rejects_input_with_non_hex_characters() {
-    // "not-a-uuid" fails Uuid::parse_str and also fails the prefix
-    // path's `[0-9a-f-]` char-class check, so it short-circuits to a
-    // validation error before ever touching the store.
+async fn get_rejects_invalid_uuid_input() {
+    // `cx_get` only accepts full hyphenated UUIDv7. Non-UUID input
+    // surfaces as a crisp validation error instead of silently missing
+    // rows or running a prefix scan.
     let (store, _dir) = test_store().await;
     let result = tools::cx_get(&store, &json!({"ids": ["not-a-uuid"]})).await;
-    let err = result.expect_err("non-hex input must be rejected");
+    let err = result.expect_err("non-uuid input must be rejected");
     assert!(
-        err.contains("invalid characters"),
-        "expected invalid-char error, got: {err}"
+        err.contains("invalid UUID"),
+        "expected invalid-uuid error, got: {err}"
     );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn get_rejects_prefix_shorter_than_eight_chars() {
-    // Below the min-length floor, prefix lookup refuses to run so a
-    // too-wide prefix can never silently succeed.
-    let (store, _dir) = test_store().await;
-    let result = tools::cx_get(&store, &json!({"ids": ["019d"]})).await;
-    let err = result.expect_err("short prefix must be rejected");
-    assert!(
-        err.contains("at least 8"),
-        "expected min-length error, got: {err}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn get_resolves_eight_char_prefix_to_single_match() {
-    // End-to-end guard for the short-id surfaced by cx_recall /
-    // cx_browse rows: an agent can paste the 8-char header column
-    // straight into cx_get and get the full entry back.
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-
-    let stored = tools::cx_store(
-        &store,
-        &json!({
-            "title": "Prefix round-trip test",
-            "body": "Body content for prefix lookup.",
-            "kind": "fact"
-        }),
-    )
-    .await
-    .unwrap()
-    .text;
-    let full_id = extract_stored_id(&stored);
-    let prefix = &full_id[..8];
-
-    let result = tools::cx_get(&store, &json!({"ids": [prefix]}))
-        .await
-        .unwrap()
-        .text;
-    assert!(
-        result.contains("found: 1"),
-        "short prefix lookup:\n{result}"
-    );
-    assert!(
-        !result.contains("missing:"),
-        "canonicalized id must not appear as missing:\n{result}"
-    );
-    assert!(
-        result.contains(&format!("id: {full_id}")),
-        "full uuid should render on the detail row:\n{result}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn get_errors_on_ambiguous_prefix() {
-    // Two real entries share the same 8-char prefix → cx_get fails the
-    // whole batch with an explicit listing so the caller can retry with
-    // a longer prefix or the full UUID.
-    //
-    // UUIDv7 encodes a ms timestamp in the first 48 bits, so two entries
-    // created in the same process will naturally share their first ~12
-    // hex chars and always collide at 8. We lean on that rather than
-    // hand-crafting fake ids.
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-
-    let a = extract_stored_id(
-        &tools::cx_store(
-            &store,
-            &json!({ "title": "Ambiguous A", "body": "body a", "kind": "fact" }),
-        )
-        .await
-        .unwrap()
-        .text,
-    );
-    let b = extract_stored_id(
-        &tools::cx_store(
-            &store,
-            &json!({ "title": "Ambiguous B", "body": "body b", "kind": "fact" }),
-        )
-        .await
-        .unwrap()
-        .text,
-    );
-    assert_eq!(
-        &a[..8],
-        &b[..8],
-        "UUIDv7 siblings must share their 8-char timestamp prefix so the test actually exercises the ambiguous branch"
-    );
-
-    let shared_prefix = &a[..8];
-    let err = tools::cx_get(&store, &json!({"ids": [shared_prefix]}))
-        .await
-        .expect_err("ambiguous prefix must error");
-    assert!(
-        err.contains("ambiguous"),
-        "expected 'ambiguous' in error, got: {err}"
-    );
-    assert!(err.contains(&a), "error should list matching uuid a: {err}");
-    assert!(err.contains(&b), "error should list matching uuid b: {err}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn get_accepts_mixed_full_uuid_and_short_prefix() {
-    // A batch with one full UUID and one short prefix should resolve
-    // both: the full UUID bypasses the prefix path, the short one goes
-    // through resolve_id_prefix, and the final response carries both
-    // entries under `entries:`.
-    //
-    // UUIDv7 lays out a 48-bit millisecond timestamp in the first 12
-    // hex chars, so two entries created in the same ms collide on
-    // everything up to and including the 12th char. We grow the prefix
-    // until it reaches past the timestamp block into the random tail,
-    // which is guaranteed to diverge regardless of wall-clock timing.
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-
-    let full_id = extract_stored_id(
-        &tools::cx_store(
-            &store,
-            &json!({ "title": "Full", "body": "full body", "kind": "fact" }),
-        )
-        .await
-        .unwrap()
-        .text,
-    );
-    let prefix_id = extract_stored_id(
-        &tools::cx_store(
-            &store,
-            &json!({ "title": "Prefix", "body": "prefix body", "kind": "decision" }),
-        )
-        .await
-        .unwrap()
-        .text,
-    );
-
-    // Walk from 8 upward until the prefix slice is unique. In practice
-    // this lands between 13 and 20 chars depending on how many of the
-    // random bits differ; starting at 8 exercises the common case and
-    // the loop guarantees the test stays deterministic across reruns.
-    let mut prefix_len = 8;
-    while prefix_len < prefix_id.len() && full_id[..prefix_len] == prefix_id[..prefix_len] {
-        prefix_len += 1;
-    }
-    assert!(
-        prefix_len >= 8,
-        "prefix must stay at or above the 8-char minimum"
-    );
-    let short = &prefix_id[..prefix_len];
-
-    let result = tools::cx_get(&store, &json!({"ids": [&full_id, short]}))
-        .await
-        .unwrap()
-        .text;
-    assert!(result.contains("found: 2"), "\n{result}");
-    assert!(result.contains(&format!("id: {full_id}")), "\n{result}");
-    assert!(result.contains(&format!("id: {prefix_id}")), "\n{result}");
 }
 
 // ── cx_browse tests ─────────────────────────────────────────────
@@ -901,6 +742,63 @@ async fn e2e_store_recall_get_flow() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn e2e_recall_id_round_trips_through_get() {
+    // ALP-1767 regression: after ripping the short-id prefix input path
+    // out of `cx_get`, only full hyphenated UUIDv7s parse. This test
+    // proves the id that `cx_recall` surfaces in its structured payload
+    // is directly usable against `cx_get` with no trimming, padding, or
+    // hex manipulation in between.
+    //
+    // The YAML text channel does not render the uuid in row lines, so
+    // the id must come from the JSON `structuredContent` payload that
+    // the dual-channel response carries alongside the text.
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    tools::cx_store(
+        &store,
+        &json!({
+            "title": "Round trip probe",
+            "body": "Round trip probe body with unique marker widgetflange.",
+            "kind": "reference"
+        }),
+    )
+    .await
+    .unwrap();
+
+    let recall = tools::cx_recall(&store, &json!({"query": "widgetflange"}))
+        .await
+        .unwrap();
+    let structured = recall
+        .structured
+        .as_ref()
+        .expect("cx_recall must emit a structured payload");
+    let entries = structured["entries"]
+        .as_array()
+        .expect("structured.entries must be an array");
+    assert!(!entries.is_empty(), "recall must return at least one row");
+    let recall_id = entries[0]["id"]
+        .as_str()
+        .expect("recall row must carry a string id")
+        .to_owned();
+
+    // The id returned by recall must parse as a full UUID and route
+    // cleanly through cx_get without any pre-processing by the caller.
+    assert!(
+        uuid::Uuid::parse_str(&recall_id).is_ok(),
+        "recall id `{recall_id}` must be a full hyphenated UUIDv7"
+    );
+
+    let get = tools::cx_get(&store, &json!({"ids": [&recall_id]}))
+        .await
+        .unwrap()
+        .text;
+    assert!(get.contains("found: 1"), "expected found: 1, got:\n{get}");
+    assert!(!get.contains("missing: ["));
+    assert!(get.contains("widgetflange"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn e2e_store_update_verify() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
@@ -947,16 +845,16 @@ async fn e2e_store_forget_exclusion() {
         .await
         .unwrap();
 
-    // Browse should not include it by default; rows render only the
-    // short-id prefix, so substring-check the first 8 bytes of the uuid.
-    let sid_prefix = &id[..8];
+    // Browse should not include it by default. Rows render the title
+    // on the list line (no short-id column after ALP-1767 phase 2),
+    // so substring-check the unique title instead.
     let browse = tools::cx_browse(&store, &json!({})).await.unwrap().text;
-    assert!(!browse.contains(sid_prefix));
+    assert!(!browse.contains("Will vanish"));
 
     // Browse with include_superseded should include it.
     let browse2 = tools::cx_browse(&store, &json!({"include_superseded": true}))
         .await
         .unwrap()
         .text;
-    assert!(browse2.contains(sid_prefix));
+    assert!(browse2.contains("Will vanish"));
 }

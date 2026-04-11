@@ -86,10 +86,6 @@ serde_json::from_str(r##"{
                   "description": "Normalised relevance score in [0, 1] on Search routing. Omitted on non-search routings.",
                   "type": "number"
                 },
-                "short_id": {
-                  "description": "8 to 12 char hex prefix unique within the response.",
-                  "type": "string"
-                },
                 "snippet": {
                   "description": "Smart snippet of the entry body, with matched query terms bracketed when applicable.",
                   "type": "string"
@@ -105,7 +101,6 @@ serde_json::from_str(r##"{
                 }
               },
               "required": [
-                "short_id",
                 "id",
                 "title",
                 "snippet",
@@ -400,10 +395,6 @@ serde_json::from_str(r##"{
                   "description": "Row scope path. Omitted when the row has no scope.",
                   "type": "string"
                 },
-                "short_id": {
-                  "description": "8 to 12 char hex prefix unique within the response.",
-                  "type": "string"
-                },
                 "snippet": {
                   "description": "Smart snippet of the entry body.",
                   "type": "string"
@@ -419,7 +410,6 @@ serde_json::from_str(r##"{
                 }
               },
               "required": [
-                "short_id",
                 "id",
                 "title",
                 "snippet",
@@ -503,11 +493,11 @@ serde_json::from_str(r##"{
       }
     },
     {
-      "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts the full hyphenated UUIDv7 or the short prefix (≥ 8 hex chars) surfaced in cx_recall / cx_browse row headers. IDs that do not exist are silently omitted; an ambiguous prefix that matches multiple entries errors the whole batch with a listing. Maximum 100 IDs per request.",
+      "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts full hyphenated UUIDv7 strings only. IDs that do not exist are silently omitted. Maximum 100 IDs per request.",
       "inputSchema": {
         "properties": {
           "ids": {
-            "description": "Entry IDs: full hyphenated UUIDv7 or ≥8-char prefix from cx_recall/cx_browse rows. Max 100. Ambiguous prefix errors.",
+            "description": "Entry IDs: full hyphenated UUIDv7 strings. Max 100 per request.",
             "items": {
               "type": "string"
             },

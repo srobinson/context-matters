@@ -81,29 +81,6 @@ pub trait ContextStore: Send + Sync + 'static {
     /// Returns entries regardless of superseded status.
     async fn get_entries(&self, ids: &[Uuid]) -> Result<Vec<Entry>, CmError>;
 
-    /// Resolve an id prefix to the set of matching entry IDs.
-    ///
-    /// Used by `cx_get` so agents can pass the compact short id surfaced
-    /// in `cx_recall` / `cx_browse` rows without having to recover the
-    /// full hyphenated UUID first. The lookup is a prefix match against
-    /// the stored `id` column (hyphenated `Uuid::to_string()` form).
-    ///
-    /// Returns every matching id, regardless of superseded status, so
-    /// the caller can decide whether the match is unambiguous. Callers
-    /// that care about ambiguity should treat any result with `len() > 1`
-    /// as a disambiguation error and surface the full list back to the
-    /// user. `limit` caps the number of matches returned so an unbounded
-    /// prefix (e.g., `"0"`) does not pull the entire table into memory;
-    /// callers should pass a small value (≈10) sufficient to render a
-    /// human-readable "ambiguous" error.
-    ///
-    /// # Errors
-    ///
-    /// - `CmError::Validation` if `prefix` is shorter than 8 characters
-    ///   or contains characters outside `[0-9a-f-]`. An 8-char minimum
-    ///   matches the short-id width shown in `cx_recall` / `cx_browse`.
-    async fn resolve_id_prefix(&self, prefix: &str, limit: u32) -> Result<Vec<Uuid>, CmError>;
-
     /// Resolve context for a scope by walking up the hierarchy.
     ///
     /// Returns all active entries from the target scope and every

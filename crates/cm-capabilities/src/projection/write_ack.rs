@@ -20,7 +20,7 @@
 
 use std::fmt::Write as _;
 
-use super::{fmt_with_commas, short_id};
+use super::{fmt_with_commas, hex_prefix};
 
 /// Byte-prefix width used to slice the BLAKE3 content hash for display.
 /// Eight hex chars is enough to catch routine dedup collisions during
@@ -28,11 +28,6 @@ use super::{fmt_with_commas, short_id};
 /// wire payload; callers that need the full hash can fetch the entry
 /// via `cx_get`.
 const CONTENT_HASH_WIDTH: usize = 8;
-
-/// Byte-prefix width used for the inline short-id list in
-/// [`format_deposit_ack`] when no summary entry was generated. Mirrors
-/// the 8-char short id used by the read-tool formatters' row prefixes.
-const DEPOSIT_SHORT_ID_WIDTH: usize = 8;
 
 /// One failed row from `cx_forget`, used by [`format_forget_ack`] to surface
 /// the id-to-reason mapping under an indented `errors:` block.
@@ -71,7 +66,11 @@ pub fn format_store_ack(
     }
     let _ = writeln!(out, "scope: {scope}");
     let _ = writeln!(out, "kind: {kind}");
-    let _ = writeln!(out, "content_hash: {}", short_id(hash, CONTENT_HASH_WIDTH));
+    let _ = writeln!(
+        out,
+        "content_hash: {}",
+        hex_prefix(hash, CONTENT_HASH_WIDTH)
+    );
     out
 }
 
@@ -82,7 +81,11 @@ pub fn format_update_ack(id: &str, hash: &str) -> String {
     let mut out = String::with_capacity(96);
     out.push_str("---\n");
     let _ = writeln!(out, "updated: {id}");
-    let _ = writeln!(out, "content_hash: {}", short_id(hash, CONTENT_HASH_WIDTH));
+    let _ = writeln!(
+        out,
+        "content_hash: {}",
+        hex_prefix(hash, CONTENT_HASH_WIDTH)
+    );
     out
 }
 
@@ -91,7 +94,7 @@ pub fn format_update_ack(id: &str, hash: &str) -> String {
 /// - `Some(id)` renders the summary's full id and a trailing `cx_get(...)`
 ///   hint comment, suppressing the per-entry id list since the caller can
 ///   read the summary to rehydrate individual rows.
-/// - `None` renders an inline compact list of 8-char short ids for every
+/// - `None` renders an inline compact list of full UUIDs for every
 ///   deposited entry, so the caller can see at a glance which rows landed.
 ///
 /// The `deposited:` counter pluralises `exchange` based on `entry_ids.len()`.
@@ -106,11 +109,8 @@ pub fn format_deposit_ack(entry_ids: &[String], summary_id: Option<&str>, scope:
         let _ = writeln!(out, "scope: {scope}");
         let _ = writeln!(out, "# cx_get(id=\"{summary}\") to read summary");
     } else {
-        let shorts: Vec<&str> = entry_ids
-            .iter()
-            .map(|id| short_id(id, DEPOSIT_SHORT_ID_WIDTH))
-            .collect();
-        let _ = writeln!(out, "entry_ids: [{}]", shorts.join(", "));
+        let ids: Vec<&str> = entry_ids.iter().map(String::as_str).collect();
+        let _ = writeln!(out, "entry_ids: [{}]", ids.join(", "));
         let _ = writeln!(out, "scope: {scope}");
     }
     out

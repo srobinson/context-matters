@@ -203,6 +203,119 @@ async fn tier_none_when_all_tiers_exhausted() {
     assert!(result.entries.is_empty());
 }
 
+// ── Cascade: advances past Prefix on reserved-word query (ALP-1765) ─
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cascade_advances_past_prefix_on_uppercase_not() {
+    // Regression for the field-report bug where the Prefix tier crashed
+    // FTS5 with `syntax error near "*"` whenever a query contained an
+    // uppercase reserved word. Before the fix this `.unwrap()` panicked
+    // because `try_search_tier` propagated the database error instead of
+    // letting the cascade advance.
+    //
+    // Seeded entry contains only "operators" so:
+    //
+    //   * Exact tier: `FtsQuery::new` preserves `NOT`, FTS5 parses as
+    //     `FTS5 AND sanitization AND hyphens AND (NOT operators)`. The
+    //     entry has none of FTS5/sanitization/hyphens, so 0 rows.
+    //   * Prefix tier (post-fix): `NOT` is stripped, query is
+    //     `FTS5* sanitization* hyphens* operators*` (implicit AND). Entry
+    //     matches only `operators*`, so 0 rows. Critically: no crash.
+    //   * SplitOr tier: query is `FTS5 OR sanitization OR hyphens OR
+    //     operators`. Entry hits on `operators`. 1 row.
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(
+        &store,
+        "Operator notes",
+        "Tokenizer operators only.",
+        EntryKind::Fact,
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("FTS5 sanitization hyphens NOT operators".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("cascade must not crash on uppercase NOT");
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert_eq!(result.tier, Some(SearchTier::SplitOr));
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].entry.title, "Operator notes");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cascade_advances_past_prefix_on_uppercase_and() {
+    // Same shape as the `NOT` case but for `AND`. The Exact tier preserves
+    // `AND` as the explicit boolean operator, so for two tokens the parse
+    // is `alpha AND zzgibberishxyz` which finds nothing. The Prefix tier
+    // strips `AND`, leaving `alpha* zzgibberishxyz*` (implicit AND), still
+    // 0. SplitOr broadens to `alpha OR zzgibberishxyz`, hits on `alpha`.
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Alpha note", "alpha only.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("alpha AND zzgibberishxyz".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("cascade must not crash on uppercase AND");
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert_eq!(result.tier, Some(SearchTier::SplitOr));
+    assert_eq!(result.entries.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cascade_advances_past_prefix_on_uppercase_or() {
+    // Mirror of the `NOT` and `AND` cases for `OR`. Before the fix, the
+    // Prefix tier crashed on the bare `OR*` token; after the fix `OR` is
+    // stripped so the tier is a clean no-op and the cascade advances to
+    // SplitOr, which rescues.
+    //
+    // Seeded entry contains only "widget" so:
+    //
+    //   * Exact tier: `FtsQuery::new` preserves `OR` as a boolean. FTS5
+    //     parses `alpha OR widget beta` as `alpha OR (widget AND beta)`
+    //     because AND binds tighter than OR. The row has `widget` but no
+    //     `beta`, so the AND side is 0. No `alpha` either. 0 rows.
+    //   * Prefix tier (post-fix): `OR` is stripped, query is
+    //     `alpha* widget* beta*` (implicit AND). Row matches only
+    //     `widget*`, so 0 rows. Critically: no crash.
+    //   * SplitOr tier: query is `alpha OR widget OR beta`. Row matches
+    //     on `widget`. 1 row.
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Widget note", "widget only.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("alpha OR widget beta".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("cascade must not crash on uppercase OR");
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert_eq!(result.tier, Some(SearchTier::SplitOr));
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].entry.title, "Widget note");
+}
+
 // ── Non-search routings leave tier as None ───────────────────────
 
 #[tokio::test(flavor = "multi_thread")]

@@ -1,5 +1,6 @@
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Copy } from "lucide-react";
 import type React from "react";
+import { toast } from "sonner";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { WebBrowseRow } from "@/api/generated/WebBrowseRow";
 import type { WebRecallRow } from "@/api/generated/WebRecallRow";
@@ -27,6 +28,24 @@ interface EntrySummaryProps {
 
 function isRecallRow(row: EntryRow): row is WebRecallRow {
   return "score" in row;
+}
+
+/**
+ * Copy the full entry UUID to the clipboard. Stops click propagation so
+ * the row's own click handler (which typically opens the entry) does not
+ * fire. After ALP-1767 ripped the short-id prefix input path out of
+ * `cx_get`, the only way to feed an id back into the store is the full
+ * hyphenated UUID, so every row needs a frictionless way to grab it.
+ */
+async function copyEntryId(e: React.MouseEvent<HTMLButtonElement>, id: string) {
+  e.stopPropagation();
+  e.preventDefault();
+  try {
+    await navigator.clipboard.writeText(id);
+    toast.success("Copied entry id", { description: id });
+  } catch {
+    toast.error("Failed to copy entry id");
+  }
 }
 
 /**
@@ -82,6 +101,15 @@ export function EntrySummary({
                 {score.toFixed(2)}
               </span>
             )}
+            <button
+              type="button"
+              onClick={(e) => copyEntryId(e, row.id)}
+              className="inline-flex items-center rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none"
+              title={`Copy entry id: ${row.id}`}
+              aria-label={`Copy entry id ${row.id}`}
+            >
+              <Copy className="h-3 w-3" aria-hidden="true" />
+            </button>
             <span className="font-mono text-[10px] text-muted-foreground/70" title={row.id}>
               {row.age}
             </span>
@@ -95,32 +123,13 @@ export function EntrySummary({
         )}
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-muted-foreground">
-          <span
-            className="rounded bg-muted px-1 py-0.5 font-medium text-muted-foreground/80"
-            title={row.id}
-          >
-            {row.short_id}
-          </span>
-          {row.kind && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <KindBadge kind={row.kind as EntryKind} className="shrink-0" />
-            </>
-          )}
-          {row.scope && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <span className="truncate">{row.scope}</span>
-            </>
-          )}
+          {row.kind && <KindBadge kind={row.kind as EntryKind} className="shrink-0" />}
+          {row.scope && <span className="truncate">{row.scope}</span>}
           {row.tags.length > 0 && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <span className="truncate">
-                {row.tags.slice(0, 3).join(", ")}
-                {row.tags.length > 3 && ` +${row.tags.length - 3}`}
-              </span>
-            </>
+            <span className="truncate">
+              {row.tags.slice(0, 3).join(", ")}
+              {row.tags.length > 3 && ` +${row.tags.length - 3}`}
+            </span>
           )}
         </div>
       </div>

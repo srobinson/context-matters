@@ -19,10 +19,9 @@ use cm_core::{BrowseSort, Entry};
 use uuid::Uuid;
 
 use super::{
-    DrillDownHint, HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
-    collapse_whitespace, compute_dedup_hints, compute_drill_down_hint, detect_id_collisions,
-    hoist_uniform, kind_histogram, relative_age, render_histogram, scope_histogram, short_id,
-    smart_snippet, tag_histogram,
+    DrillDownHint, HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, compute_dedup_hints,
+    compute_drill_down_hint, hoist_uniform, kind_histogram, relative_age, render_histogram,
+    scope_histogram, smart_snippet, tag_histogram,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
 
@@ -122,28 +121,19 @@ fn render_entries(
         return;
     }
 
-    // Auto-extend the short id length when any two entries collide on
-    // their first 8 bytes within this result set.
-    let id_strings: Vec<String> = entries.iter().map(|e| e.id.to_string()).collect();
-    let id_len = if detect_id_collisions(id_strings.iter().map(|s| s.as_str()), SHORT_ID_LEN) {
-        SHORT_ID_LEN_EXTENDED
-    } else {
-        SHORT_ID_LEN
-    };
     // Continuation lines align with the start of the title on line 1:
-    //   "  - <id>  "  ⇒  2 (list indent) + 2 ("- ") + id_len + 2 (gap).
-    let cont_indent = " ".repeat(4 + id_len + 2);
+    //   "  - "  ⇒  2 (list indent) + 2 ("- ").
+    let cont_indent = " ".repeat(4);
 
     // Intra-response dedup pass: first row carrying a given content
     // hash prefix is the leader; later rows with the same prefix pick
-    // up a `dup_of: <leader short id>` annotation on their trailing
+    // up a `dup_of: <leader id>` annotation on their trailing
     // YAML comment. Computed once per response.
     let entry_refs: Vec<&Entry> = entries.iter().collect();
     let dedup = compute_dedup_hints(&entry_refs);
 
-    for (entry, id_str) in entries.iter().zip(id_strings.iter()) {
-        let sid = short_id(id_str, id_len);
-        let _ = writeln!(out, "  - {sid}  {}", entry.title);
+    for entry in entries.iter() {
+        let _ = writeln!(out, "  - {}", entry.title);
 
         let snippet = smart_snippet(&entry.body, None, HighlightStyle::None, SNIPPET_MAX_BYTES);
         let snippet_line = collapse_whitespace(&snippet);
@@ -153,7 +143,7 @@ fn render_entries(
 
         let dup_of = dedup
             .get(&entry.id)
-            .map(|leader_uuid| short_id(&leader_uuid.to_string(), id_len).to_owned());
+            .map(|leader_uuid| leader_uuid.to_string());
         let rels = relation_counts.get(&entry.id).copied().unwrap_or(0);
         let comment = render_row_comment(entry, now, hoists, dup_of.as_deref(), rels);
         let _ = writeln!(out, "{cont_indent}# {comment}");

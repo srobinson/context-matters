@@ -152,55 +152,6 @@ impl CmStore {
             .collect())
     }
 
-    pub(crate) async fn do_resolve_id_prefix(
-        &self,
-        prefix: &str,
-        limit: u32,
-    ) -> Result<Vec<Uuid>, CmError> {
-        // Minimum 8 chars keeps the prefix long enough that, for a
-        // UUIDv7-keyed store of realistic size, collisions are rare;
-        // `cx_recall` / `cx_browse` rows also surface 8-char shorts by
-        // default, so the threshold matches what agents actually see.
-        if prefix.len() < 8 {
-            return Err(CmError::Validation(format!(
-                "id prefix must be at least 8 characters: got {} char(s)",
-                prefix.len()
-            )));
-        }
-        // Stored ids are hyphenated lowercase UUIDv7 hex. Reject anything
-        // outside that alphabet so malformed input surfaces as a crisp
-        // error instead of a silent zero-match. Also sidesteps any GLOB
-        // metacharacter injection (`*`, `?`, `[`, `]`) in the bound value.
-        if !prefix
-            .chars()
-            .all(|c| matches!(c, '0'..='9' | 'a'..='f' | '-'))
-        {
-            return Err(CmError::Validation(format!(
-                "id prefix contains invalid characters: '{prefix}' (expected lowercase hex or '-')"
-            )));
-        }
-
-        let pool = &self.read_pool;
-        // GLOB is case-sensitive and the SQLite query planner uses the
-        // PK index when the pattern begins with a non-wildcard literal,
-        // so `id GLOB 'prefix*'` is a B-tree range scan, not a table
-        // scan. `LIKE` would need `case_sensitive_like = ON` to get the
-        // same optimization, which we do not configure globally.
-        let pattern = format!("{prefix}*");
-        let rows = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM entries WHERE id GLOB ? ORDER BY id ASC LIMIT ?",
-        )
-        .bind(&pattern)
-        .bind(limit as i64)
-        .fetch_all(pool)
-        .await
-        .map_err(map_db_err)?;
-
-        rows.into_iter()
-            .map(|s| Uuid::parse_str(&s).map_err(|e| CmError::Internal(e.to_string())))
-            .collect()
-    }
-
     pub(crate) async fn do_update_entry(
         &self,
         id: Uuid,

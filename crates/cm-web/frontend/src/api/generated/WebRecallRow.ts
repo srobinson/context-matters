@@ -12,7 +12,7 @@
  * renders as `1.00` regardless of raw FTS5 range; non-search routings
  * leave `score` as `None`.
  */
-export type WebRecallRow = { short_id: string, id: string, score: number | null, title: string, 
+export type WebRecallRow = { id: string, score: number | null, title: string, 
 /**
  * Smart snippet windowed around the first query match, with
  * `«term»` brackets when both routing is `Search` and the
