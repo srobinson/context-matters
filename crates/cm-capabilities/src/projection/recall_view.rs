@@ -27,8 +27,9 @@ use cm_core::Entry;
 
 use super::{
     HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
-    collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas, kind_histogram,
-    relative_age, render_histogram, short_id, smart_snippet, tag_histogram,
+    collapse_whitespace, compute_dedup_hints, detect_id_collisions, estimate_tokens,
+    fmt_with_commas, kind_histogram, relative_age, render_histogram, short_id, smart_snippet,
+    tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 
@@ -242,6 +243,13 @@ fn render_entries(out: &mut String, layout: &Layout) {
         " ".repeat(4 + layout.id_len + 2)
     };
 
+    // Intra-response dedup: first occurrence of each content-hash
+    // prefix is the leader; every later row whose prefix collides
+    // with a leader gets a `dup_of: <short leader id>` annotation in
+    // its trailing comment. Computed once per render pass.
+    let entries: Vec<&Entry> = layout.rows.iter().map(|r| &r.entry).collect();
+    let dedup = compute_dedup_hints(&entries);
+
     for (i, (row, id_str)) in layout.rows.iter().zip(layout.id_strings.iter()).enumerate() {
         let sid = short_id(id_str, layout.id_len);
         if layout.show_score {
@@ -262,12 +270,15 @@ fn render_entries(out: &mut String, layout: &Layout) {
             let _ = writeln!(out, "{cont_indent}{snippet_line}");
         }
 
-        let comment = render_row_comment(&row.entry, layout.now);
+        let dup_of = dedup
+            .get(&row.entry.id)
+            .map(|leader_uuid| short_id(&leader_uuid.to_string(), layout.id_len).to_owned());
+        let comment = render_row_comment(&row.entry, layout.now, dup_of.as_deref());
         let _ = writeln!(out, "{cont_indent}# {comment}");
     }
 }
 
-fn render_row_comment(entry: &Entry, now: DateTime<Utc>) -> String {
+fn render_row_comment(entry: &Entry, now: DateTime<Utc>, dup_of: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(5);
     parts.push(format!("scope: {}", entry.scope_path));
     parts.push(format!("kind: {}", entry.kind.as_str()));
@@ -280,6 +291,9 @@ fn render_row_comment(entry: &Entry, now: DateTime<Utc>) -> String {
         parts.push(format!("tags: {}", tags.join(", ")));
     }
     parts.push(format!("age: {}", relative_age(entry.updated_at, now)));
+    if let Some(dup) = dup_of {
+        parts.push(format!("dup_of: {dup}"));
+    }
     parts.join("  ")
 }
 

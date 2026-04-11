@@ -18,8 +18,8 @@ use cm_core::{BrowseSort, Entry};
 
 use super::{
     HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES, collapse_whitespace,
-    detect_id_collisions, hoist_uniform, kind_histogram, relative_age, render_histogram,
-    scope_histogram, short_id, smart_snippet,
+    compute_dedup_hints, detect_id_collisions, hoist_uniform, kind_histogram, relative_age,
+    render_histogram, scope_histogram, short_id, smart_snippet,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
 
@@ -124,6 +124,13 @@ fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoist
     //   "  - <id>  "  ⇒  2 (list indent) + 2 ("- ") + id_len + 2 (gap).
     let cont_indent = " ".repeat(4 + id_len + 2);
 
+    // Intra-response dedup pass: first row carrying a given content
+    // hash prefix is the leader; later rows with the same prefix pick
+    // up a `dup_of: <leader short id>` annotation on their trailing
+    // YAML comment. Computed once per response.
+    let entry_refs: Vec<&Entry> = entries.iter().collect();
+    let dedup = compute_dedup_hints(&entry_refs);
+
     for (entry, id_str) in entries.iter().zip(id_strings.iter()) {
         let sid = short_id(id_str, id_len);
         let _ = writeln!(out, "  - {sid}  {}", entry.title);
@@ -134,13 +141,21 @@ fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoist
             let _ = writeln!(out, "{cont_indent}{snippet_line}");
         }
 
-        let comment = render_row_comment(entry, now, hoists);
+        let dup_of = dedup
+            .get(&entry.id)
+            .map(|leader_uuid| short_id(&leader_uuid.to_string(), id_len).to_owned());
+        let comment = render_row_comment(entry, now, hoists, dup_of.as_deref());
         let _ = writeln!(out, "{cont_indent}# {comment}");
     }
 }
 
-fn render_row_comment(entry: &Entry, now: DateTime<Utc>, hoists: &Hoists) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(4);
+fn render_row_comment(
+    entry: &Entry,
+    now: DateTime<Utc>,
+    hoists: &Hoists,
+    dup_of: Option<&str>,
+) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(5);
     if hoists.scope.is_none() {
         parts.push(format!("scope: {}", entry.scope_path));
     }
@@ -155,6 +170,9 @@ fn render_row_comment(entry: &Entry, now: DateTime<Utc>, hoists: &Hoists) -> Str
     parts.push(format!("age: {}", relative_age(entry.updated_at, now)));
     if hoists.created_by.is_none() {
         parts.push(format!("created_by: {}", entry.created_by));
+    }
+    if let Some(dup) = dup_of {
+        parts.push(format!("dup_of: {dup}"));
     }
     parts.join("  ")
 }

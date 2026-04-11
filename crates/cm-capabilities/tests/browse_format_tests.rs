@@ -26,6 +26,19 @@ fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
 }
 
+/// Derives a unique 64-char hex `content_hash` from the test row's
+/// `id_hex` so every fixture row hashes differently by default. Keeps
+/// the intra-response dedup pass from flagging unrelated test rows as
+/// dupes just because they all share a placeholder hash.
+fn content_hash_from(id_hex: &str) -> String {
+    let clean = id_hex.replace('-', "");
+    assert!(
+        clean.len() <= 64,
+        "test fixture id_hex must fit inside 64 hex chars",
+    );
+    format!("{clean:0<64}")
+}
+
 fn make_entry(
     id_hex: &str,
     title: &str,
@@ -40,7 +53,7 @@ fn make_entry(
         kind: EntryKind::Observation,
         title: title.to_owned(),
         body: body.to_owned(),
-        content_hash: "0".repeat(64),
+        content_hash: content_hash_from(id_hex),
         meta: Some(EntryMeta {
             tags: tags.iter().map(|t| (*t).to_owned()).collect(),
             ..Default::default()

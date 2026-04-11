@@ -4,11 +4,13 @@
 //! Used by the recall/browse YAML formatters to shape result-set headers
 //! and row identifiers before rendering.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::hash::Hash;
 
 use chrono::{DateTime, Utc};
+use cm_core::Entry;
+use uuid::Uuid;
 
 /// Default short-id length for entry-row rendering. Used by every view
 /// formatter (`browse`, `recall`, `web_view`) so a result set that does
@@ -167,6 +169,49 @@ pub fn fmt_with_commas(n: impl Into<u64>) -> String {
         out.push(*b as char);
     }
     out
+}
+
+/// Length of the content-hash prefix used for intra-response dedup.
+///
+/// 16 hex characters carry 64 bits of entropy, so BLAKE3 prefix
+/// collisions on realistic result-set sizes are negligible. Exposed so
+/// the recall/browse formatters that render `dup_of:` annotations can
+/// reference the same constant.
+pub const CONTENT_HASH_DEDUP_PREFIX: usize = 16;
+
+/// Intra-response dedup pass: map each duplicate row's id to the id of
+/// the first row (the leader) that carries the same content-hash prefix.
+///
+/// Walks `rows` in order, indexing the first 16 hex characters of each
+/// row's `content_hash` into a leader table. Rows whose prefix is
+/// already in the table are duplicates: their id maps to the leader's
+/// id in the returned map. The leader itself is never present in the
+/// output, so callers drive rendering as:
+///
+/// ```ignore
+/// let dedup = compute_dedup_hints(&rows);
+/// for row in &rows {
+///     if let Some(leader_id) = dedup.get(&row.id) {
+///         // render `dup_of: <short leader id>`
+///     }
+/// }
+/// ```
+///
+/// Runs in O(n) with one `HashMap` allocation plus one short-string
+/// allocation per row. Order-stable: if rows 1, 2, and 3 share a
+/// prefix, both rows 2 and 3 map to row 1 (not a chain).
+pub fn compute_dedup_hints(rows: &[&Entry]) -> HashMap<Uuid, Uuid> {
+    let mut leaders: HashMap<String, Uuid> = HashMap::new();
+    let mut dupes: HashMap<Uuid, Uuid> = HashMap::new();
+    for row in rows {
+        let prefix = short_id(&row.content_hash, CONTENT_HASH_DEDUP_PREFIX).to_owned();
+        if let Some(&leader_id) = leaders.get(&prefix) {
+            dupes.insert(row.id, leader_id);
+        } else {
+            leaders.insert(prefix, row.id);
+        }
+    }
+    dupes
 }
 
 #[cfg(test)]
@@ -338,5 +383,134 @@ mod tests {
         assert_eq!(hist.get("sqlite"), Some(&1));
         assert_eq!(hist.get("mcp"), Some(&1));
         assert_eq!(hist.len(), 3);
+    }
+
+    /// Minimal `Entry` builder used only by the `compute_dedup_hints`
+    /// unit tests. Every field other than `id` and `content_hash` is
+    /// filled with placeholder values because dedup cares only about
+    /// those two fields; setting anything else risks test coupling to
+    /// the rest of the `Entry` shape.
+    fn fixture_entry(id_hex: &str, content_hash: &str) -> Entry {
+        use cm_core::{EntryKind, ScopePath};
+        let now = Utc::now();
+        Entry {
+            id: Uuid::parse_str(id_hex).expect("test fixture uuid parses"),
+            scope_path: ScopePath::parse("global").expect("global scope parses"),
+            kind: EntryKind::Fact,
+            title: String::new(),
+            body: String::new(),
+            content_hash: content_hash.to_owned(),
+            meta: None,
+            created_by: "test".to_owned(),
+            created_at: now,
+            updated_at: now,
+            superseded_by: None,
+        }
+    }
+
+    /// `0`-padded 64-char hex literal from a short unique head. Lets a
+    /// test spell out a content hash without typing 64 characters.
+    fn hash(head: &str) -> String {
+        assert!(
+            head.len() <= 64,
+            "dedup test hash head must fit inside 64 hex chars"
+        );
+        format!("{head:0<64}")
+    }
+
+    #[test]
+    fn dedup_empty_rows() {
+        let rows: Vec<&Entry> = Vec::new();
+        assert!(compute_dedup_hints(&rows).is_empty());
+    }
+
+    #[test]
+    fn dedup_all_unique() {
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("bbbbbbbbbbbbbbbb"),
+        );
+        let e3 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000003",
+            &hash("cccccccccccccccc"),
+        );
+        let rows = vec![&e1, &e2, &e3];
+        let map = compute_dedup_hints(&rows);
+        assert!(
+            map.is_empty(),
+            "three distinct content hashes must not flag any dupes: {map:?}"
+        );
+    }
+
+    #[test]
+    fn dedup_one_pair() {
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("bbbbbbbbbbbbbbbb"),
+        );
+        let e3 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000003",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let rows = vec![&e1, &e2, &e3];
+        let map = compute_dedup_hints(&rows);
+        assert_eq!(map.len(), 1, "exactly one dupe expected: {map:?}");
+        assert_eq!(
+            map.get(&e3.id),
+            Some(&e1.id),
+            "row 3 should map to row 1 leader",
+        );
+        // Leader and unique row are never keys in the output.
+        assert!(!map.contains_key(&e1.id));
+        assert!(!map.contains_key(&e2.id));
+    }
+
+    #[test]
+    fn dedup_triplet() {
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e3 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000003",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let rows = vec![&e1, &e2, &e3];
+        let map = compute_dedup_hints(&rows);
+        assert_eq!(map.len(), 2, "two dupes expected against leader: {map:?}");
+        // Both later rows map to the FIRST occurrence, not a chain.
+        assert_eq!(map.get(&e2.id), Some(&e1.id));
+        assert_eq!(map.get(&e3.id), Some(&e1.id));
+        assert!(!map.contains_key(&e1.id));
+    }
+
+    #[test]
+    fn dedup_keys_only_on_first_16_hex_chars() {
+        // Two hashes that share the leading 16 hex chars but differ at
+        // byte 17 are still treated as duplicates. The prefix compare
+        // is the whole point of the cheap dedup pass.
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa11"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("aaaaaaaaaaaaaaaa22"),
+        );
+        let rows = vec![&e1, &e2];
+        let map = compute_dedup_hints(&rows);
+        assert_eq!(map.get(&e2.id), Some(&e1.id));
     }
 }

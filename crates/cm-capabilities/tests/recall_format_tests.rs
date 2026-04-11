@@ -31,9 +31,25 @@ const GOLDEN_SEARCH_SPLIT_OR_TIER: &str =
     include_str!("snapshots/recall_view_search_split_or_tier.txt");
 const GOLDEN_BROWSE_FALLBACK: &str = include_str!("snapshots/recall_view_browse_fallback.txt");
 const GOLDEN_EMPTY: &str = include_str!("snapshots/recall_view_empty.txt");
+const GOLDEN_DEDUP: &str = include_str!("snapshots/recall_view_dedup.txt");
 
 fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
+}
+
+/// Derives a unique 64-char hex `content_hash` from the test row's
+/// `id_hex` so every fixture row hashes differently by default. Keeps
+/// the intra-response dedup pass from flagging unrelated test rows as
+/// dupes just because they all share a placeholder hash. Tests that
+/// intentionally exercise the dedup codepath override this by calling
+/// [`make_row_with_hash`] directly.
+fn content_hash_from(id_hex: &str) -> String {
+    let clean = id_hex.replace('-', "");
+    assert!(
+        clean.len() <= 64,
+        "test fixture id_hex must fit inside 64 hex chars",
+    );
+    format!("{clean:0<64}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -47,6 +63,31 @@ fn make_row(
     updated_at: DateTime<Utc>,
     score: Option<f32>,
 ) -> RecallRow {
+    make_row_with_hash(
+        id_hex,
+        kind,
+        title,
+        body,
+        scope,
+        tags,
+        updated_at,
+        score,
+        &content_hash_from(id_hex),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_row_with_hash(
+    id_hex: &str,
+    kind: EntryKind,
+    title: &str,
+    body: &str,
+    scope: &str,
+    tags: &[&str],
+    updated_at: DateTime<Utc>,
+    score: Option<f32>,
+    content_hash: &str,
+) -> RecallRow {
     RecallRow {
         entry: Entry {
             id: Uuid::parse_str(id_hex).expect("test fixture uuid parses"),
@@ -54,7 +95,7 @@ fn make_row(
             kind,
             title: title.to_owned(),
             body: body.to_owned(),
-            content_hash: "0".repeat(64),
+            content_hash: content_hash.to_owned(),
             meta: Some(EntryMeta {
                 tags: tags.iter().map(|t| (*t).to_owned()).collect(),
                 ..Default::default()
@@ -204,6 +245,76 @@ fn browse_fallback_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
     (result, request, now)
 }
 
+/// Dedup fixture: three rows where rows 1 and 3 carry the same
+/// BLAKE3-hash 16-char prefix (simulating "I stored the same lesson
+/// twice") while row 2 is genuinely distinct. The expected rendering
+/// annotates row 3 with `dup_of: <row 1 short id>` on its trailing
+/// YAML comment and leaves the other two rows untouched.
+fn dedup_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
+    let now = fixed_now();
+    // Two 16-char hex prefixes padded out to a full 64-char hash. The
+    // dedup pass keys on the first 16 chars, so two rows that share a
+    // leading `deaddeaddeaddead` will collide and the third row with
+    // `cafecafecafecafe` will not.
+    let hash_shared: String = format!("{:0<64}", "deaddeaddeaddead");
+    let hash_unique: String = format!("{:0<64}", "cafecafecafecafe");
+    let entries = vec![
+        make_row_with_hash(
+            "019dedaa-0000-7000-8000-000000000001",
+            EntryKind::Lesson,
+            "Stored the same lesson twice",
+            "Run `just test` before committing. Skipping it hides regressions that only surface on CI.",
+            "global",
+            &["lesson-log"],
+            now - Duration::hours(3),
+            Some(-0.5),
+            &hash_shared,
+        ),
+        make_row_with_hash(
+            "019ded55-0000-7000-8000-000000000002",
+            EntryKind::Lesson,
+            "Unrelated lesson that hashes differently",
+            "A separate lesson body that pads out the result set without colliding on its content hash prefix.",
+            "global",
+            &["lesson-log"],
+            now - Duration::hours(6),
+            Some(-1.0),
+            &hash_unique,
+        ),
+        make_row_with_hash(
+            "019dedcc-0000-7000-8000-000000000003",
+            EntryKind::Lesson,
+            "Stored the same lesson twice (again)",
+            "Re-store of the same lesson body. Shares the `deaddeaddeaddead` hash prefix with row one.",
+            "global",
+            &["lesson-log"],
+            now - Duration::days(1),
+            Some(-1.5),
+            &hash_shared,
+        ),
+    ];
+
+    let result = RecallResult {
+        entries,
+        scope_chain: vec!["global".to_owned()],
+        scope_hits: vec![("global".to_owned(), 3)],
+        token_estimate: 520,
+        routing: RecallRouting::Search,
+        tier: Some(SearchTier::Exact),
+        candidates_before_filter: 5,
+        fetch_limit_used: 50,
+    };
+
+    let request = RecallRequest {
+        query: Some("lesson".to_owned()),
+        limit: 50,
+        max_tokens: Some(8_000),
+        ..Default::default()
+    };
+
+    (result, request, now)
+}
+
 /// Empty fixture: zero matches, `Search` routing (so the formatter's
 /// "show score column" check would fire if any row had a score — none
 /// do). Verifies the header still renders and the trailer carries the
@@ -284,6 +395,34 @@ fn format_recall_view_matches_empty_golden() {
     assert_eq!(
         rendered, GOLDEN_EMPTY,
         "rendered recall empty view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_dedup_golden() {
+    // Intra-response dedup hint: rows 1 and 3 carry the same
+    // `deaddeaddeaddead...` content-hash prefix, so row 3 must pick
+    // up a `dup_of: 019dedaa` annotation in its trailing YAML
+    // comment. Row 2's hash differs entirely, so it renders without
+    // annotation. Row 1 is the leader and is also unannotated.
+    let (result, request, now) = dedup_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_DEDUP,
+        "rendered recall dedup view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+    // Behavioural assertions on top of the byte-for-byte check so any
+    // future golden regeneration surfaces the intent if the diff
+    // drifts: row 3 carries `dup_of:` pointing at row 1, and no
+    // other row does.
+    assert!(
+        rendered.contains("dup_of: 019dedaa"),
+        "row 3 should carry dup_of pointing at row 1:\n{rendered}",
+    );
+    assert_eq!(
+        rendered.matches("dup_of:").count(),
+        1,
+        "exactly one dup_of annotation expected (row 3 only):\n{rendered}",
     );
 }
 

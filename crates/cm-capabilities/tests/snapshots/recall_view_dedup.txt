@@ -1,0 +1,22 @@
+---
+query: lesson
+routing: search  # FTS5 ranking, tier: exact
+candidates: 5 -> 3 shown
+scope_chain: [global]
+scope_hits: global=3
+kinds: lesson=3
+tags: lesson-log=3
+tokens: 520 of 8,000 budget
+
+entries:
+  - 019dedaa  0.00  Stored the same lesson twice
+                    Run `just test` before committing. Skipping it hides regressions that only surface on CI.
+                    # scope: global  kind: lesson  tags: lesson-log  age: 3h
+  - 019ded55  0.50  Unrelated lesson that hashes differently
+                    A separate «lesson» body that pads out the result set without colliding on its content hash prefix.
+                    # scope: global  kind: lesson  tags: lesson-log  age: 6h
+  - 019dedcc  1.00  Stored the same lesson twice (again)
+                    Re-store of the same «lesson» body. Shares the `deaddeaddeaddead` hash prefix with row one.
+                    # scope: global  kind: lesson  tags: lesson-log  age: 1d  dup_of: 019dedaa
+
+# routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth
