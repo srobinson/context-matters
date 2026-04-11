@@ -9,6 +9,14 @@ pub fn json_response(value: Value) -> Result<String, String> {
     serde_json::to_string_pretty(&value).map_err(|e| format!("[json] {e}"))
 }
 
+/// Pass a pre-formatted YAML text response through unchanged.
+///
+/// Sibling to [`json_response`] for tools that already format YAML directly
+/// via `cm_capabilities::projection::format_*_view` / `format_*_ack`.
+pub fn yaml_response(text: String) -> Result<String, String> {
+    Ok(text)
+}
+
 // ── Parameter Parsing ────────────────────────────────────────────
 
 /// Parse tool parameters from JSON with actionable error messages.
