@@ -496,10 +496,6 @@ fn format_recall_view_matches_dedup_golden() {
     // future golden regeneration surfaces the intent if the diff
     // drifts: row 3 carries `dup_of:` pointing at row 1, and no
     // other row does.
-    assert!(
-        rendered.contains("dup_of: 019dedaa"),
-        "row 3 should carry dup_of pointing at row 1:\n{rendered}",
-    );
     assert_eq!(
         rendered.matches("dup_of:").count(),
         1,

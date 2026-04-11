@@ -88,9 +88,8 @@ output_schema   = '''
       "description": "Ranked recall rows. Order is significant.",
       "items": {
         "type": "object",
-        "required": ["short_id", "id", "title", "snippet", "age", "scope", "kind", "tags"],
+        "required": ["id", "title", "snippet", "age", "scope", "kind", "tags"],
         "properties": {
-          "short_id": {"type": "string", "description": "8 to 12 char hex prefix unique within the response."},
           "id": {"type": "string", "format": "uuid", "description": "Full UUID v7."},
           "score": {"type": "number", "description": "Normalised relevance score in [0, 1] on Search routing. Omitted on non-search routings."},
           "title": {"type": "string"},
@@ -310,9 +309,8 @@ output_schema   = '''
       "description": "Browse rows on this page. Order is significant (sort_used governs).",
       "items": {
         "type": "object",
-        "required": ["short_id", "id", "title", "snippet", "age", "tags"],
+        "required": ["id", "title", "snippet", "age", "tags"],
         "properties": {
-          "short_id": {"type": "string", "description": "8 to 12 char hex prefix unique within the response."},
           "id": {"type": "string", "format": "uuid", "description": "Full UUID v7."},
           "title": {"type": "string"},
           "snippet": {"type": "string", "description": "Smart snippet of the entry body."},

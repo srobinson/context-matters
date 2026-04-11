@@ -4,7 +4,7 @@
 //! Used by the recall/browse YAML formatters to shape result-set headers
 //! and row identifiers before rendering.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 use std::hash::Hash;
 
@@ -12,39 +12,15 @@ use chrono::{DateTime, Utc};
 use cm_core::Entry;
 use uuid::Uuid;
 
-/// Default short-id length for entry-row rendering. Used by every view
-/// formatter (`browse`, `recall`, `web_view`) so a result set that does
-/// not collide on its first 8 bytes renders an 8-char short id.
-pub const SHORT_ID_LEN: usize = 8;
-
-/// Extended short-id length used when any two entries in the current
-/// result set share their first 8 bytes. Keeps cross-view parity: every
-/// formatter widens to the same 12 bytes on a collision.
-pub const SHORT_ID_LEN_EXTENDED: usize = 12;
-
 /// First `len` bytes of `id`, safe for multi-byte UTF-8.
 ///
 /// Intended for UUID v7 hex (32 ASCII chars without hyphens), where byte
 /// indices are always char boundaries. Falls back to `floor_char_boundary`
 /// so arbitrary `&str` inputs never panic. Returns the full string when
 /// `len` is greater than or equal to the byte length of `id`.
-pub fn short_id(id: &str, len: usize) -> &str {
+pub fn hex_prefix(id: &str, len: usize) -> &str {
     let bound = id.floor_char_boundary(len.min(id.len()));
     &id[..bound]
-}
-
-/// Whether any two ids in the iterator share their first `len`-byte prefix.
-///
-/// Used to decide when the default 8-char short id must auto-extend to 12
-/// within a single result set. Runs in O(n) with one `HashSet` allocation.
-pub fn detect_id_collisions<'a>(ids: impl Iterator<Item = &'a str>, len: usize) -> bool {
-    let mut seen: HashSet<&'a str> = HashSet::new();
-    for id in ids {
-        if !seen.insert(short_id(id, len)) {
-            return true;
-        }
-    }
-    false
 }
 
 /// Compact human-relative age between two timestamps.
@@ -204,7 +180,7 @@ pub fn compute_dedup_hints(rows: &[&Entry]) -> HashMap<Uuid, Uuid> {
     let mut leaders: HashMap<String, Uuid> = HashMap::new();
     let mut dupes: HashMap<Uuid, Uuid> = HashMap::new();
     for row in rows {
-        let prefix = short_id(&row.content_hash, CONTENT_HASH_DEDUP_PREFIX).to_owned();
+        let prefix = hex_prefix(&row.content_hash, CONTENT_HASH_DEDUP_PREFIX).to_owned();
         if let Some(&leader_id) = leaders.get(&prefix) {
             dupes.insert(row.id, leader_id);
         } else {
@@ -314,36 +290,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn short_id_truncates_to_length() {
+    fn hex_prefix_truncates_to_length() {
         let id = "019352b7aae1742fb62ecf4e4d5eac20"; // 32-char hex UUID v7
-        assert_eq!(short_id(id, 8), "019352b7");
-        assert_eq!(short_id(id, 12), "019352b7aae1");
-        assert_eq!(short_id(id, 32), id);
+        assert_eq!(hex_prefix(id, 8), "019352b7");
+        assert_eq!(hex_prefix(id, 12), "019352b7aae1");
+        assert_eq!(hex_prefix(id, 32), id);
         // `len` longer than the id returns the full string.
-        assert_eq!(short_id(id, 100), id);
+        assert_eq!(hex_prefix(id, 100), id);
         // Strings shorter than `len` are returned as-is.
-        assert_eq!(short_id("abc", 8), "abc");
-    }
-
-    #[test]
-    fn detect_id_collisions_flags_duplicates_at_8_chars() {
-        // Two distinct ids sharing their first 8 bytes.
-        let colliding = [
-            "019352b7aae1742fb62ecf4e4d5eac20",
-            "019352b7bbf2853ac73fd05f5e6fbd31",
-        ];
-        assert!(detect_id_collisions(colliding.iter().copied(), 8));
-        // At 12 chars the 9th byte differs, so no collision.
-        assert!(!detect_id_collisions(colliding.iter().copied(), 12));
-        // Wholly distinct ids never collide.
-        let distinct = [
-            "019352b7aae1742fb62ecf4e4d5eac20",
-            "01ff11223344556677889900aabbccdd",
-        ];
-        assert!(!detect_id_collisions(distinct.iter().copied(), 8));
-        // Empty iterator is vacuously collision-free.
-        let empty: [&str; 0] = [];
-        assert!(!detect_id_collisions(empty.iter().copied(), 8));
+        assert_eq!(hex_prefix("abc", 8), "abc");
     }
 
     #[test]

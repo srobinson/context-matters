@@ -788,16 +788,16 @@ async fn e2e_store_forget_exclusion() {
         .await
         .unwrap();
 
-    // Browse should not include it by default; rows render only the
-    // short-id prefix, so substring-check the first 8 bytes of the uuid.
-    let sid_prefix = &id[..8];
+    // Browse should not include it by default. Rows render the title
+    // on the list line (no short-id column after ALP-1767 phase 2),
+    // so substring-check the unique title instead.
     let browse = tools::cx_browse(&store, &json!({})).await.unwrap().text;
-    assert!(!browse.contains(sid_prefix));
+    assert!(!browse.contains("Will vanish"));
 
     // Browse with include_superseded should include it.
     let browse2 = tools::cx_browse(&store, &json!({"include_superseded": true}))
         .await
         .unwrap()
         .text;
-    assert!(browse2.contains(sid_prefix));
+    assert!(browse2.contains("Will vanish"));
 }

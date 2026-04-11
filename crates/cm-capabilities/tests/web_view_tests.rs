@@ -137,7 +137,7 @@ fn web_browse_view_hoists_uniform_scope() {
         assert!(
             row.scope.is_none(),
             "row {} leaked scope after hoist: {:?}",
-            row.short_id,
+            row.id,
             row.scope,
         );
     }

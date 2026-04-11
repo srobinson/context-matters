@@ -28,10 +28,9 @@ use cm_core::Entry;
 use uuid::Uuid;
 
 use super::{
-    DrillDownHint, HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED,
-    SNIPPET_MAX_BYTES, collapse_whitespace, compute_dedup_hints, compute_drill_down_hint,
-    detect_id_collisions, estimate_tokens, fmt_with_commas, kind_histogram, relative_age,
-    render_histogram, short_id, smart_snippet, tag_histogram,
+    DrillDownHint, HighlightStyle, RecallRow, SNIPPET_MAX_BYTES, collapse_whitespace,
+    compute_dedup_hints, compute_drill_down_hint, estimate_tokens, fmt_with_commas, kind_histogram,
+    relative_age, render_histogram, smart_snippet, tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 
@@ -80,13 +79,6 @@ pub fn format_recall_view_at(
 /// ensures the short-id, BM25, and query-centred state is computed once.
 struct Layout<'a> {
     rows: &'a [RecallRow],
-    /// Full UUID hex for each row, parallel to `rows`. Owned so the
-    /// downstream `short_id` slicing can borrow these strings for the
-    /// duration of the render.
-    id_strings: Vec<String>,
-    /// Active short-id length (8 by default; 12 when any two entries
-    /// in the current slice collide on their first 8 bytes).
-    id_len: usize,
     /// Whether the score column should be rendered. True only when the
     /// routing branch is `Search` and at least one row carries a raw
     /// BM25 score. Non-Search branches unconditionally suppress the
@@ -138,12 +130,6 @@ impl<'a> Layout<'a> {
         request: &'a RecallRequest,
         now: DateTime<Utc>,
     ) -> Self {
-        let id_strings: Vec<String> = rows.iter().map(|r| r.entry.id.to_string()).collect();
-        let id_len = if detect_id_collisions(id_strings.iter().map(|s| s.as_str()), SHORT_ID_LEN) {
-            SHORT_ID_LEN_EXTENDED
-        } else {
-            SHORT_ID_LEN
-        };
         let is_search = matches!(result.routing, RecallRouting::Search);
         let show_score = is_search && rows.iter().any(|r| r.score.is_some());
         let norm_scores = if show_score {
@@ -168,8 +154,6 @@ impl<'a> Layout<'a> {
         });
         Self {
             rows,
-            id_strings,
-            id_len,
             show_score,
             norm_scores,
             query,
@@ -260,12 +244,12 @@ fn render_entries(out: &mut String, layout: &Layout) {
 
     // Continuation lines align with the start of the title column on
     // line 1:
-    //   "  - <id>  Title"              -> 4 (list indent + "- ") + id_len + 2 (gap)
-    //   "  - <id>  X.XX  Title"        -> 4 + id_len + 2 + 4 (score) + 2 (gap)
+    //   "  - Title"              -> 4 (list indent + "- ")
+    //   "  - X.XX  Title"        -> 4 + 4 (score) + 2 (gap)
     let cont_indent = if layout.show_score {
-        " ".repeat(4 + layout.id_len + 2 + 4 + 2)
+        " ".repeat(4 + 4 + 2)
     } else {
-        " ".repeat(4 + layout.id_len + 2)
+        " ".repeat(4)
     };
 
     // Intra-response dedup: first occurrence of each content-hash
@@ -275,13 +259,12 @@ fn render_entries(out: &mut String, layout: &Layout) {
     let entries: Vec<&Entry> = layout.rows.iter().map(|r| &r.entry).collect();
     let dedup = compute_dedup_hints(&entries);
 
-    for (i, (row, id_str)) in layout.rows.iter().zip(layout.id_strings.iter()).enumerate() {
-        let sid = short_id(id_str, layout.id_len);
+    for (i, row) in layout.rows.iter().enumerate() {
         if layout.show_score {
             let s = layout.norm_scores.get(i).copied().unwrap_or(0.0);
-            let _ = writeln!(out, "  - {sid}  {s:.2}  {}", row.entry.title);
+            let _ = writeln!(out, "  - {s:.2}  {}", row.entry.title);
         } else {
-            let _ = writeln!(out, "  - {sid}  {}", row.entry.title);
+            let _ = writeln!(out, "  - {}", row.entry.title);
         }
 
         let snippet = smart_snippet(
@@ -297,7 +280,7 @@ fn render_entries(out: &mut String, layout: &Layout) {
 
         let dup_of = dedup
             .get(&row.entry.id)
-            .map(|leader_uuid| short_id(&leader_uuid.to_string(), layout.id_len).to_owned());
+            .map(|leader_uuid| leader_uuid.to_string());
         let rels = layout
             .relation_counts
             .get(&row.entry.id)
@@ -374,15 +357,14 @@ fn render_trailers(out: &mut String, result: &RecallResult, layout: &Layout) {
         return;
     }
 
-    // Two-phase hint: list short ids of rows whose body alone exceeds
+    // Two-phase hint: list ids of rows whose body alone exceeds
     // `TOKEN_HINT_THRESHOLD`, encouraging the caller to fetch full
     // content via `cx_get(id=...)` rather than re-render the snippet.
-    let big_ids: Vec<&str> = layout
+    let big_ids: Vec<String> = layout
         .rows
         .iter()
-        .zip(layout.id_strings.iter())
-        .filter(|(row, _)| estimate_tokens(&row.entry.body) > TOKEN_HINT_THRESHOLD)
-        .map(|(_, id)| short_id(id.as_str(), layout.id_len))
+        .filter(|row| estimate_tokens(&row.entry.body) > TOKEN_HINT_THRESHOLD)
+        .map(|row| row.entry.id.to_string())
         .collect();
     if big_ids.is_empty() {
         return;

@@ -369,15 +369,14 @@ fn protocol_store_and_recall_roundtrip() {
         "recall failed: {recall_resp}"
     );
     // `format_recall_view` surfaces `routing: search` in the header
-    // and renders one entry row per hit. Rows carry the 8-char short
-    // id prefix, so the roundtrip check substring-matches the first
-    // eight bytes of the stored uuid against the recall body.
+    // and renders one entry row per hit. After ALP-1767 phase 2 the
+    // row format is `  - <title>` with no short-id column, so the
+    // roundtrip check substring-matches on the unique title.
     let recall_text = recall_resp["result"]["content"][0]["text"]
         .as_str()
         .unwrap();
     assert!(recall_text.contains("routing: search"));
     assert!(recall_text.contains("Protocol test fact"));
-    assert!(recall_text.contains(&stored_id[..8]));
 
     // ALP-1760: recall also emits `structuredContent` shaped as
     // WebRecallView (header + entries + advisories). `cx_store`

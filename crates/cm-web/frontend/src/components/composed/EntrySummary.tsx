@@ -95,32 +95,13 @@ export function EntrySummary({
         )}
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-muted-foreground">
-          <span
-            className="rounded bg-muted px-1 py-0.5 font-medium text-muted-foreground/80"
-            title={row.id}
-          >
-            {row.short_id}
-          </span>
-          {row.kind && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <KindBadge kind={row.kind as EntryKind} className="shrink-0" />
-            </>
-          )}
-          {row.scope && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <span className="truncate">{row.scope}</span>
-            </>
-          )}
+          {row.kind && <KindBadge kind={row.kind as EntryKind} className="shrink-0" />}
+          {row.scope && <span className="truncate">{row.scope}</span>}
           {row.tags.length > 0 && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <span className="truncate">
-                {row.tags.slice(0, 3).join(", ")}
-                {row.tags.length > 3 && ` +${row.tags.length - 3}`}
-              </span>
-            </>
+            <span className="truncate">
+              {row.tags.slice(0, 3).join(", ")}
+              {row.tags.length > 3 && ` +${row.tags.length - 3}`}
+            </span>
           )}
         </div>
       </div>

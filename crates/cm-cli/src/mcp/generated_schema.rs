@@ -86,10 +86,6 @@ serde_json::from_str(r##"{
                   "description": "Normalised relevance score in [0, 1] on Search routing. Omitted on non-search routings.",
                   "type": "number"
                 },
-                "short_id": {
-                  "description": "8 to 12 char hex prefix unique within the response.",
-                  "type": "string"
-                },
                 "snippet": {
                   "description": "Smart snippet of the entry body, with matched query terms bracketed when applicable.",
                   "type": "string"
@@ -105,7 +101,6 @@ serde_json::from_str(r##"{
                 }
               },
               "required": [
-                "short_id",
                 "id",
                 "title",
                 "snippet",
@@ -400,10 +395,6 @@ serde_json::from_str(r##"{
                   "description": "Row scope path. Omitted when the row has no scope.",
                   "type": "string"
                 },
-                "short_id": {
-                  "description": "8 to 12 char hex prefix unique within the response.",
-                  "type": "string"
-                },
                 "snippet": {
                   "description": "Smart snippet of the entry body.",
                   "type": "string"
@@ -419,7 +410,6 @@ serde_json::from_str(r##"{
                 }
               },
               "required": [
-                "short_id",
                 "id",
                 "title",
                 "snippet",
