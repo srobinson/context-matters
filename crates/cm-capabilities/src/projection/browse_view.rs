@@ -11,15 +11,14 @@
 //! once at the entry point and injected into [`format_browse_view_at`]
 //! so snapshot tests can pin the `age:` column.
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use chrono::{DateTime, Utc};
 use cm_core::{BrowseSort, Entry};
 
 use super::{
-    detect_id_collisions, hoist_uniform, kind_histogram, relative_age, scope_histogram, short_id,
-    smart_snippet,
+    collapse_whitespace, detect_id_collisions, hoist_uniform, kind_histogram, relative_age,
+    render_histogram, scope_histogram, short_id, smart_snippet,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
 
@@ -235,48 +234,6 @@ fn sort_as_str(sort: BrowseSort) -> &'static str {
     }
 }
 
-/// Render a `BTreeMap<String, usize>` histogram as a comma-separated
-/// `key=count` string, sorted by count descending with alphabetical
-/// tiebreak. Matches the sort convention exercised by the
-/// `kind_histogram_sorts_by_descending_count_then_alphabetical` test in
-/// `aggregation.rs`.
-fn render_histogram(hist: &BTreeMap<String, usize>) -> String {
-    let mut sorted: Vec<(&String, &usize)> = hist.iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
-    let mut out = String::with_capacity(hist.len() * 16);
-    for (i, (k, v)) in sorted.iter().enumerate() {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        let _ = write!(&mut out, "{k}={v}");
-    }
-    out
-}
-
-/// Collapse every run of ASCII whitespace in `s` to a single space and
-/// trim leading and trailing whitespace. Used to keep smart-snippet
-/// output on a single YAML line even when the source body contains
-/// embedded newlines.
-fn collapse_whitespace(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut in_ws = false;
-    for ch in s.chars() {
-        if ch.is_ascii_whitespace() {
-            if !in_ws && !out.is_empty() {
-                out.push(' ');
-            }
-            in_ws = true;
-        } else {
-            in_ws = false;
-            out.push(ch);
-        }
-    }
-    if out.ends_with(' ') {
-        out.pop();
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,22 +270,5 @@ mod tests {
             reconstruct_query(&req).as_deref(),
             Some("kind=observation tag=session-log include_superseded=true"),
         );
-    }
-
-    #[test]
-    fn render_histogram_sorts_by_count_desc_then_alpha() {
-        let mut hist = BTreeMap::new();
-        hist.insert("fact".to_owned(), 2);
-        hist.insert("decision".to_owned(), 2);
-        hist.insert("lesson".to_owned(), 3);
-        assert_eq!(render_histogram(&hist), "lesson=3, decision=2, fact=2");
-    }
-
-    #[test]
-    fn collapse_whitespace_squashes_newlines_and_runs() {
-        assert_eq!(collapse_whitespace("a\n\nb   c\n"), "a b c");
-        assert_eq!(collapse_whitespace("  leading"), "leading");
-        assert_eq!(collapse_whitespace("trailing\n"), "trailing");
-        assert_eq!(collapse_whitespace(""), "");
     }
 }

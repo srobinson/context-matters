@@ -5,6 +5,7 @@
 //! and row identifiers before rendering.
 
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Write as _;
 use std::hash::Hash;
 
 use chrono::{DateTime, Utc};
@@ -117,6 +118,26 @@ pub fn tag_histogram<T>(items: &[T], tags: impl Fn(&T) -> &[String]) -> BTreeMap
         }
     }
     map
+}
+
+/// Render a `{key: count}` histogram as `key=count` pairs joined by `, `,
+/// sorted by count descending with alphabetical tiebreak.
+///
+/// Shared by the browse and recall formatters for the `kinds:`, `scope:`,
+/// and other histogram header lines. The descending-count convention
+/// surfaces dominant categories first and matches the expectation exercised
+/// by `kind_histogram_sorts_by_descending_count_then_alphabetical`.
+pub fn render_histogram(hist: &BTreeMap<String, usize>) -> String {
+    let mut sorted: Vec<(&String, &usize)> = hist.iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    let mut out = String::with_capacity(hist.len() * 16);
+    for (i, (k, v)) in sorted.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        let _ = write!(&mut out, "{k}={v}");
+    }
+    out
 }
 
 #[cfg(test)]
@@ -236,6 +257,21 @@ mod tests {
         let mut sorted: Vec<(&str, usize)> = hist.iter().map(|(k, v)| (k.as_str(), *v)).collect();
         sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
         assert_eq!(sorted, vec![("fact", 3), ("decision", 2), ("lesson", 1)]);
+    }
+
+    #[test]
+    fn render_histogram_sorts_by_count_desc_then_alpha() {
+        let mut hist = BTreeMap::new();
+        hist.insert("fact".to_owned(), 2);
+        hist.insert("decision".to_owned(), 2);
+        hist.insert("lesson".to_owned(), 3);
+        assert_eq!(render_histogram(&hist), "lesson=3, decision=2, fact=2");
+    }
+
+    #[test]
+    fn render_histogram_empty_is_empty_string() {
+        let hist: BTreeMap<String, usize> = BTreeMap::new();
+        assert_eq!(render_histogram(&hist), "");
     }
 
     #[test]

@@ -1,0 +1,12 @@
+---
+query: extremely obscure search phrase
+routing: search  # FTS5 ranking
+candidates: 0 -> 0 shown
+scope_chain: [global/project:helioy, global]
+tokens: 0 of 8,000 budget
+
+entries:
+  []
+
+# routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth
+# no matches - widen the scope, drop filters, or try OR between synonyms

@@ -171,6 +171,32 @@ pub fn estimate_tokens(text: &str) -> u32 {
     (text.len() as u32).div_ceil(4)
 }
 
+/// Collapse every run of ASCII whitespace in `s` to a single space and trim
+/// leading and trailing whitespace.
+///
+/// Used by the YAML-text formatters to keep smart-snippet output on a single
+/// line even when the source body contains embedded newlines. Both the
+/// `BrowseResult` and `RecallResult` formatters depend on this invariant.
+pub fn collapse_whitespace(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_ws = false;
+    for ch in s.chars() {
+        if ch.is_ascii_whitespace() {
+            if !in_ws && !out.is_empty() {
+                out.push(' ');
+            }
+            in_ws = true;
+        } else {
+            in_ws = false;
+            out.push(ch);
+        }
+    }
+    if out.ends_with(' ') {
+        out.pop();
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,6 +317,14 @@ mod tests {
         // Result must itself be valid UTF-8 (String guarantees this).
         assert!(result.is_char_boundary(0));
         assert!(result.is_char_boundary(result.len()));
+    }
+
+    #[test]
+    fn collapse_whitespace_squashes_newlines_and_runs() {
+        assert_eq!(collapse_whitespace("a\n\nb   c\n"), "a b c");
+        assert_eq!(collapse_whitespace("  leading"), "leading");
+        assert_eq!(collapse_whitespace("trailing\n"), "trailing");
+        assert_eq!(collapse_whitespace(""), "");
     }
 
     #[test]
