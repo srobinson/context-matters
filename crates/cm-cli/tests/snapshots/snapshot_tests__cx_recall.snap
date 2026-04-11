@@ -15,7 +15,7 @@ expression: resp
         "test-tag"
       ],
       "title": "Test fact",
-      "token_estimate": 108,
+      "token_estimate": 12,
       "updated_at": "[redacted]"
     }
   ],

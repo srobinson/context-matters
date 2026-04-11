@@ -128,10 +128,12 @@ pub fn project_recall_entry(entry: &Entry) -> RecallEntryView {
         updated_at: format_time(&entry.updated_at),
         tags: extract_tags(&entry.meta),
         confidence: extract_confidence(&entry.meta),
-        token_estimate: {
-            let full = serde_json::to_string(&project_full_entry(entry)).unwrap_or_default();
-            estimate_tokens(&full)
-        },
+        // Estimate directly from the body byte length. Previously this field
+        // serialised `project_full_entry(entry)` to JSON just to feed it to
+        // `estimate_tokens`, which in turn divided bytes by 4 — two full
+        // copies (entry → FullEntryView → String) per row for a result the
+        // body alone answers to within a few percent.
+        token_estimate: estimate_tokens(&entry.body),
     }
 }
 
@@ -165,5 +167,72 @@ pub fn project_full_entry(entry: &Entry) -> FullEntryView {
         created_at: format_time(&entry.created_at),
         updated_at: format_time(&entry.updated_at),
         superseded_by: entry.superseded_by.map(|id| format_uuid(&id)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cm_core::{EntryKind, ScopePath};
+
+    fn entry_with_body(body: &str) -> Entry {
+        Entry {
+            id: uuid::Uuid::now_v7(),
+            scope_path: ScopePath::global(),
+            kind: EntryKind::Fact,
+            title: "t".to_owned(),
+            body: body.to_owned(),
+            content_hash: "0".repeat(64),
+            meta: None,
+            created_by: "test".to_owned(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            superseded_by: None,
+        }
+    }
+
+    /// `project_recall_entry.token_estimate` must track the raw body byte
+    /// length (chars / 4) — nothing else. Previously it round-tripped
+    /// `project_full_entry(entry)` through `serde_json::to_string`, which
+    /// inflated the estimate by the serialized view overhead (id, hash,
+    /// timestamps, field names) and re-allocated the body twice per row.
+    ///
+    /// The check is structural: for a 1000-byte body, the estimate must
+    /// equal `estimate_tokens(body)`, not `estimate_tokens(serialized_view)`.
+    #[test]
+    fn recall_token_estimate_tracks_only_body_bytes() {
+        let body = "a".repeat(1000);
+        let entry = entry_with_body(&body);
+
+        let view = project_recall_entry(&entry);
+
+        // estimate_tokens is body.len().div_ceil(4) == 250
+        assert_eq!(view.token_estimate, estimate_tokens(&body));
+        assert_eq!(view.token_estimate, 250);
+
+        // Sanity: serialising the full view would yield far more bytes than
+        // the body alone, so if the old formula were still in place the
+        // estimate would be noticeably larger.
+        let full_view_bytes = serde_json::to_string(&project_full_entry(&entry))
+            .unwrap()
+            .len();
+        assert!(
+            full_view_bytes > body.len(),
+            "full view serialisation should exceed raw body length"
+        );
+        assert!(
+            view.token_estimate < estimate_tokens(&"a".repeat(full_view_bytes)),
+            "token estimate must not reflect the serialised view size"
+        );
+    }
+
+    #[test]
+    fn recall_token_estimate_scales_linearly_with_body() {
+        let small = project_recall_entry(&entry_with_body(&"x".repeat(400)));
+        let large = project_recall_entry(&entry_with_body(&"x".repeat(4000)));
+
+        // 10x body → 10x token estimate (within rounding).
+        assert_eq!(small.token_estimate, 100);
+        assert_eq!(large.token_estimate, 1000);
     }
 }

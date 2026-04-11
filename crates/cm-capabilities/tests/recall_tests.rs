@@ -857,6 +857,103 @@ async fn result_includes_trace_metadata() {
     assert_eq!(result.routing, RecallRouting::Search);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn tag_scope_walk_trace_metadata_reports_max_limit() {
+    use cm_capabilities::constants::MAX_LIMIT;
+
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry_with_tags(
+        &store,
+        "Tagged A",
+        "Body A.",
+        EntryKind::Fact,
+        vec!["infra".to_owned()],
+    )
+    .await;
+    seed_entry_with_tags(
+        &store,
+        "Tagged B",
+        "Body B.",
+        EntryKind::Fact,
+        vec!["infra".to_owned()],
+    )
+    .await;
+    seed_entry(&store, "Plain", "No tags.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            tags: vec!["infra".to_owned()],
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::TagScopeWalk);
+    // TagScopeWalk paginates ancestor scopes a full page at a time, so the
+    // "SQL LIMIT actually used" is MAX_LIMIT, not the compensated limit the
+    // other routing branches report.
+    assert_eq!(result.fetch_limit_used, MAX_LIMIT);
+    assert!(result.candidates_before_filter >= 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn scope_resolve_trace_metadata_populated() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Global fact", "Body.", EntryKind::Fact).await;
+    seed_entry_with_scope(
+        &store,
+        "Project fact",
+        "Body.",
+        EntryKind::Fact,
+        "global/project:helioy",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
+    // No post-filter active, so the reported fetch limit is the request
+    // limit itself.
+    assert_eq!(result.fetch_limit_used, 20);
+    assert!(result.candidates_before_filter >= 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_fallback_trace_metadata_populated() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Fact one", "Body one.", EntryKind::Fact).await;
+    seed_entry(&store, "Fact two", "Body two.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.fetch_limit_used, 20);
+    assert!(result.candidates_before_filter >= 2);
+}
+
 // ── BrowseFallback multi-kind filtering ─────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]

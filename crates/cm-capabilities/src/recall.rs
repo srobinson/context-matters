@@ -2,7 +2,7 @@ use cm_core::{CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, 
 use serde::{Deserialize, Serialize};
 
 use crate::constants::MAX_LIMIT;
-use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens, project_recall_entry};
+use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -105,14 +105,19 @@ pub async fn recall(
     // Apply limit after post-filtering and sorting
     let rows: Vec<RecallRow> = rows.into_iter().take(request.limit as usize).collect();
 
-    // Token budget tracking
+    // Token budget tracking.
+    //
+    // The estimate is derived directly from the body byte length (chars/4),
+    // matching `project_recall_entry`'s `token_estimate`. Previously this
+    // loop projected every row to a `RecallEntryView`, serialised the view
+    // to a JSON string, and fed the string back to `estimate_tokens` — two
+    // redundant string copies per row for an estimate the raw body already
+    // provides.
     let mut budget_rows = Vec::with_capacity(rows.len());
     let mut total_tokens: u32 = 0;
 
     for row in &rows {
-        let view = project_recall_entry(&row.entry);
-        let entry_str = serde_json::to_string(&view).unwrap_or_default();
-        let entry_tokens = estimate_tokens(&entry_str);
+        let entry_tokens = estimate_tokens(&row.entry.body);
 
         if let Some(budget) = request.max_tokens
             && total_tokens + entry_tokens > budget
