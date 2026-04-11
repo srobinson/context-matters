@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/srobinson/context-matters/compare/v0.2.0...v0.2.1) (2026-04-11)
+
+
+### Features
+
+* improved retrieval (ALP-1745) ([bb72143](https://github.com/srobinson/context-matters/commit/bb72143a71f8953fcc763204c406c25c96fd6556))
+
 ## [0.2.0](https://github.com/srobinson/context-matters/compare/v0.1.12...v0.2.0) (2026-04-11)
 
 
