@@ -2,6 +2,13 @@
 //! and query-term matching. No I/O, no allocations except where explicitly
 //! noted.
 
+/// Maximum snippet width (bytes) shown per row across every view
+/// formatter (`browse`, `recall`, `web_view`). Sized to fit a
+/// prose-heavy line within one wide terminal row without wrap, and
+/// small enough that the bracket-insertion pass in [`smart_snippet`]
+/// has headroom before the truncate fallback kicks in.
+pub const SNIPPET_MAX_BYTES: usize = 200;
+
 /// Controls whether [`smart_snippet`] wraps query-term matches in visual
 /// markers after the window is computed.
 ///

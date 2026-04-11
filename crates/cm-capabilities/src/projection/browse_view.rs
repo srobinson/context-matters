@@ -17,20 +17,11 @@ use chrono::{DateTime, Utc};
 use cm_core::{BrowseSort, Entry};
 
 use super::{
-    HighlightStyle, collapse_whitespace, detect_id_collisions, hoist_uniform, kind_histogram,
-    relative_age, render_histogram, scope_histogram, short_id, smart_snippet,
+    HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES, collapse_whitespace,
+    detect_id_collisions, hoist_uniform, kind_histogram, relative_age, render_histogram,
+    scope_histogram, short_id, smart_snippet,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
-
-/// Maximum snippet width (bytes) shown per row in the browse view. Sized
-/// to fit a prose-heavy line within one wide terminal row without wrap.
-const SNIPPET_MAX_BYTES: usize = 200;
-
-/// Default short-id length. Auto-extends to [`SHORT_ID_LEN_EXTENDED`] when
-/// any two entries in the current result set share their first-8-byte
-/// prefix. Matches the convention shared with the recall formatter.
-const SHORT_ID_LEN: usize = 8;
-const SHORT_ID_LEN_EXTENDED: usize = 12;
 
 /// Render a [`BrowseResult`] as YAML-annotated text for the `cx_browse`
 /// MCP response body. See the module docstring for the target shape.
@@ -221,7 +212,12 @@ fn reconstruct_query(req: &BrowseRequest) -> Option<String> {
 /// line. `Debug`/`serde` would give `Recent`/`recent`; we want the SQL
 /// shape the sort resolves to, matching how `cx_recall` surfaces the
 /// routing branch in its own header.
-fn sort_as_str(sort: BrowseSort) -> &'static str {
+///
+/// Crate-visible so [`crate::projection::web_view`] can reuse the exact
+/// same rendering for `WebBrowseHeader::sort_used` — the web view and the
+/// YAML view must agree on the sort string, otherwise clients that
+/// read both will see a mental-model drift.
+pub(crate) fn sort_as_str(sort: BrowseSort) -> &'static str {
     match sort {
         BrowseSort::Recent => "updated_at desc",
         BrowseSort::Oldest => "updated_at asc",

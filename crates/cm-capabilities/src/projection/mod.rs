@@ -9,6 +9,8 @@
 //! - [`get_view`] — YAML-text formatter for `cx_get` MCP responses.
 //! - [`stats_view`] — YAML-text formatter for `cx_stats` MCP responses.
 //! - [`write_ack`] — YAML-text formatters for `cx_store`/`update`/`deposit`/`forget` acks.
+//! - [`web_view`] — serialisable projection views for the cm-web HTTP API,
+//!   mirroring the YAML formatters as ts-rs-derivable structs.
 
 mod aggregation;
 mod browse_view;
@@ -16,6 +18,7 @@ mod get_view;
 mod recall_view;
 mod stats_view;
 mod text;
+mod web_view;
 mod write_ack;
 
 pub use aggregation::*;
@@ -24,6 +27,7 @@ pub use get_view::*;
 pub use recall_view::*;
 pub use stats_view::*;
 pub use text::*;
+pub use web_view::*;
 pub use write_ack::*;
 
 use chrono::{DateTime, Utc};

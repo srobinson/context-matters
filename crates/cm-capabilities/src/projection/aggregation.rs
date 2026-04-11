@@ -10,6 +10,16 @@ use std::hash::Hash;
 
 use chrono::{DateTime, Utc};
 
+/// Default short-id length for entry-row rendering. Used by every view
+/// formatter (`browse`, `recall`, `web_view`) so a result set that does
+/// not collide on its first 8 bytes renders an 8-char short id.
+pub const SHORT_ID_LEN: usize = 8;
+
+/// Extended short-id length used when any two entries in the current
+/// result set share their first 8 bytes. Keeps cross-view parity: every
+/// formatter widens to the same 12 bytes on a collision.
+pub const SHORT_ID_LEN_EXTENDED: usize = 12;
+
 /// First `len` bytes of `id`, safe for multi-byte UTF-8.
 ///
 /// Intended for UUID v7 hex (32 ASCII chars without hyphens), where byte

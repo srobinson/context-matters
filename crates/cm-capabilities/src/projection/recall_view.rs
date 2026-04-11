@@ -26,21 +26,11 @@ use chrono::{DateTime, Utc};
 use cm_core::Entry;
 
 use super::{
-    HighlightStyle, RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens,
-    fmt_with_commas, kind_histogram, relative_age, render_histogram, short_id, smart_snippet,
-    tag_histogram,
+    HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
+    collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas, kind_histogram,
+    relative_age, render_histogram, short_id, smart_snippet, tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
-
-/// Maximum snippet width (bytes) shown per row in the recall view. Sized
-/// to fit one wide terminal row without wrapping.
-const SNIPPET_MAX_BYTES: usize = 200;
-
-/// Default short-id length. Auto-extends to [`SHORT_ID_LEN_EXTENDED`] when
-/// any two entries in the current slice share their first-8-byte prefix.
-/// Matches the convention shared with the browse formatter.
-const SHORT_ID_LEN: usize = 8;
-const SHORT_ID_LEN_EXTENDED: usize = 12;
 
 /// Per-row body size above which the formatter emits a `cx_get(...)` hint
 /// suggesting the caller fetch full content separately. Tuned to slightly
@@ -382,7 +372,12 @@ pub(crate) fn normalise_bm25(scores: &[f32]) -> Vec<f32> {
 /// The tag matches the serde `rename_all = "snake_case"` rendering of the
 /// enum so callers searching by routing name find the same string in
 /// the text envelope and the structured log channel.
-fn routing_explanation(routing: &RecallRouting) -> (&'static str, &'static str) {
+///
+/// Crate-visible so [`crate::projection::web_view`] can pick the same
+/// tag for `WebRecallHeader::routing` without re-matching every enum
+/// variant. Only the `.0` tag is needed there; the explanation text is
+/// YAML-specific and stays in the trailer.
+pub(crate) fn routing_explanation(routing: &RecallRouting) -> (&'static str, &'static str) {
     match routing {
         RecallRouting::Search => ("search", "FTS5 ranking"),
         RecallRouting::TagScopeWalk => ("tag_scope_walk", "tag + ancestor walk"),
@@ -419,7 +414,11 @@ fn routing_advice(routing: &RecallRouting) -> (&'static str, &'static str) {
 /// the snake_case name for the three winning tiers and `None` for
 /// [`SearchTier::None`], so the header stays clean when all three
 /// tiers were exhausted (the empty-result trailer covers that case).
-fn search_tier_header_tag(tier: SearchTier) -> Option<&'static str> {
+///
+/// Crate-visible so [`crate::projection::web_view`] can project the
+/// same tag into `WebRecallHeader::tier`. Shared so the YAML and web
+/// views cannot drift on the stringified tier name.
+pub(crate) fn search_tier_header_tag(tier: SearchTier) -> Option<&'static str> {
     match tier {
         SearchTier::Exact => Some("exact"),
         SearchTier::Prefix => Some("prefix"),
