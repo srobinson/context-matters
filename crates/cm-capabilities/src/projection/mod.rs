@@ -4,11 +4,14 @@
 //! Sub-modules:
 //! - [`text`] — snippet generation, frontmatter/heading stripping, query matching.
 //! - [`aggregation`] — short ids, relative age, histograms, uniform-key hoisting.
+//! - [`browse_view`] — YAML-text formatter for `BrowseResult` MCP responses.
 
 mod aggregation;
+mod browse_view;
 mod text;
 
 pub use aggregation::*;
+pub use browse_view::*;
 pub use text::*;
 
 use chrono::{DateTime, Utc};
