@@ -1,6 +1,6 @@
 ---
 source: crates/cm-cli/tests/snapshot_tests.rs
-assertion_line: 252
+assertion_line: 68
 expression: resp
 ---
 {

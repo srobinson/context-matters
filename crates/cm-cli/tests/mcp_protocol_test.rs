@@ -3,9 +3,12 @@
 //! Spawn the `cm serve` binary, pipe JSON-RPC messages to stdin, assert on stdout.
 //! Each test uses an isolated tempdir via `CM_DATA_DIR` to prevent cross-test interference.
 
+mod common;
+
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
+use common::extract_stored_id;
 use serde_json::{Value, json};
 
 /// Path to the compiled `cm` binary under the target directory.
@@ -159,10 +162,6 @@ fn protocol_tools_list() {
 
 // ── Test 3: tools/call cx_stats ────────────────────────────────
 
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-// cx_stats now returns YAML text; rewrite assertions as substring
-// checks when sub 13 lands the protocol-test migration.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
 #[test]
 fn protocol_tools_call_cx_stats() {
     let dir = tempfile::tempdir().unwrap();
@@ -198,12 +197,14 @@ fn protocol_tools_call_cx_stats() {
     assert_eq!(content.len(), 1);
     assert_eq!(content[0]["type"], "text");
 
-    // Parse the text content as JSON to verify stats structure
+    // `format_stats_view` emits counters as top-level YAML keys
+    // (`active:`, `scopes:`, `relations:`). An empty store shows zeros
+    // on every line. The `---` prefix is the YAML document marker.
     let stats_text = content[0]["text"].as_str().unwrap();
-    let stats: Value = serde_json::from_str(stats_text).unwrap();
-    assert_eq!(stats["active_entries"], 0);
-    assert_eq!(stats["scopes"], 0);
-    assert_eq!(stats["relations"], 0);
+    assert!(stats_text.starts_with("---\n"));
+    assert!(stats_text.contains("active: 0"));
+    assert!(stats_text.contains("scopes: 0"));
+    assert!(stats_text.contains("relations: 0"));
 
     shutdown(child, stdin);
 }
@@ -252,10 +253,6 @@ fn protocol_unknown_method() {
 
 // ── Test 5: Store and recall roundtrip ─────────────────────────
 
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-// cx_recall half of the roundtrip now returns YAML text; sub 13
-// rewrites the recall assertions as substring checks.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
 #[test]
 fn protocol_store_and_recall_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
@@ -288,11 +285,13 @@ fn protocol_store_and_recall_roundtrip() {
     );
 
     assert!(store_resp["error"].is_null(), "store failed: {store_resp}");
+    // `format_store_ack` returns a YAML envelope; `extract_stored_id`
+    // scrapes the `stored: <uuid>` line so the recall half can match
+    // the short-id prefix back against the rendered row list.
     let store_text = store_resp["result"]["content"][0]["text"].as_str().unwrap();
-    let store_result: Value = serde_json::from_str(store_text).unwrap();
-    assert_eq!(store_result["message"], "Entry stored.");
-    let stored_id = store_result["id"].as_str().unwrap();
-    assert!(!stored_id.is_empty());
+    let stored_id = extract_stored_id(store_text);
+    assert!(store_text.contains("scope: global"));
+    assert!(store_text.contains("kind: fact"));
 
     // Recall the entry
     let recall_resp = send_request(
@@ -315,14 +314,16 @@ fn protocol_store_and_recall_roundtrip() {
         recall_resp["error"].is_null(),
         "recall failed: {recall_resp}"
     );
+    // `format_recall_view` surfaces `routing: search` in the header
+    // and renders one entry row per hit. Rows carry the 8-char short
+    // id prefix, so the roundtrip check substring-matches the first
+    // eight bytes of the stored uuid against the recall body.
     let recall_text = recall_resp["result"]["content"][0]["text"]
         .as_str()
         .unwrap();
-    let recall_result: Value = serde_json::from_str(recall_text).unwrap();
-    let results = recall_result["results"].as_array().unwrap();
-    assert_eq!(results.len(), 1, "expected 1 recalled entry");
-    assert_eq!(results[0]["title"], "Protocol test fact");
-    assert_eq!(results[0]["id"], stored_id);
+    assert!(recall_text.contains("routing: search"));
+    assert!(recall_text.contains("Protocol test fact"));
+    assert!(recall_text.contains(&stored_id[..8]));
 
     shutdown(child, stdin);
 }

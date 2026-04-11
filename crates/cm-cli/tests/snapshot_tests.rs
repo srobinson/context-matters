@@ -1,36 +1,31 @@
-//! Insta snapshot tests for all 9 `cx_*` MCP tool handlers.
+//! Insta snapshot test for `cx_export`.
 //!
-//! Each test creates an isolated temp-file SQLite database, calls a tool handler,
-//! and snapshots the JSON response with dynamic fields redacted. This catches
-//! unintentional changes to the response format that would break MCP clients.
+//! Eight of the nine handler-level snapshots landed in the initial
+//! MCP-tools test suite were retired as part of the YAML-payload
+//! migration (ALP-1725). Their coverage now lives at two tighter
+//! layers:
+//!
+//! - Formatter-level goldens in `cm-capabilities/tests/*_format_tests.rs`
+//!   (include_str! + assert_eq!) pin the exact rendered shape for
+//!   each `format_*_view` / `format_*_ack`.
+//! - Handler-level YAML substring assertions in `tools_integration.rs`
+//!   exercise the full handler → formatter → `yaml_response` →
+//!   `cap_response` pipeline with realistic fixtures.
+//!
+//! The sole survivor is `cx_export`, which stays on `json_response`
+//! (JSON fidelity > wire compactness for backup/restore), so an
+//! insta snapshot on its JSON blob still earns its keep.
+//!
+//! See [`crates/cm-cli/tests/common/mod.rs`] for the shared fixture
+//! and id-extraction helpers.
 
 mod common;
 
 use cm_cli::mcp::tools;
-use cm_store::CmStore;
 use insta::{assert_json_snapshot, with_settings};
 use serde_json::{Value, json};
 
-use common::{create_global, extract_stored_id, test_store};
-
-/// Store a test entry and return its ID. The `cx_store` handler now returns
-/// a YAML text envelope, so the id is scraped from the `stored:` line via
-/// [`extract_stored_id`] instead of being parsed out of a JSON blob.
-async fn store_entry(store: &CmStore) -> String {
-    let result = tools::cx_store(
-        store,
-        &json!({
-            "title": "Test fact",
-            "body": "This is a test fact body for snapshot testing.",
-            "kind": "fact",
-            "tags": ["test-tag"],
-            "confidence": "high"
-        }),
-    )
-    .await
-    .unwrap();
-    extract_stored_id(&result)
-}
+use common::{create_global, test_store};
 
 /// Redaction settings for dynamic fields that change every run.
 macro_rules! snapshot_settings {
@@ -44,204 +39,23 @@ macro_rules! snapshot_settings {
     };
 }
 
-// ── cx_store ───────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-// cx_store now returns YAML text, which is incompatible with
-// `assert_json_snapshot!`. Sub 13 migrates this test to either
-// `assert_snapshot!` (raw text) or deletes it in favour of the
-// formatter-side snapshots already living in cm-capabilities.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
 #[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_store() {
+async fn snapshot_cx_export() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
-    let result = tools::cx_store(
+    tools::cx_store(
         &store,
         &json!({
-            "title": "Architecture decision",
-            "body": "Use sqlx for database access.",
-            "kind": "decision",
-            "tags": ["architecture", "database"],
+            "title": "Test fact",
+            "body": "This is a test fact body for snapshot testing.",
+            "kind": "fact",
+            "tags": ["test-tag"],
             "confidence": "high"
         }),
     )
     .await
     .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_store", resp);
-    }
-}
-
-// ── cx_recall ──────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-// cx_recall now returns YAML text, which is incompatible with
-// `assert_json_snapshot!`. Sub 13 migrates this test to either
-// `assert_snapshot!` (raw text) or deletes it in favour of the
-// formatter-side snapshots already living in cm-capabilities.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_recall() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
-
-    let result = tools::cx_recall(
-        &store,
-        &json!({
-            "query": "test fact",
-            "limit": 5
-        }),
-    )
-    .await
-    .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_recall", resp);
-    }
-}
-
-// ── cx_get ─────────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_get() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    let id = store_entry(&store).await;
-
-    let result = tools::cx_get(&store, &json!({"ids": [id]})).await.unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_get", resp);
-    }
-}
-
-// ── cx_browse ──────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_browse() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
-
-    let result = tools::cx_browse(&store, &json!({"limit": 10}))
-        .await
-        .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_browse", resp);
-    }
-}
-
-// ── cx_update ──────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_update() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    let id = store_entry(&store).await;
-
-    let result = tools::cx_update(
-        &store,
-        &json!({
-            "id": id,
-            "title": "Updated title",
-            "body": "Updated body content."
-        }),
-    )
-    .await
-    .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_update", resp);
-    }
-}
-
-// ── cx_forget ──────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_forget() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    let id = store_entry(&store).await;
-
-    let result = tools::cx_forget(&store, &json!({"ids": [id]}))
-        .await
-        .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_forget", resp);
-    }
-}
-
-// ── cx_deposit ─────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_deposit() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-
-    let result = tools::cx_deposit(
-        &store,
-        &json!({
-            "exchanges": [
-                {
-                    "user": "What is context-matters?",
-                    "assistant": "A structured context store for AI agents."
-                }
-            ],
-            "summary": "Brief intro to context-matters."
-        }),
-    )
-    .await
-    .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_deposit", resp);
-    }
-}
-
-// ── cx_export ──────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_export() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
 
     let result = tools::cx_export(&store, &json!({"format": "json"}))
         .await
@@ -254,28 +68,6 @@ async fn snapshot_cx_export() {
         assert_json_snapshot!("cx_export", resp);
     }
 }
-
-// ── cx_stats ───────────────────────────────────────────────────
-
-// TODO(ALP-1738, sub 13): rebaseline for YAML-text envelope.
-#[ignore = "rebaseline in ALP-1738 sub 13"]
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_stats() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
-
-    let result = tools::cx_stats(&store, &json!({})).await.unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_stats", resp);
-    }
-}
-
-// ── Redaction helpers ──────────────────────────────────────────
 
 /// Recursively redact dynamic fields that change every run.
 fn redact_dynamic_fields(value: &mut Value) {
@@ -298,16 +90,12 @@ fn redact_dynamic_fields(value: &mut Value) {
     }
 }
 
-/// Keys whose values change every run and must be redacted.
+/// Keys whose values change every run and must be redacted. Scoped
+/// to the fields `cx_export` emits; the broader set that previously
+/// covered the retired handler snapshots is no longer needed.
 fn is_redacted_key(key: &str) -> bool {
     matches!(
         key,
-        "id" | "created_at"
-            | "updated_at"
-            | "content_hash"
-            | "db_size_bytes"
-            | "exported_at"
-            | "entry_ids"
-            | "summary_id"
+        "id" | "created_at" | "updated_at" | "content_hash" | "exported_at"
     )
 }
