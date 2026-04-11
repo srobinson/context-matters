@@ -72,7 +72,7 @@ pub const BROWSE_CURSOR_HELP: &str = "Pagination cursor from previous response";
 #[rustfmt::skip]
 pub const GET_ABOUT: &str = "Fetch full entry content by ID.\n\nReturns complete entries including body. Use after cx_recall or cx_browse for full content.";
 #[rustfmt::skip]
-pub const GET_IDS_HELP: &str = "Entry IDs to retrieve (full UUID or ≥8-char prefix, space-separated, max 100)";
+pub const GET_IDS_HELP: &str = "Entry IDs to retrieve (full hyphenated UUIDv7, space-separated, max 100)";
 
 #[rustfmt::skip]
 pub const UPDATE_ABOUT: &str = "Partially update an entry.\n\nOnly provided fields are modified. Changing body recomputes the content hash.";
