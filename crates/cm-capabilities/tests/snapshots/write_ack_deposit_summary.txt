@@ -1,0 +1,5 @@
+---
+deposited: 5 exchanges
+summary: 019d8b01-0000-7000-8abc-000000000001
+scope: global
+# cx_get(id="019d8b01-0000-7000-8abc-000000000001") to read summary

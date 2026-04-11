@@ -24,6 +24,10 @@ pub struct BrowseResult {
     pub total: u64,
     pub next_cursor: Option<String>,
     pub has_more: bool,
+    /// Sort order actually applied to the query. Always populated (defaults
+    /// to `BrowseSort::Recent` when the caller omits `sort`). The browse
+    /// formatter surfaces this in the result header, e.g. `sort: recent`.
+    pub sort_used: BrowseSort,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -37,6 +41,11 @@ pub async fn browse(
     store: &impl ContextStore,
     request: BrowseRequest,
 ) -> Result<BrowseResult, CmError> {
+    // Capture the resolved sort before moving `request.sort` into the filter,
+    // so the formatter can surface "sort: <variant>" in the browse header
+    // without having to re-derive it from request-side state.
+    let sort_used = request.sort;
+
     let filter = EntryFilter {
         scope_path: request.scope_path,
         kind: request.kind,
@@ -58,5 +67,6 @@ pub async fn browse(
         total: result.total,
         next_cursor: result.next_cursor,
         has_more,
+        sort_used,
     })
 }

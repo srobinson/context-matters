@@ -4,3 +4,5 @@
 pub mod cli;
 pub mod mcp;
 pub(crate) mod shared;
+
+pub use shared::yaml_response;

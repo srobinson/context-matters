@@ -1,0 +1,18 @@
+---
+routing: browse_fallback  # recency fallback
+candidates: 5 -> 2 shown
+scope_chain: [global]
+scope_hits: global=2
+kinds: fact=2
+tags: bug=1, ci=1, fts=1, rustc=1
+tokens: 220
+
+entries:
+  - 019d8a01  Recent observation: build latency regressed after rustc bump
+              Nightly CI went from 38s cold to 52s cold after the rustc bump. Rolled back; watching for a stable release that restores parity.
+              # scope: global  kind: fact  tags: ci, rustc  age: 2h
+  - 019d7f3e  FTS MATCH with single apostrophe escapes are still broken
+              Queries like `it's` trigger fts5: syntax error. Quoting with double-quotes around the term is the workaround until the tokenizer fix lands.
+              # scope: global  kind: fact  tags: fts, bug  age: 1d
+
+# routing: browse_fallback - no FTS match in scope; falling back to most-recent entries anywhere

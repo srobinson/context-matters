@@ -1,0 +1,22 @@
+---
+requested: 3
+found: 2
+missing: [019d8a01-0000-7000-8000-00000000ffff]
+
+entries:
+  - id: 019d8a01-0000-7000-8000-000000000001
+    title: Found entry one
+    scope: global
+    kind: fact
+    age: 2h
+    body: |
+      Body for found entry one.
+  - id: 019d8a01-0000-7000-8000-000000000002
+    title: Found entry two
+    scope: global
+    kind: fact
+    age: 5h
+    body: |
+      Body for found entry two.
+
+# 1 missing - ids: 019d8a01-0000-7000-8000-00000000ffff

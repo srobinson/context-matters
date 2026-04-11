@@ -1,0 +1,17 @@
+---
+requested: 1
+found: 1
+
+entries:
+  - id: 019d8a01-0000-7000-8000-000000000001
+    title: Multiline body with special chars
+    scope: global
+    kind: observation
+    tags: [edge-case, yaml]
+    age: 1d
+    body: |
+      Line one with `backticks` and : colons.
+      Line two with --- yaml separator.
+      Line three with unicode: 日本語 and emoji 🎯.
+
+      Line five after blank line.

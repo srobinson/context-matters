@@ -21,12 +21,67 @@ pub(crate) use cm_capabilities::projection::snippet;
 pub(crate) use cm_capabilities::scope::ensure_scope_chain;
 pub(crate) use cm_capabilities::validation::check_input_size;
 
-pub(crate) use crate::shared::{json_response, parse_params};
+pub(crate) use crate::shared::{json_response, parse_params, yaml_response};
 
 // ── Constants ─────────────────────────────────────────────────────
 
 /// MCP protocol version.
 const PROTOCOL_VERSION: &str = "2024-11-05";
+
+/// Byte cap applied to every MCP tool response except `cx_export`.
+///
+/// Large payloads get offloaded to disk by Claude Code, which defeats the
+/// purpose of structured tool output. 16 KB is the deliberate ceiling for
+/// `cx_*` rows: denser than fmm's 10 KB source-snippet cap because a single
+/// recall / browse row carries more metadata per byte than a code excerpt.
+pub const MAX_MCP_RESPONSE_BYTES: usize = 16 * 1024;
+
+/// Trailing advisory appended to any capped response.
+const TRUNCATE_ADVISORY: &str = "\n[Truncated: response exceeded 16 KB cap. \
+Use cx_get(id=...) for full bodies or narrow your query.]";
+
+// ── Response Helpers ──────────────────────────────────────────────
+
+/// Clip `text` to `max_bytes`, preferring a newline boundary.
+///
+/// Algorithm:
+/// * If `text.len() <= max_bytes`, return unchanged.
+/// * Otherwise walk back from `max_bytes` to the nearest UTF-8 char boundary.
+/// * Cut just after the last `\n` at or before that boundary so the body ends
+///   at a clean line break. If no newline exists in range, hard-cap at the
+///   char boundary.
+/// * Append [`TRUNCATE_ADVISORY`] so the caller (LLM) recognises truncation.
+pub fn cap_response(text: String, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    // Walk back from max_bytes to a valid UTF-8 boundary so slicing cannot panic.
+    let mut safe_end = max_bytes;
+    while safe_end > 0 && !text.is_char_boundary(safe_end) {
+        safe_end -= 1;
+    }
+    // Prefer cutting just after the last newline before safe_end; otherwise
+    // hard-cap at safe_end.
+    let cut = match text[..safe_end].rfind('\n') {
+        Some(nl) => nl + 1,
+        None => safe_end,
+    };
+    let mut result = text[..cut].to_owned();
+    result.push_str(TRUNCATE_ADVISORY);
+    result
+}
+
+/// Apply the MCP response cap for a tool, unless the tool is opted out.
+///
+/// `cx_export` bypasses the cap because it is the fidelity backup path and
+/// must emit complete JSON. Every other `cx_*` tool response is clipped to
+/// [`MAX_MCP_RESPONSE_BYTES`] via [`cap_response`].
+pub fn apply_cap_for_tool(tool_name: &str, text: String) -> String {
+    if tool_name == "cx_export" {
+        return text;
+    }
+    cap_response(text, MAX_MCP_RESPONSE_BYTES)
+}
 
 // ── Server Instructions ───────────────────────────────────────────
 
@@ -253,7 +308,7 @@ impl<S: ContextStore> McpServer<S> {
 
         match result {
             Ok(value) => Ok(json!({
-                "content": [{"type": "text", "text": value}]
+                "content": [{"type": "text", "text": apply_cap_for_tool(tool_name, value)}]
             })),
             // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
             // any tool returns isError:true (Promise.all fail-fast, tracked at

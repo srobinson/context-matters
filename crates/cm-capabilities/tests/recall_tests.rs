@@ -183,7 +183,7 @@ async fn routing_search_when_query_provided() {
 
     assert_eq!(result.routing, RecallRouting::Search);
     assert!(!result.entries.is_empty());
-    assert_eq!(result.entries[0].title, "SQLx migration guide");
+    assert_eq!(result.entries[0].entry.title, "SQLx migration guide");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -251,7 +251,7 @@ async fn routing_tag_scope_walk_when_tags_no_query() {
 
     assert_eq!(result.routing, RecallRouting::TagScopeWalk);
     assert_eq!(result.entries.len(), 1);
-    assert_eq!(result.entries[0].title, "Tagged fact");
+    assert_eq!(result.entries[0].entry.title, "Tagged fact");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -372,7 +372,147 @@ async fn routing_browse_fallback_passes_single_kind_to_filter() {
 
     assert_eq!(result.routing, RecallRouting::BrowseFallback);
     assert_eq!(result.entries.len(), 1);
-    assert_eq!(result.entries[0].kind, EntryKind::Fact);
+    assert_eq!(result.entries[0].entry.kind, EntryKind::Fact);
+}
+
+// ── RecallRow.score per routing branch ──────────────────────────
+//
+// `Search` is the only routing branch that carries a BM25 relevance
+// score; every other branch populates `score: None`. These tests pin
+// that contract in place so future routing refactors cannot silently
+// flip the semantics.
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_row_score_is_some_on_search_routing() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(
+        &store,
+        "sqlx migration guide",
+        "sqlx migration sqlx migration sqlx",
+        EntryKind::Reference,
+    )
+    .await;
+    seed_entry(
+        &store,
+        "Unrelated title",
+        "Passing mention of sqlx.",
+        EntryKind::Fact,
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("sqlx".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert!(result.entries.len() >= 2);
+    for row in &result.entries {
+        let score = row
+            .score
+            .expect("Search routing must populate RecallRow.score");
+        assert!(score.is_finite());
+        assert!(score < 0.0, "bm25 rank should be negative, got {score}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_row_score_is_none_on_browse_fallback() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Fact one", "Body one.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert!(!result.entries.is_empty());
+    for row in &result.entries {
+        assert!(row.score.is_none(), "BrowseFallback must leave score None");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_row_score_is_none_on_tag_scope_walk() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry_with_tags(
+        &store,
+        "Tagged fact",
+        "Body with session tag.",
+        EntryKind::Fact,
+        vec!["session-log".to_owned()],
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            tags: vec!["session-log".to_owned()],
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::TagScopeWalk);
+    assert!(!result.entries.is_empty());
+    for row in &result.entries {
+        assert!(row.score.is_none(), "TagScopeWalk must leave score None");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_row_score_is_none_on_scope_resolve() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(
+        &store,
+        "Global preference",
+        "Use rfc3339.",
+        EntryKind::Preference,
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Project fact",
+        "Helioy uses monorepo.",
+        EntryKind::Fact,
+        "global/project:helioy",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
+    assert!(!result.entries.is_empty());
+    for row in &result.entries {
+        assert!(row.score.is_none(), "ScopeResolve must leave score None");
+    }
 }
 
 // ── Kind post-filtering ──────────────────────────────────────────
@@ -410,7 +550,7 @@ async fn search_post_filters_by_kinds() {
 
     assert_eq!(result.routing, RecallRouting::Search);
     assert_eq!(result.entries.len(), 1);
-    assert_eq!(result.entries[0].kind, EntryKind::Fact);
+    assert_eq!(result.entries[0].entry.kind, EntryKind::Fact);
     // candidates_before_filter should reflect both entries matched the search
     assert!(result.candidates_before_filter >= 2);
 }
@@ -451,7 +591,7 @@ async fn search_post_filters_by_tags() {
 
     assert_eq!(result.routing, RecallRouting::Search);
     assert_eq!(result.entries.len(), 1);
-    assert_eq!(result.entries[0].title, "Tagged sqlx note");
+    assert_eq!(result.entries[0].entry.title, "Tagged sqlx note");
 }
 
 // ── Fetch-size compensation ──────────────────────────────────────
@@ -496,8 +636,8 @@ async fn fetch_limit_compensates_when_post_filters_active() {
     // fetch_limit_used should be limit * 3 = 15 (capped at MAX_LIMIT)
     assert_eq!(result.fetch_limit_used, 15);
     // Should still return only facts despite higher fetch limit
-    for entry in &result.entries {
-        assert_eq!(entry.kind, EntryKind::Fact);
+    for row in &result.entries {
+        assert_eq!(row.entry.kind, EntryKind::Fact);
     }
 }
 
@@ -576,7 +716,7 @@ async fn token_budget_always_includes_first_entry() {
 
     // Must still include the first entry even if it exceeds budget
     assert_eq!(result.entries.len(), 1);
-    assert_eq!(result.entries[0].title, "Large entry");
+    assert_eq!(result.entries[0].entry.title, "Large entry");
     assert!(result.token_estimate > 1);
 }
 
@@ -717,6 +857,103 @@ async fn result_includes_trace_metadata() {
     assert_eq!(result.routing, RecallRouting::Search);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn tag_scope_walk_trace_metadata_reports_max_limit() {
+    use cm_capabilities::constants::MAX_LIMIT;
+
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry_with_tags(
+        &store,
+        "Tagged A",
+        "Body A.",
+        EntryKind::Fact,
+        vec!["infra".to_owned()],
+    )
+    .await;
+    seed_entry_with_tags(
+        &store,
+        "Tagged B",
+        "Body B.",
+        EntryKind::Fact,
+        vec!["infra".to_owned()],
+    )
+    .await;
+    seed_entry(&store, "Plain", "No tags.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            tags: vec!["infra".to_owned()],
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::TagScopeWalk);
+    // TagScopeWalk paginates ancestor scopes a full page at a time, so the
+    // "SQL LIMIT actually used" is MAX_LIMIT, not the compensated limit the
+    // other routing branches report.
+    assert_eq!(result.fetch_limit_used, MAX_LIMIT);
+    assert!(result.candidates_before_filter >= 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn scope_resolve_trace_metadata_populated() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Global fact", "Body.", EntryKind::Fact).await;
+    seed_entry_with_scope(
+        &store,
+        "Project fact",
+        "Body.",
+        EntryKind::Fact,
+        "global/project:helioy",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
+    // No post-filter active, so the reported fetch limit is the request
+    // limit itself.
+    assert_eq!(result.fetch_limit_used, 20);
+    assert!(result.candidates_before_filter >= 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_fallback_trace_metadata_populated() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(&store, "Fact one", "Body one.", EntryKind::Fact).await;
+    seed_entry(&store, "Fact two", "Body two.", EntryKind::Fact).await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.fetch_limit_used, 20);
+    assert!(result.candidates_before_filter >= 2);
+}
+
 // ── BrowseFallback multi-kind filtering ─────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
@@ -742,11 +979,11 @@ async fn browse_fallback_filters_multiple_kinds() {
 
     assert_eq!(result.routing, RecallRouting::BrowseFallback);
     assert_eq!(result.entries.len(), 2);
-    for entry in &result.entries {
+    for row in &result.entries {
         assert!(
-            entry.kind == EntryKind::Fact || entry.kind == EntryKind::Decision,
+            row.entry.kind == EntryKind::Fact || row.entry.kind == EntryKind::Decision,
             "unexpected kind: {:?}",
-            entry.kind,
+            row.entry.kind,
         );
     }
 }

@@ -5,7 +5,8 @@
 
 use cm_capabilities::browse::{BrowseRequest, browse};
 use cm_core::{
-    ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope, ScopePath, WriteContext,
+    BrowseSort, ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope, ScopePath,
+    WriteContext,
 };
 use cm_store::{CmStore, schema};
 
@@ -480,6 +481,49 @@ async fn has_more_false_when_all_returned() {
     assert_eq!(result.entries.len(), 1);
     assert!(!result.has_more);
     assert!(result.next_cursor.is_none());
+}
+
+// ── sort_used observability ──────────────────────────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_populates_sort_used_default() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed(&store, "Only entry", "Body.", EntryKind::Fact).await;
+
+    let result = browse(
+        &store,
+        BrowseRequest {
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // Defaulted `sort` must surface as `Recent` so the formatter can render
+    // the header without having to reach back into the original request.
+    assert_eq!(result.sort_used, BrowseSort::Recent);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_populates_sort_used_explicit() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed(&store, "Only entry", "Body.", EntryKind::Fact).await;
+
+    let result = browse(
+        &store,
+        BrowseRequest {
+            sort: BrowseSort::Oldest,
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.sort_used, BrowseSort::Oldest);
 }
 
 // ── Empty result ─────────────────────────────────────────────────

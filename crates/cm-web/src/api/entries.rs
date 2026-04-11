@@ -115,10 +115,15 @@ async fn search(
         limit
     };
 
-    let mut entries = state
+    // `search` returns `Vec<ScoredEntry>`; this legacy endpoint only needs
+    // the bare `Entry` (no BM25 score is surfaced on the /search wire).
+    let mut entries: Vec<Entry> = state
         .store
         .search(&sq.q, scope_path.as_ref(), fetch_limit)
-        .await?;
+        .await?
+        .into_iter()
+        .map(|scored| scored.entry)
+        .collect();
 
     if let Some(kind) = kind_filter {
         entries.retain(|e| e.kind == kind);

@@ -1,59 +1,31 @@
-//! Insta snapshot tests for all 9 `cx_*` MCP tool handlers.
+//! Insta snapshot test for `cx_export`.
 //!
-//! Each test creates an isolated temp-file SQLite database, calls a tool handler,
-//! and snapshots the JSON response with dynamic fields redacted. This catches
-//! unintentional changes to the response format that would break MCP clients.
+//! Eight of the nine handler-level snapshots landed in the initial
+//! MCP-tools test suite were retired as part of the YAML-payload
+//! migration (ALP-1725). Their coverage now lives at two tighter
+//! layers:
+//!
+//! - Formatter-level goldens in `cm-capabilities/tests/*_format_tests.rs`
+//!   (include_str! + assert_eq!) pin the exact rendered shape for
+//!   each `format_*_view` / `format_*_ack`.
+//! - Handler-level YAML substring assertions in `tools_integration.rs`
+//!   exercise the full handler → formatter → `yaml_response` →
+//!   `cap_response` pipeline with realistic fixtures.
+//!
+//! The sole survivor is `cx_export`, which stays on `json_response`
+//! (JSON fidelity > wire compactness for backup/restore), so an
+//! insta snapshot on its JSON blob still earns its keep.
+//!
+//! See [`crates/cm-cli/tests/common/mod.rs`] for the shared fixture
+//! and id-extraction helpers.
+
+mod common;
 
 use cm_cli::mcp::tools;
-use cm_core::{ContextStore, MutationSource, NewScope, ScopePath, WriteContext};
-use cm_store::{CmStore, schema};
 use insta::{assert_json_snapshot, with_settings};
 use serde_json::{Value, json};
 
-/// Create an isolated store backed by a temp-file SQLite database.
-async fn test_store() -> (CmStore, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
-    let db_path = dir.path().join("test.db");
-
-    let (write_pool, read_pool) = schema::create_pools(&db_path).await.unwrap();
-    schema::run_migrations(&write_pool).await.unwrap();
-
-    let store = CmStore::new(write_pool, read_pool);
-    (store, dir)
-}
-
-/// Create the global scope.
-async fn create_global(store: &CmStore) {
-    store
-        .create_scope(
-            NewScope {
-                path: ScopePath::parse("global").unwrap(),
-                label: "Global".to_owned(),
-                meta: None,
-            },
-            &WriteContext::new(MutationSource::Mcp),
-        )
-        .await
-        .unwrap();
-}
-
-/// Store a test entry and return its ID.
-async fn store_entry(store: &CmStore) -> String {
-    let result = tools::cx_store(
-        store,
-        &json!({
-            "title": "Test fact",
-            "body": "This is a test fact body for snapshot testing.",
-            "kind": "fact",
-            "tags": ["test-tag"],
-            "confidence": "high"
-        }),
-    )
-    .await
-    .unwrap();
-    let resp: Value = serde_json::from_str(&result).unwrap();
-    resp["id"].as_str().unwrap().to_owned()
-}
+use common::{create_global, test_store};
 
 /// Redaction settings for dynamic fields that change every run.
 macro_rules! snapshot_settings {
@@ -67,182 +39,23 @@ macro_rules! snapshot_settings {
     };
 }
 
-// ── cx_store ───────────────────────────────────────────────────
-
 #[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_store() {
+async fn snapshot_cx_export() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
-    let result = tools::cx_store(
+    tools::cx_store(
         &store,
         &json!({
-            "title": "Architecture decision",
-            "body": "Use sqlx for database access.",
-            "kind": "decision",
-            "tags": ["architecture", "database"],
+            "title": "Test fact",
+            "body": "This is a test fact body for snapshot testing.",
+            "kind": "fact",
+            "tags": ["test-tag"],
             "confidence": "high"
         }),
     )
     .await
     .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_store", resp);
-    }
-}
-
-// ── cx_recall ──────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_recall() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
-
-    let result = tools::cx_recall(
-        &store,
-        &json!({
-            "query": "test fact",
-            "limit": 5
-        }),
-    )
-    .await
-    .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_recall", resp);
-    }
-}
-
-// ── cx_get ─────────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_get() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    let id = store_entry(&store).await;
-
-    let result = tools::cx_get(&store, &json!({"ids": [id]})).await.unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_get", resp);
-    }
-}
-
-// ── cx_browse ──────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_browse() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
-
-    let result = tools::cx_browse(&store, &json!({"limit": 10}))
-        .await
-        .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_browse", resp);
-    }
-}
-
-// ── cx_update ──────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_update() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    let id = store_entry(&store).await;
-
-    let result = tools::cx_update(
-        &store,
-        &json!({
-            "id": id,
-            "title": "Updated title",
-            "body": "Updated body content."
-        }),
-    )
-    .await
-    .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_update", resp);
-    }
-}
-
-// ── cx_forget ──────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_forget() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    let id = store_entry(&store).await;
-
-    let result = tools::cx_forget(&store, &json!({"ids": [id]}))
-        .await
-        .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_forget", resp);
-    }
-}
-
-// ── cx_deposit ─────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_deposit() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-
-    let result = tools::cx_deposit(
-        &store,
-        &json!({
-            "exchanges": [
-                {
-                    "user": "What is context-matters?",
-                    "assistant": "A structured context store for AI agents."
-                }
-            ],
-            "summary": "Brief intro to context-matters."
-        }),
-    )
-    .await
-    .unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_deposit", resp);
-    }
-}
-
-// ── cx_export ──────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_export() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
 
     let result = tools::cx_export(&store, &json!({"format": "json"}))
         .await
@@ -255,26 +68,6 @@ async fn snapshot_cx_export() {
         assert_json_snapshot!("cx_export", resp);
     }
 }
-
-// ── cx_stats ───────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn snapshot_cx_stats() {
-    let (store, _dir) = test_store().await;
-    create_global(&store).await;
-    store_entry(&store).await;
-
-    let result = tools::cx_stats(&store, &json!({})).await.unwrap();
-
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
-    redact_dynamic_fields(&mut resp);
-
-    snapshot_settings! {
-        assert_json_snapshot!("cx_stats", resp);
-    }
-}
-
-// ── Redaction helpers ──────────────────────────────────────────
 
 /// Recursively redact dynamic fields that change every run.
 fn redact_dynamic_fields(value: &mut Value) {
@@ -297,16 +90,12 @@ fn redact_dynamic_fields(value: &mut Value) {
     }
 }
 
-/// Keys whose values change every run and must be redacted.
+/// Keys whose values change every run and must be redacted. Scoped
+/// to the fields `cx_export` emits; the broader set that previously
+/// covered the retired handler snapshots is no longer needed.
 fn is_redacted_key(key: &str) -> bool {
     matches!(
         key,
-        "id" | "created_at"
-            | "updated_at"
-            | "content_hash"
-            | "db_size_bytes"
-            | "exported_at"
-            | "entry_ids"
-            | "summary_id"
+        "id" | "created_at" | "updated_at" | "content_hash" | "exported_at"
     )
 }

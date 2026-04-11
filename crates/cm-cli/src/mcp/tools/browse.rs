@@ -1,14 +1,13 @@
 //! Handler for the `cx_browse` tool.
 
 use cm_capabilities::browse::{self, BrowseRequest};
+use cm_capabilities::projection::format_browse_view;
 use cm_capabilities::validation::clamp_limit;
 use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::mcp::{cm_err_to_string, json_response, parse_params};
-
-use super::entry_to_browse_json;
+use crate::mcp::{cm_err_to_string, parse_params, yaml_response};
 
 #[derive(Debug, Deserialize)]
 struct CxBrowseParams {
@@ -56,32 +55,20 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String
 
     let limit = clamp_limit(params.limit);
 
-    // Delegate to BrowseCapability
-    let result = browse::browse(
-        store,
-        BrowseRequest {
-            scope_path,
-            kind,
-            tag: params.tag,
-            created_by: params.created_by,
-            include_superseded: params.include_superseded,
-            limit,
-            cursor: params.cursor,
-            ..Default::default()
-        },
-    )
-    .await
-    .map_err(cm_err_to_string)?;
+    let request = BrowseRequest {
+        scope_path,
+        kind,
+        tag: params.tag,
+        created_by: params.created_by,
+        include_superseded: params.include_superseded,
+        limit,
+        cursor: params.cursor,
+        ..Default::default()
+    };
 
-    // Map entries through the legacy JSON projection for MCP envelope
-    let entries: Vec<Value> = result.entries.iter().map(entry_to_browse_json).collect();
+    let result = browse::browse(store, request.clone())
+        .await
+        .map_err(cm_err_to_string)?;
 
-    let response = json!({
-        "entries": entries,
-        "total": result.total,
-        "next_cursor": result.next_cursor,
-        "has_more": result.has_more,
-    });
-
-    json_response(response)
+    yaml_response(format_browse_view(&result, &request))
 }

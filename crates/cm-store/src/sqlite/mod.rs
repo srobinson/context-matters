@@ -26,7 +26,7 @@ use chrono::{DateTime, Utc};
 use cm_core::{
     CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationAction,
     MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, RelationKind, Scope,
-    ScopeKind, ScopePath, StoreStats, UpdateEntry, WriteContext,
+    ScopeKind, ScopePath, ScoredEntry, StoreStats, UpdateEntry, WriteContext,
 };
 use sqlx::sqlite::SqlitePool;
 use uuid::Uuid;
@@ -91,7 +91,7 @@ impl ContextStore for CmStore {
         query: &str,
         scope_path: Option<&ScopePath>,
         limit: u32,
-    ) -> Result<Vec<Entry>, CmError> {
+    ) -> Result<Vec<ScoredEntry>, CmError> {
         self.do_search(query, scope_path, limit).await
     }
 

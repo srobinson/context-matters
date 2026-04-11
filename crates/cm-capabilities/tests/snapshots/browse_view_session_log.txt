@@ -1,0 +1,21 @@
+---
+query: tag=session-log
+sort: updated_at desc
+total: 113
+returned: 3
+scope: (mixed)  # global=2, global/project:helioy=1
+kinds: observation=3
+created_by: agent:claude-code  # uniform
+
+entries:
+  - 019d79d3  Session: marketing strategy + lazy tool loading design sketch
+              Brief session on marketing copy refinements for the launch. Validated lazy tool loading design sketch against three adapters.
+              # scope: global  tags: session-log, marketing  age: 2h
+  - 019d6f22  Session: cx_recall FTS operator regression
+              Repro: queries with hyphens now fail with "fts5: syntax error near '-'". Likely introduced by the tokenizer change in ALP-1682.
+              # scope: global/project:helioy  tags: session-log, cm  age: 1d
+  - 019d5bbb  Session: worktree cleanup sweep
+              Removed stale worktrees for ALP-1720 through ALP-1724 after the merge. Freed ~2.3 GB of disk.
+              # scope: global  tags: session-log  age: 6d
+
+# 110 more - cx_browse(cursor="eyJzb3J0IjoicmVjZW50IiwibGFzdCI6ImZvbyJ9", limit=50) to page

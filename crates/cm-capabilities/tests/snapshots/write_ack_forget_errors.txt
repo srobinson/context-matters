@@ -1,0 +1,6 @@
+---
+forgotten: 2
+already_inactive: 0
+not_found: 0
+errors: 1
+  - id: 019d8a99-0000-7000-8abc-000000000000  error: write conflict

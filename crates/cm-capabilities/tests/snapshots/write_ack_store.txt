@@ -1,0 +1,5 @@
+---
+stored: 019d8a01-9c4f-7891-8abc-000000000000
+scope: global/project:helioy
+kind: decision
+content_hash: b4c2a9de
