@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/srobinson/context-matters/compare/v0.2.1...v0.2.2) (2026-04-11)
+
+
+### Bug Fixes
+
+* **cx:** prefix-tier crash + short_id rip-out (ALP-1764) ([#31](https://github.com/srobinson/context-matters/issues/31)) ([de67d55](https://github.com/srobinson/context-matters/commit/de67d554cbcf80bc3dfa973472f8ef43041d306f))
+
 ## [0.2.1](https://github.com/srobinson/context-matters/compare/v0.2.0...v0.2.1) (2026-04-11)
 
 
