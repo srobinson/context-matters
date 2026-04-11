@@ -79,11 +79,7 @@ impl ContextStore for CmStore {
         self.do_get_entries(ids).await
     }
 
-    async fn resolve_id_prefix(
-        &self,
-        prefix: &str,
-        limit: u32,
-    ) -> Result<Vec<Uuid>, CmError> {
+    async fn resolve_id_prefix(&self, prefix: &str, limit: u32) -> Result<Vec<Uuid>, CmError> {
         self.do_resolve_id_prefix(prefix, limit).await
     }
 

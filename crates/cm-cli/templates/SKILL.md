@@ -137,7 +137,7 @@ Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use a
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `ids` | array<string> | yes | Entry IDs to retrieve. Each item is either a full hyphenated UUIDv7 or a short prefix (≥ 8 hex chars) as shown in c... |
+| `ids` | array<string> | yes | Entry IDs: full hyphenated UUIDv7 or ≥8-char prefix from cx_recall/cx_browse rows. Max 100. Ambiguous prefix errors. |
 
 ### `cx_update`
 

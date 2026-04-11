@@ -507,7 +507,7 @@ serde_json::from_str(r##"{
       "inputSchema": {
         "properties": {
           "ids": {
-            "description": "Entry IDs to retrieve. Each item is either a full hyphenated UUIDv7 or a short prefix (≥ 8 hex chars) as shown in cx_recall / cx_browse row headers. Missing IDs are silently omitted. An ambiguous prefix fails the request with the list of matching full UUIDs so the caller can retry with a longer prefix. Maximum 100 per request.",
+            "description": "Entry IDs: full hyphenated UUIDv7 or ≥8-char prefix from cx_recall/cx_browse rows. Max 100. Ambiguous prefix errors.",
             "items": {
               "type": "string"
             },

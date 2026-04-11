@@ -102,11 +102,7 @@ pub trait ContextStore: Send + Sync + 'static {
     /// - `CmError::Validation` if `prefix` is shorter than 8 characters
     ///   or contains characters outside `[0-9a-f-]`. An 8-char minimum
     ///   matches the short-id width shown in `cx_recall` / `cx_browse`.
-    async fn resolve_id_prefix(
-        &self,
-        prefix: &str,
-        limit: u32,
-    ) -> Result<Vec<Uuid>, CmError>;
+    async fn resolve_id_prefix(&self, prefix: &str, limit: u32) -> Result<Vec<Uuid>, CmError>;
 
     /// Resolve context for a scope by walking up the hierarchy.
     ///

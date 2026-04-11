@@ -45,7 +45,7 @@ web-check:
 
 # Install frontend dependencies
 web-install:
-    cd crates/cm-web/frontend && npm install
+    cd crates/cm-web/frontend && pnpm install
 
 # Start cm-web (backend + frontend dev server)
 web: web-install

@@ -420,7 +420,10 @@ async fn get_resolves_eight_char_prefix_to_single_match() {
         .await
         .unwrap()
         .text;
-    assert!(result.contains("found: 1"), "short prefix lookup:\n{result}");
+    assert!(
+        result.contains("found: 1"),
+        "short prefix lookup:\n{result}"
+    );
     assert!(
         !result.contains("missing:"),
         "canonicalized id must not appear as missing:\n{result}"
