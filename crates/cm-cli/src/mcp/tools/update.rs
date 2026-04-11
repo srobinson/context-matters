@@ -1,10 +1,11 @@
 //! Handler for the `cx_update` tool.
 
+use cm_capabilities::projection::format_update_ack;
 use cm_core::{ContextStore, EntryKind, EntryMeta, MutationSource, UpdateEntry, WriteContext};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::mcp::{check_input_size, cm_err_to_string, json_response, parse_params};
+use crate::mcp::{check_input_size, cm_err_to_string, parse_params, yaml_response};
 
 use super::parse_confidence;
 
@@ -116,17 +117,8 @@ pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<String
         .await
         .map_err(cm_err_to_string)?;
 
-    let response = json!({
-        "entry": {
-            "id": entry.id.to_string(),
-            "scope_path": entry.scope_path.as_str(),
-            "kind": entry.kind.as_str(),
-            "title": &entry.title,
-            "content_hash": &entry.content_hash,
-            "updated_at": entry.updated_at.to_rfc3339(),
-        },
-        "message": "Entry updated.",
-    });
-
-    json_response(response)
+    yaml_response(format_update_ack(
+        &entry.id.to_string(),
+        &entry.content_hash,
+    ))
 }

@@ -1,14 +1,15 @@
 //! Handler for the `cx_deposit` tool.
 
+use cm_capabilities::projection::format_deposit_ack;
 use cm_core::{
     ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, RelationKind, ScopePath,
     WriteContext,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::mcp::{
-    check_input_size, cm_err_to_string, ensure_scope_chain, json_response, parse_params, snippet,
+    check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, snippet, yaml_response,
 };
 
 use super::{default_created_by, default_scope};
@@ -142,18 +143,11 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<Strin
         None
     };
 
-    let count = entry_ids.len();
-    let message = match summary_id {
-        Some(_) => format!("Deposited {count} exchanges with summary."),
-        None => format!("Deposited {count} exchanges."),
-    };
-
-    let response = json!({
-        "deposited": count,
-        "entry_ids": entry_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-        "summary_id": summary_id.map(|id| id.to_string()),
-        "message": message,
-    });
-
-    json_response(response)
+    let id_strings: Vec<String> = entry_ids.iter().map(|id| id.to_string()).collect();
+    let summary_str = summary_id.map(|id| id.to_string());
+    yaml_response(format_deposit_ack(
+        &id_strings,
+        summary_str.as_deref(),
+        scope_path.as_str(),
+    ))
 }

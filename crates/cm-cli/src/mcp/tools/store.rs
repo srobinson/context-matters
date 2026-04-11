@@ -1,13 +1,14 @@
 //! Handler for the `cx_store` tool.
 
+use cm_capabilities::projection::format_store_ack;
 use cm_core::{
     ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, ScopePath, WriteContext,
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::mcp::{
-    check_input_size, cm_err_to_string, ensure_scope_chain, json_response, parse_params,
+    check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, yaml_response,
 };
 
 use super::{default_created_by, default_scope, parse_confidence};
@@ -138,21 +139,12 @@ pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String,
         }
     };
 
-    let message = match superseded_id {
-        Some(old_id) => format!("Entry stored. Superseded entry {old_id}."),
-        None => "Entry stored.".to_owned(),
-    };
-
-    let response = json!({
-        "id": entry.id.to_string(),
-        "scope_path": entry.scope_path.as_str(),
-        "kind": entry.kind.as_str(),
-        "title": &entry.title,
-        "content_hash": &entry.content_hash,
-        "created_at": entry.created_at.to_rfc3339(),
-        "superseded": superseded_id.map(|id| id.to_string()),
-        "message": message,
-    });
-
-    json_response(response)
+    let superseded_str = superseded_id.map(|id| id.to_string());
+    yaml_response(format_store_ack(
+        &entry.id.to_string(),
+        entry.scope_path.as_str(),
+        entry.kind.as_str(),
+        &entry.content_hash,
+        superseded_str.as_deref(),
+    ))
 }

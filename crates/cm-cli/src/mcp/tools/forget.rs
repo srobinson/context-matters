@@ -1,10 +1,11 @@
 //! Handler for the `cx_forget` tool.
 
+use cm_capabilities::projection::{ForgetError, format_forget_ack};
 use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::mcp::{cm_err_to_string, json_response, parse_params};
+use crate::mcp::{cm_err_to_string, parse_params, yaml_response};
 
 #[derive(Debug, Deserialize)]
 struct CxForgetParams {
@@ -36,7 +37,7 @@ pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String
     let mut forgotten = 0u32;
     let mut already_inactive = 0u32;
     let mut not_found = 0u32;
-    let mut details = Vec::with_capacity(uuids.len());
+    let mut errors: Vec<ForgetError> = Vec::new();
 
     for &id in &uuids {
         // Check current state
@@ -44,54 +45,36 @@ pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<String
             Ok(entry) => {
                 if entry.superseded_by.is_some() {
                     already_inactive += 1;
-                    details.push(json!({"id": id.to_string(), "status": "already_inactive"}));
                 } else {
                     match store.forget_entry(id, &ctx).await {
                         Ok(()) => {
                             forgotten += 1;
-                            details.push(json!({"id": id.to_string(), "status": "forgotten"}));
                         }
                         Err(e) => {
-                            details.push(json!({"id": id.to_string(), "status": "error", "error": cm_err_to_string(e)}));
+                            errors.push(ForgetError {
+                                id: id.to_string(),
+                                error: cm_err_to_string(e),
+                            });
                         }
                     }
                 }
             }
             Err(cm_core::CmError::EntryNotFound(_)) => {
                 not_found += 1;
-                details.push(json!({"id": id.to_string(), "status": "not_found"}));
             }
             Err(e) => {
-                details.push(
-                    json!({"id": id.to_string(), "status": "error", "error": cm_err_to_string(e)}),
-                );
+                errors.push(ForgetError {
+                    id: id.to_string(),
+                    error: cm_err_to_string(e),
+                });
             }
         }
     }
 
-    let mut parts = Vec::new();
-    if forgotten > 0 {
-        parts.push(format!("Forgot {forgotten} entries."));
-    }
-    if already_inactive > 0 {
-        parts.push(format!("{already_inactive} already inactive."));
-    }
-    if not_found > 0 {
-        parts.push(format!("{not_found} not found."));
-    }
-    let message = if parts.is_empty() {
-        "No entries processed.".to_owned()
-    } else {
-        parts.join(" ")
-    };
-
-    let response = json!({
-        "forgotten": forgotten,
-        "already_inactive": already_inactive,
-        "not_found": not_found,
-        "details": details,
-        "message": message,
-    });
-
-    json_response(response)
+    yaml_response(format_forget_ack(
+        forgotten,
+        already_inactive,
+        not_found,
+        &errors,
+    ))
 }
