@@ -365,9 +365,19 @@ async fn route_query(
 /// Run a single FTS5 tier and return its rows if the query is non-empty and
 /// the store returned at least one match.
 ///
-/// Returns `Ok(None)` both when the sanitized query is empty (so we would
-/// otherwise hand FTS5 a bare empty MATCH expression) and when the store
-/// returned zero rows, letting the cascade advance cleanly to the next tier.
+/// Returns `Ok(None)` in three cases, all of which let the cascade advance
+/// cleanly to the next tier:
+///
+/// 1. The sanitized query is empty (so we would otherwise hand FTS5 a bare
+///    empty MATCH expression).
+/// 2. The store returned zero rows.
+/// 3. The store returned an FTS5 parse error. In a correctly-sanitized
+///    pipeline this should never happen, but treating it as a tier miss
+///    rather than a hard error is the belt-and-braces guarantee that the
+///    cascade always degrades gracefully. Any sanitizer gap that slips
+///    through (as happened with `prefix_query` and uppercase `AND`/`OR`/
+///    `NOT` before ALP-1765) then surfaces as zero rows from the affected
+///    tier instead of a `[database]` error to the MCP caller.
 async fn try_search_tier(
     store: &impl ContextStore,
     fts: FtsQuery,
@@ -377,7 +387,11 @@ async fn try_search_tier(
     if fts.as_str().is_empty() {
         return Ok(None);
     }
-    let scored = store.search(fts.as_str(), scope, limit).await?;
+    let scored = match store.search(fts.as_str(), scope, limit).await {
+        Ok(rows) => rows,
+        Err(err) if is_fts5_parse_error(&err) => return Ok(None),
+        Err(err) => return Err(err),
+    };
     if scored.is_empty() {
         return Ok(None);
     }
@@ -390,6 +404,18 @@ async fn try_search_tier(
             })
             .collect(),
     ))
+}
+
+/// Detect FTS5 parse errors so the cascade can soft-fail past them.
+///
+/// Narrow on purpose: we only swallow `CmError::Database(_)` whose payload
+/// carries the SQLite-emitted `fts5:` prefix. Any other database failure
+/// (lock contention, schema corruption, etc.) still propagates as a hard
+/// error. SQLite's FTS5 module always prefixes its messages with `fts5:`,
+/// so the substring is a stable marker even though the surrounding sqlx
+/// formatting may evolve.
+fn is_fts5_parse_error(err: &CmError) -> bool {
+    matches!(err, CmError::Database(msg) if msg.contains("fts5:"))
 }
 
 // ── Private Helpers ──────────────────────────────────────────────

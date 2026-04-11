@@ -107,23 +107,42 @@ impl FtsQuery {
         &self.raw
     }
 
-    /// Build a prefix query: appends `*` to each word.
+    /// Build a prefix query: appends `*` to each sanitized token.
     ///
-    /// Useful for "search as you type" behavior where partial
-    /// word matches are desired.
+    /// Useful for "search as you type" behavior where partial word matches
+    /// are desired. Mirrors the sanitization pattern of [`split_or_query`]:
+    ///
+    /// * Each input word is sanitized with [`sanitize_word`] (hyphens and
+    ///   other punctuation become spaces) and then re-split on whitespace,
+    ///   so `foo-bar` yields two prefix-matched tokens, `foo*` and `bar*`.
+    /// * FTS5 reserved words `AND`, `OR`, `NOT` (uppercase only, as FTS5
+    ///   interprets them) are stripped after sanitization. Leaving them in
+    ///   would emit `NOT*` etc., which FTS5 parses as the unary operator
+    ///   followed by a bare `*` and rejects as a syntax error.
+    /// * Tokens that already end in `*` are passed through unchanged so the
+    ///   constructor never produces a double-star like `hello**`.
+    ///
+    /// Reserved-word stripping was added in ALP-1765 after the recall
+    /// cascade's Prefix tier was found to crash on any natural-language
+    /// query containing an uppercase `AND`, `OR`, or `NOT`. The same
+    /// stripping shipped in [`split_or_query`] under ALP-1746 but was not
+    /// backported to this constructor when the cascade was wired up.
     pub fn prefix_query(input: &str) -> Self {
-        let terms: Vec<String> = input
-            .split_whitespace()
-            .filter(|w| !w.is_empty())
-            .map(|w| {
-                let clean = sanitize_word(w);
-                if clean.ends_with('*') {
-                    clean
-                } else {
-                    format!("{clean}*")
+        let mut terms: Vec<String> = Vec::new();
+
+        for raw_word in input.split_whitespace() {
+            for token in sanitize_word(raw_word).split_whitespace() {
+                if matches!(token, "AND" | "OR" | "NOT") {
+                    continue;
                 }
-            })
-            .collect();
+                let term = if token.ends_with('*') {
+                    token.to_string()
+                } else {
+                    format!("{token}*")
+                };
+                terms.push(term);
+            }
+        }
 
         Self {
             raw: terms.join(" "),
@@ -323,6 +342,72 @@ mod tests {
     fn fts_prefix_query_no_double_star() {
         let q = FtsQuery::prefix_query("hello*");
         assert_eq!(q.as_str(), "hello*");
+    }
+
+    // ── Reserved-word stripping (ALP-1765 regression) ───────────────
+    //
+    // Before the fix, `prefix_query` blindly starred every token, so an
+    // uppercase `AND`, `OR`, or `NOT` in a natural-language query produced
+    // `NOT*` etc. and crashed FTS5 with `syntax error near "*"`. The
+    // recall cascade then propagated the error instead of advancing to
+    // the SplitOr tier. These tests lock the stripping in.
+
+    #[test]
+    fn fts_prefix_query_strips_not_in_middle() {
+        let q = FtsQuery::prefix_query("foo NOT bar");
+        assert_eq!(q.as_str(), "foo* bar*");
+    }
+
+    #[test]
+    fn fts_prefix_query_strips_and_in_middle() {
+        let q = FtsQuery::prefix_query("foo AND bar");
+        assert_eq!(q.as_str(), "foo* bar*");
+    }
+
+    #[test]
+    fn fts_prefix_query_strips_or_in_middle() {
+        let q = FtsQuery::prefix_query("foo OR bar");
+        assert_eq!(q.as_str(), "foo* bar*");
+    }
+
+    #[test]
+    fn fts_prefix_query_strips_reserved_at_edges() {
+        // Leading and trailing reserved words also drop out cleanly.
+        let q = FtsQuery::prefix_query("AND foo NOT");
+        assert_eq!(q.as_str(), "foo*");
+    }
+
+    #[test]
+    fn fts_prefix_query_only_reserved_words_yields_empty() {
+        // Stripping every token must produce an empty raw string, never a
+        // bare or whitespace-only query that FTS5 would reject.
+        let q = FtsQuery::prefix_query("AND NOT OR");
+        assert_eq!(q.as_str(), "");
+    }
+
+    #[test]
+    fn fts_prefix_query_field_repro() {
+        // The exact natural-language query from the v0.2.1 field report
+        // that surfaced the bug. Must produce a clean prefix query with
+        // `NOT` dropped.
+        let q = FtsQuery::prefix_query("FTS5 sanitization hyphens NOT operators");
+        assert_eq!(q.as_str(), "FTS5* sanitization* hyphens* operators*");
+    }
+
+    #[test]
+    fn fts_prefix_query_hyphen_splits_into_two_prefix_tokens() {
+        // After sanitization, internal punctuation flattens into separate
+        // tokens; each gets its own `*`, mirroring `split_or_query`.
+        let q = FtsQuery::prefix_query("foo-bar");
+        assert_eq!(q.as_str(), "foo* bar*");
+    }
+
+    #[test]
+    fn fts_prefix_query_strips_lowercase_left_alone() {
+        // FTS5 only treats uppercase `AND`/`OR`/`NOT` as operators, so
+        // lowercase variants must pass through as ordinary search tokens.
+        let q = FtsQuery::prefix_query("foo and bar or baz not qux");
+        assert_eq!(q.as_str(), "foo* and* bar* or* baz* not* qux*");
     }
 
     #[test]
