@@ -176,6 +176,51 @@ fn format_browse_view_empty_result_renders_clean() {
 }
 
 #[test]
+fn format_browse_view_rels_annotation_fires_only_for_populated_rows() {
+    // Relation-count annotations: entry 1 has 2 outgoing edges
+    // declared in `relation_counts`, entries 2 and 3 are absent from
+    // the map. The renderer must emit `rels: 2` on entry 1's trailing
+    // comment and leave the other two rows untouched. Asserted
+    // behaviourally rather than via a golden snapshot so any future
+    // row-comment reshuffle can be validated with a targeted rerun.
+    let (mut result, request, now) = session_log_fixture();
+    let target_id = result.entries[0].id;
+    let mut counts: HashMap<Uuid, u32> = HashMap::new();
+    counts.insert(target_id, 2);
+    result.relation_counts = counts;
+
+    let rendered = format_browse_view_at(&result, &request, now);
+    assert!(
+        rendered.contains("rels: 2"),
+        "entry 1 should carry rels: 2:\n{rendered}",
+    );
+    assert_eq!(
+        rendered.matches("rels: ").count(),
+        1,
+        "exactly one rels annotation expected (entry 1 only):\n{rendered}",
+    );
+    // Row 1's comment carries the annotation at the end of the line;
+    // rows 2 and 3 must not mention `rels:` anywhere in their comments.
+    let comment_lines: Vec<&str> = rendered
+        .lines()
+        .filter(|l| l.trim_start().starts_with("# "))
+        .collect();
+    assert!(
+        comment_lines
+            .iter()
+            .any(|l| l.contains("age: 2h") && l.contains("rels: 2")),
+        "entry 1's comment should carry rels: 2:\n{rendered}",
+    );
+    assert!(
+        comment_lines
+            .iter()
+            .filter(|l| !l.contains("age: 2h"))
+            .all(|l| !l.contains("rels:")),
+        "only entry 1 should carry rels:\n{rendered}",
+    );
+}
+
+#[test]
 fn format_browse_view_single_entry_hoists_all_uniform_fields() {
     let now = fixed_now();
     let entry = make_entry(

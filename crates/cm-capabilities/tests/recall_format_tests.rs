@@ -34,6 +34,7 @@ const GOLDEN_SEARCH_SPLIT_OR_TIER: &str =
 const GOLDEN_BROWSE_FALLBACK: &str = include_str!("snapshots/recall_view_browse_fallback.txt");
 const GOLDEN_EMPTY: &str = include_str!("snapshots/recall_view_empty.txt");
 const GOLDEN_DEDUP: &str = include_str!("snapshots/recall_view_dedup.txt");
+const GOLDEN_RELS: &str = include_str!("snapshots/recall_view_rels.txt");
 
 fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
@@ -320,6 +321,80 @@ fn dedup_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
     (result, request, now)
 }
 
+/// Rels fixture: three rows where rows 1 and 2 have populated
+/// `relation_counts` entries (3 and 1 outgoing edges respectively)
+/// while row 3 is absent from the map. The expected rendering
+/// annotates rows 1 and 2 with `rels: N` on their trailing YAML
+/// comment and leaves row 3 untouched. Each row carries a unique
+/// content hash so the dedup pass never fires in parallel.
+fn rels_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
+    let now = fixed_now();
+    let row1_id =
+        Uuid::parse_str("019de1aa-0000-7000-8000-000000000001").expect("test fixture uuid parses");
+    let row2_id =
+        Uuid::parse_str("019de155-0000-7000-8000-000000000002").expect("test fixture uuid parses");
+    let entries = vec![
+        make_row(
+            "019de1aa-0000-7000-8000-000000000001",
+            EntryKind::Decision,
+            "Adopt new storage engine",
+            "Rationale for adopting the new storage engine. The graph \
+             touches three downstream decisions that cite this entry.",
+            "global",
+            &["decision-log"],
+            now - Duration::hours(2),
+            Some(-1.5),
+        ),
+        make_row(
+            "019de155-0000-7000-8000-000000000002",
+            EntryKind::Fact,
+            "Supporting benchmark result",
+            "A supporting benchmark figure that one upstream decision \
+             in the graph cites for its adoption rationale.",
+            "global",
+            &["bench"],
+            now - Duration::hours(6),
+            Some(-2.0),
+        ),
+        make_row(
+            "019de1cc-0000-7000-8000-000000000003",
+            EntryKind::Lesson,
+            "Standalone lesson with no graph edges",
+            "Isolated lesson whose row renders without any trailing \
+             rels annotation, because no edges point in or out.",
+            "global",
+            &["lesson-log"],
+            now - Duration::days(1),
+            Some(-0.5),
+        ),
+    ];
+
+    let mut relation_counts: HashMap<Uuid, u32> = HashMap::new();
+    relation_counts.insert(row1_id, 3);
+    relation_counts.insert(row2_id, 1);
+
+    let result = RecallResult {
+        entries,
+        scope_chain: vec!["global".to_owned()],
+        scope_hits: vec![("global".to_owned(), 3)],
+        token_estimate: 520,
+        routing: RecallRouting::Search,
+        tier: Some(SearchTier::Exact),
+        candidates_before_filter: 5,
+        fetch_limit_used: 50,
+        relation_counts,
+    };
+
+    let request = RecallRequest {
+        query: Some("storage engine".to_owned()),
+        limit: 50,
+        max_tokens: Some(8_000),
+        ..Default::default()
+    };
+
+    (result, request, now)
+}
+
 /// Empty fixture: zero matches, `Search` routing (so the formatter's
 /// "show score column" check would fire if any row had a score — none
 /// do). Verifies the header still renders and the trailer carries the
@@ -429,6 +504,49 @@ fn format_recall_view_matches_dedup_golden() {
         rendered.matches("dup_of:").count(),
         1,
         "exactly one dup_of annotation expected (row 3 only):\n{rendered}",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_rels_golden() {
+    // Relation-count annotations: rows 1 and 2 carry populated
+    // `relation_counts` entries (3 and 1 respectively), so their
+    // trailing YAML comments must pick up `rels: 3` and `rels: 1`.
+    // Row 3 is absent from the map and renders without any rels
+    // annotation at all (aggressive omit-when-default).
+    let (result, request, now) = rels_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_RELS,
+        "rendered recall rels view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+    // Behavioural assertions on top of the byte-for-byte check so any
+    // future golden regeneration surfaces the intent if the diff
+    // drifts: row 1 renders with `rels: 3`, row 2 with `rels: 1`, and
+    // exactly two rows carry the annotation.
+    assert!(
+        rendered.contains("rels: 3"),
+        "row 1 should carry rels: 3:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("rels: 1"),
+        "row 2 should carry rels: 1:\n{rendered}",
+    );
+    assert_eq!(
+        rendered.matches("rels: ").count(),
+        2,
+        "exactly two rels annotations expected (rows 1 and 2):\n{rendered}",
+    );
+    // Row 3's id must appear without any `rels:` suffix in the same
+    // comment line. Check that the substring for row 3's short id
+    // through to its age string contains no `rels:`.
+    let row3_line = rendered
+        .lines()
+        .find(|l| l.contains("scope: global  kind: lesson"))
+        .expect("row 3 comment line present");
+    assert!(
+        !row3_line.contains("rels:"),
+        "row 3 should carry no rels annotation:\n{row3_line}",
     );
 }
 
