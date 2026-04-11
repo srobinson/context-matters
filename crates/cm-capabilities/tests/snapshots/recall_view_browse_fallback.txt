@@ -4,6 +4,7 @@ candidates: 5 -> 2 shown
 scope_chain: [global]
 scope_hits: global=2
 kinds: fact=2
+tags: bug=1, ci=1, fts=1, rustc=1
 tokens: 220
 
 entries:

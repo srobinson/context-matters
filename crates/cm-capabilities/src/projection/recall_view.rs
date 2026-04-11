@@ -27,7 +27,7 @@ use cm_core::Entry;
 
 use super::{
     RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas,
-    kind_histogram, relative_age, render_histogram, short_id, smart_snippet,
+    kind_histogram, relative_age, render_histogram, short_id, smart_snippet, tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 
@@ -178,6 +178,20 @@ fn render_header(
         let kind_hist = kind_histogram(result.entries.as_slice(), |row| row.entry.kind.as_str());
         if !kind_hist.is_empty() {
             let _ = writeln!(out, "kinds: {}", render_histogram(&kind_hist));
+        }
+        // Per-tag histogram mirrors `kinds:` so agents can scan tag
+        // density on the result set without paging through rows.
+        // Falls through when no row carries any tag so the header
+        // does not sprout an empty `tags:` line on tag-free stores.
+        let tag_hist = tag_histogram(result.entries.as_slice(), |row| {
+            row.entry
+                .meta
+                .as_ref()
+                .map(|m| m.tags.as_slice())
+                .unwrap_or(&[])
+        });
+        if !tag_hist.is_empty() {
+            let _ = writeln!(out, "tags: {}", render_histogram(&tag_hist));
         }
     }
     match request.max_tokens {

@@ -268,6 +268,30 @@ fn format_recall_view_score_column_omitted_on_non_search_routing() {
 }
 
 #[test]
+fn format_recall_view_header_surfaces_per_kind_and_per_tag_histograms() {
+    // ALP-1725 acceptance: the recall header must surface BOTH a
+    // per-kind and a per-tag histogram so agents can scan the
+    // result-set shape without paging through every row. Regression
+    // guard: a prior iteration emitted only `kinds:` because the
+    // `tag_histogram` helper existed in `aggregation.rs` but was
+    // never wired into `render_header`.
+    let (result, request, now) = search_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    // Per-kind histogram: 2 decision + 1 lesson across the 3 rows.
+    assert!(
+        rendered.contains("\nkinds: decision=2, lesson=1\n"),
+        "expected kinds histogram in header:\n{rendered}",
+    );
+    // Per-tag histogram: `projection` appears on all 3 rows,
+    // `snippet` on 2, `edge-case` on 1. Sort order is count desc,
+    // then alphabetical within a tie.
+    assert!(
+        rendered.contains("\ntags: projection=3, snippet=2, edge-case=1\n"),
+        "expected tag histogram in header:\n{rendered}",
+    );
+}
+
+#[test]
 fn format_recall_view_empty_fixture_emits_no_matches_hint() {
     let (result, request, now) = empty_fixture();
     let rendered = format_recall_view_at(&result, &request, now);

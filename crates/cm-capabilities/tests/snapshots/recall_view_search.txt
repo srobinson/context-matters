@@ -5,6 +5,7 @@ candidates: 47 -> 3 shown
 scope_chain: [global/project:helioy, global]
 scope_hits: global/project:helioy=2, global=1
 kinds: decision=2, lesson=1
+tags: projection=3, snippet=2, edge-case=1
 tokens: 3,420 of 8,000 budget
 
 entries:
