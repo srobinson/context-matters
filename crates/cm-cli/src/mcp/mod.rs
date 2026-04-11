@@ -21,12 +21,22 @@ pub(crate) use cm_capabilities::projection::snippet;
 pub(crate) use cm_capabilities::scope::ensure_scope_chain;
 pub(crate) use cm_capabilities::validation::check_input_size;
 
-pub(crate) use crate::shared::{json_response, parse_params, yaml_response};
+pub(crate) use crate::shared::{
+    ToolResult, dual_response, json_response, parse_params, yaml_response,
+};
 
 // ── Constants ─────────────────────────────────────────────────────
 
 /// MCP protocol version.
-const PROTOCOL_VERSION: &str = "2024-11-05";
+///
+/// Bumped to `2025-06-18` (ALP-1761) so the dual-channel envelope from
+/// ALP-1760 and the per-tool `outputSchema` declarations from ALP-1759
+/// land under a coherent advertised protocol. Clean break: there is no
+/// fallback to `2024-11-05`. The dual-channel envelope is structurally
+/// backward-compatible (new clients pick up `structuredContent`, old
+/// clients ignore the unknown field), but the protocol version we
+/// *advertise* is the version whose semantics we guarantee.
+const PROTOCOL_VERSION: &str = "2025-06-18";
 
 /// Byte cap applied to every MCP tool response except `cx_export`.
 ///
@@ -307,9 +317,7 @@ impl<S: ContextStore> McpServer<S> {
         };
 
         match result {
-            Ok(value) => Ok(json!({
-                "content": [{"type": "text", "text": apply_cap_for_tool(tool_name, value)}]
-            })),
+            Ok(tool_result) => Ok(build_envelope(tool_name, tool_result)),
             // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
             // any tool returns isError:true (Promise.all fail-fast, tracked at
             // anthropics/claude-code#22264). Drop the flag; prefix with ERROR: so the
@@ -320,4 +328,30 @@ impl<S: ContextStore> McpServer<S> {
             })),
         }
     }
+}
+
+/// Build the MCP `CallToolResult` envelope for a successful tool call.
+///
+/// Maps a [`ToolResult`] to the MCP 2025-06-18 dual-channel wire shape:
+/// - `content: [{type: "text", text: ...}]` for tools with a non-empty
+///   text channel, or `content: []` for structured-only tools (`cx_export`)
+/// - `structuredContent: {...}` when the tool supplies a JSON projection;
+///   omitted entirely for text-only write tools
+///
+/// The text channel is clipped via [`apply_cap_for_tool`] to protect LLM
+/// context bytes. The structured channel is uncapped — MCP clients
+/// consume it separately and it does not land in the model prompt.
+fn build_envelope(tool_name: &str, tool_result: ToolResult) -> Value {
+    let content = if tool_result.text.is_empty() {
+        json!([])
+    } else {
+        let capped = apply_cap_for_tool(tool_name, tool_result.text);
+        json!([{"type": "text", "text": capped}])
+    };
+    let mut envelope = serde_json::Map::new();
+    envelope.insert("content".to_owned(), content);
+    if let Some(structured) = tool_result.structured {
+        envelope.insert("structuredContent".to_owned(), structured);
+    }
+    Value::Object(envelope)
 }

@@ -42,7 +42,164 @@ serde_json::from_str(r##"{
         },
         "type": "object"
       },
-      "name": "cx_recall"
+      "name": "cx_recall",
+      "outputSchema": {
+        "description": "Recall response: query header, ranked rows, and trailing advisories.",
+        "properties": {
+          "advisories": {
+            "description": "Trailer advisory lines (routing, tier, dedup, drill-down) the formatter would emit as YAML comments.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entries": {
+            "description": "Ranked recall rows. Order is significant.",
+            "items": {
+              "properties": {
+                "age": {
+                  "description": "Relative age string (e.g. \"2h\", \"6d\").",
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Full UUID v7.",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "fact",
+                    "decision",
+                    "preference",
+                    "lesson",
+                    "reference",
+                    "feedback",
+                    "pattern",
+                    "observation"
+                  ],
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "score": {
+                  "description": "Normalised relevance score in [0, 1] on Search routing. Omitted on non-search routings.",
+                  "type": "number"
+                },
+                "short_id": {
+                  "description": "8 to 12 char hex prefix unique within the response.",
+                  "type": "string"
+                },
+                "snippet": {
+                  "description": "Smart snippet of the entry body, with matched query terms bracketed when applicable.",
+                  "type": "string"
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "short_id",
+                "id",
+                "title",
+                "snippet",
+                "age",
+                "scope",
+                "kind",
+                "tags"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "header": {
+            "description": "Per-response query envelope.",
+            "properties": {
+              "candidates": {
+                "description": "Total candidates considered before token-budget trimming.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kinds_histogram": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "description": "Per-kind counts across the returned rows.",
+                "type": "object"
+              },
+              "query": {
+                "description": "Free-text query the caller supplied. Omitted when the recall was tag/scope-only.",
+                "type": "string"
+              },
+              "returned": {
+                "description": "Number of rows in `entries` after token-budget trimming.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "routing": {
+                "description": "Routing branch chosen by the recall pipeline (search, browse_fallback, scope_resolve, tag_scope_walk).",
+                "type": "string"
+              },
+              "scope_chain": {
+                "description": "Scope path plus ancestors walked, in order.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "scope_hits": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "description": "Per-scope hit counts in `scope_chain`.",
+                "type": "object"
+              },
+              "tags_histogram": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "description": "Per-tag counts across the returned rows.",
+                "type": "object"
+              },
+              "tier": {
+                "description": "Search tier the cascade settled on (none, exact, prefix, split_or). Omitted on non-search routings.",
+                "type": "string"
+              },
+              "tokens": {
+                "description": "Estimated token total of the rendered response.",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "routing",
+              "candidates",
+              "returned",
+              "scope_chain",
+              "scope_hits",
+              "kinds_histogram",
+              "tags_histogram",
+              "tokens"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "header",
+          "entries",
+          "advisories"
+        ],
+        "type": "object"
+      }
     },
     {
       "description": "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash.",
@@ -208,14 +365,149 @@ serde_json::from_str(r##"{
         },
         "type": "object"
       },
-      "name": "cx_browse"
+      "name": "cx_browse",
+      "outputSchema": {
+        "description": "Browse response: filtered inventory header, rows, and pagination tail.",
+        "properties": {
+          "entries": {
+            "description": "Browse rows on this page. Order is significant (sort_used governs).",
+            "items": {
+              "properties": {
+                "age": {
+                  "description": "Relative age string (e.g. \"2h\", \"6d\").",
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Full UUID v7.",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "Entry kind. Omitted when unset.",
+                  "enum": [
+                    "fact",
+                    "decision",
+                    "preference",
+                    "lesson",
+                    "reference",
+                    "feedback",
+                    "pattern",
+                    "observation"
+                  ],
+                  "type": "string"
+                },
+                "scope": {
+                  "description": "Row scope path. Omitted when the row has no scope.",
+                  "type": "string"
+                },
+                "short_id": {
+                  "description": "8 to 12 char hex prefix unique within the response.",
+                  "type": "string"
+                },
+                "snippet": {
+                  "description": "Smart snippet of the entry body.",
+                  "type": "string"
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "short_id",
+                "id",
+                "title",
+                "snippet",
+                "age",
+                "tags"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "True when another page is available via `next_cursor`.",
+            "type": "boolean"
+          },
+          "header": {
+            "description": "Per-response filter + histogram envelope.",
+            "properties": {
+              "created_by": {
+                "description": "Created-by filter the caller supplied. Omitted when unset.",
+                "type": "string"
+              },
+              "kind": {
+                "description": "Kind filter the caller supplied. Omitted when unset.",
+                "type": "string"
+              },
+              "kinds_histogram": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "description": "Per-kind counts across the returned rows.",
+                "type": "object"
+              },
+              "returned": {
+                "description": "Number of rows in `entries` on this page.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "scope": {
+                "description": "Scope filter the caller supplied. Omitted when unset.",
+                "type": "string"
+              },
+              "sort_used": {
+                "description": "Sort order the browse pipeline applied (e.g. updated_desc).",
+                "type": "string"
+              },
+              "tags_histogram": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "description": "Per-tag counts across the returned rows.",
+                "type": "object"
+              },
+              "total": {
+                "description": "Total matching rows in the store before pagination.",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sort_used",
+              "total",
+              "returned",
+              "kinds_histogram",
+              "tags_histogram"
+            ],
+            "type": "object"
+          },
+          "next_cursor": {
+            "description": "Opaque cursor to feed back as `cursor` on the next page. Omitted when `has_more` is false.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "header",
+          "entries",
+          "has_more"
+        ],
+        "type": "object"
+      }
     },
     {
-      "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. IDs that do not exist are silently omitted. Maximum 100 IDs per request.",
+      "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts the full hyphenated UUIDv7 or the short prefix (≥ 8 hex chars) surfaced in cx_recall / cx_browse row headers. IDs that do not exist are silently omitted; an ambiguous prefix that matches multiple entries errors the whole batch with a listing. Maximum 100 IDs per request.",
       "inputSchema": {
         "properties": {
           "ids": {
-            "description": "Entry IDs to retrieve (UUIDv7 format). Maximum 100 per request. Missing IDs are silently omitted.",
+            "description": "Entry IDs: full hyphenated UUIDv7 or ≥8-char prefix from cx_recall/cx_browse rows. Max 100. Ambiguous prefix errors.",
             "items": {
               "type": "string"
             },
@@ -227,7 +519,101 @@ serde_json::from_str(r##"{
         ],
         "type": "object"
       },
-      "name": "cx_get"
+      "name": "cx_get",
+      "outputSchema": {
+        "description": "Get response: request/found counts, missing ids, and full entries.",
+        "properties": {
+          "entries": {
+            "description": "Resolved entries with full body. Omitted when empty. Order mirrors the caller's request.",
+            "items": {
+              "properties": {
+                "age": {
+                  "description": "Relative age string (e.g. \"2h\", \"6d\").",
+                  "type": "string"
+                },
+                "body": {
+                  "description": "Full markdown body.",
+                  "type": "string"
+                },
+                "confidence": {
+                  "description": "Entry confidence level. Omitted when `meta.confidence` is unset.",
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Full UUID v7.",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "fact",
+                    "decision",
+                    "preference",
+                    "lesson",
+                    "reference",
+                    "feedback",
+                    "pattern",
+                    "observation"
+                  ],
+                  "type": "string"
+                },
+                "scope": {
+                  "description": "Canonical scope path.",
+                  "type": "string"
+                },
+                "tags": {
+                  "description": "Entry tags. Omitted when `meta.tags` is empty.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "scope",
+                "kind",
+                "age",
+                "body"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "found": {
+            "description": "Number of entries successfully resolved from the store.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missing": {
+            "description": "Ids the caller supplied that did not resolve. Omitted when empty.",
+            "items": {
+              "description": "Verbatim id the caller passed; not guaranteed to be a valid UUID.",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "requested": {
+            "description": "Number of ids the caller supplied.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requested",
+          "found"
+        ],
+        "type": "object"
+      }
     },
     {
       "description": "Partially update an existing entry. Only provided fields are modified. Changing body or kind recomputes content_hash and checks for duplicates. Scope migration is excluded; use cx_store with supersedes to move entries across scopes. At least one field must be provided.",
@@ -305,7 +691,108 @@ serde_json::from_str(r##"{
         },
         "type": "object"
       },
-      "name": "cx_stats"
+      "name": "cx_stats",
+      "outputSchema": {
+        "description": "Stats response: store totals, per-kind histogram, top tags, and scope tree.",
+        "properties": {
+          "active": {
+            "description": "Number of active (non-superseded) entries.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "db_size_bytes": {
+            "description": "SQLite database file size in bytes.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Per-kind entry counts across active entries.",
+            "type": "object"
+          },
+          "relations": {
+            "description": "Total relations in the store.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scope_tree": {
+            "description": "Scope tree rows in traversal order.",
+            "items": {
+              "properties": {
+                "entry_count": {
+                  "description": "Active entries at this scope (non-recursive).",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "description": "ScopeKind serialised as a string (global, project, repo, session).",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "Human-readable label for the scope.",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Canonical scope path.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "kind",
+                "label",
+                "entry_count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "scopes": {
+            "description": "Total scopes in the store.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "superseded": {
+            "description": "Number of superseded (soft-deleted or replaced) entries.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "top_tags": {
+            "description": "Most frequent tags, capped at 10 by `TOP_TAGS_LIMIT`.",
+            "items": {
+              "properties": {
+                "count": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "tag": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tag",
+                "count"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "superseded",
+          "scopes",
+          "relations",
+          "db_size_bytes",
+          "kinds",
+          "top_tags",
+          "scope_tree"
+        ],
+        "type": "object"
+      }
     },
     {
       "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree.",
@@ -325,7 +812,167 @@ serde_json::from_str(r##"{
         },
         "type": "object"
       },
-      "name": "cx_export"
+      "name": "cx_export",
+      "outputSchema": {
+        "description": "Export response: full entry and scope snapshots plus provenance metadata.",
+        "properties": {
+          "count": {
+            "description": "Length of `entries`.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entries": {
+            "description": "Active entries in the export scope. Mirrors `cm_core::Entry`.",
+            "items": {
+              "properties": {
+                "body": {
+                  "description": "Full markdown body.",
+                  "type": "string"
+                },
+                "content_hash": {
+                  "description": "BLAKE3 hex digest of the body.",
+                  "type": "string"
+                },
+                "created_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "created_by": {
+                  "description": "Attribution string (e.g. agent:claude-code).",
+                  "type": "string"
+                },
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "fact",
+                    "decision",
+                    "preference",
+                    "lesson",
+                    "reference",
+                    "feedback",
+                    "pattern",
+                    "observation"
+                  ],
+                  "type": "string"
+                },
+                "meta": {
+                  "additionalProperties": true,
+                  "description": "Optional metadata envelope. Omitted when every sub-field is empty.",
+                  "properties": {
+                    "confidence": {
+                      "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                      ],
+                      "type": "string"
+                    },
+                    "expires_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "priority": {
+                      "type": "integer"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                },
+                "scope_path": {
+                  "description": "Canonical scope path.",
+                  "type": "string"
+                },
+                "superseded_by": {
+                  "description": "Id of the replacement entry when this row is soft-deleted.",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "scope_path",
+                "kind",
+                "title",
+                "body",
+                "content_hash",
+                "created_by",
+                "created_at",
+                "updated_at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "exported_at": {
+            "description": "Export timestamp in RFC 3339.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Scopes touched by the export. Mirrors `cm_core::Scope`.",
+            "items": {
+              "properties": {
+                "created_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "ScopeKind serialised as a string.",
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "meta": {
+                  "additionalProperties": true,
+                  "description": "Free-form scope metadata. Omitted when unset.",
+                  "type": "object"
+                },
+                "parent_path": {
+                  "description": "Parent scope path. Omitted for the root scope.",
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "kind",
+                "label",
+                "created_at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries",
+          "scopes",
+          "exported_at",
+          "count"
+        ],
+        "type": "object"
+      }
     }
   ]
 }"##).expect("generated tool list is valid JSON")

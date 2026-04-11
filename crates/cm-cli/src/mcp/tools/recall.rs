@@ -1,13 +1,13 @@
 //! Handler for the `cx_recall` tool.
 
-use cm_capabilities::projection::format_recall_view;
+use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{cm_err_to_string, parse_params, yaml_response};
+use crate::mcp::{ToolResult, cm_err_to_string, dual_response, parse_params};
 
 /// Parameters for the `cx_recall` tool.
 #[derive(Debug, Deserialize)]
@@ -31,7 +31,7 @@ struct CxRecallParams {
     max_tokens: Option<u32>,
 }
 
-pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let params: CxRecallParams = parse_params(args)?;
 
     // Validate query size if provided
@@ -67,5 +67,7 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<String
         .await
         .map_err(cm_err_to_string)?;
 
-    yaml_response(format_recall_view(&result, &request))
+    let text = format_recall_view(&result, &request);
+    let view = project_web_recall(&result, &request);
+    dual_response(text, &view)
 }

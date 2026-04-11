@@ -1,13 +1,19 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
-import type { Entry } from "@/api/generated/Entry";
+import { useMemo } from "react";
+import type { WebBrowseRow } from "@/api/generated/WebBrowseRow";
 import { useEntries } from "@/api/hooks";
 import { EntrySummary } from "./composed/EntrySummary";
+import { HoistedHeader } from "./composed/HoistedHeader";
 
 export function RecentActivity() {
   const { data, isLoading } = useEntries({ sort: "recent", limit: 8 });
 
-  const entries = data?.pages.flatMap((page) => page.items) ?? [];
+  const entries = useMemo<WebBrowseRow[]>(
+    () => data?.pages.flatMap((page) => page.entries) ?? [],
+    [data],
+  );
+  const header = data?.pages[0]?.header;
 
   return (
     <section className="rounded-surface border border-border/70 bg-card/70 p-4 shadow-surface backdrop-blur-sm">
@@ -47,8 +53,11 @@ export function RecentActivity() {
 
       {entries.length > 0 && (
         <div className="space-y-2">
-          {entries.map((entry) => (
-            <ActivityRow key={entry.id} entry={entry} />
+          {header && (
+            <HoistedHeader scope={header.scope} kind={header.kind} createdBy={header.created_by} />
+          )}
+          {entries.map((row) => (
+            <ActivityRow key={row.id} row={row} />
           ))}
         </div>
       )}
@@ -56,14 +65,14 @@ export function RecentActivity() {
   );
 }
 
-function ActivityRow({ entry }: { entry: Entry }) {
+function ActivityRow({ row }: { row: WebBrowseRow }) {
   return (
     <Link
       to="/feed"
-      search={{ sort: "recent" as const, entry_id: entry.id }}
+      search={{ sort: "recent" as const, entry_id: row.id }}
       className="group flex items-start gap-3 rounded-control border border-border/60 bg-background/40 px-3 py-3 transition-colors hover:border-border hover:bg-accent/20"
     >
-      <EntrySummary entry={entry} showArrow />
+      <EntrySummary row={row} showArrow />
     </Link>
   );
 }

@@ -26,6 +26,14 @@ struct ToolDef {
     cli_about: String,
     #[serde(default)]
     params: Vec<ParamDef>,
+    /// Optional MCP `outputSchema` for the tool, expressed as a raw JSON
+    /// string (TOML triple-quoted block). When present, build.rs parses
+    /// it with `serde_json::from_str` and injects it into the tools/list
+    /// entry alongside `inputSchema`. Read tools (`cx_recall`, `cx_browse`,
+    /// `cx_get`, `cx_stats`, `cx_export`) advertise an outputSchema so
+    /// clients can validate `structuredContent` payloads (ALP-1759 +
+    /// ALP-1760). Write tools omit the field entirely.
+    output_schema: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -173,11 +181,28 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> String {
             );
         }
 
-        tool_jsons.push(serde_json::json!({
+        let mut tool_entry = serde_json::json!({
             "name": tool_name,
             "description": tool.mcp_description,
             "inputSchema": input_schema
-        }));
+        });
+        // Per-tool outputSchema is optional. Read tools declare one so
+        // MCP clients can validate `structuredContent` against the
+        // expected response shape; write tools (`cx_store`, `cx_deposit`,
+        // `cx_update`, `cx_forget`) omit it entirely. Parse the raw
+        // JSON string from tools.toml and panic with a tool-keyed error
+        // on malformed schemas so build failures pinpoint the offender.
+        if let Some(output_schema_raw) = &tool.output_schema {
+            let parsed: serde_json::Value =
+                serde_json::from_str(output_schema_raw).unwrap_or_else(|e| {
+                    panic!("output_schema for tool `{tool_name}` is not valid JSON: {e}")
+                });
+            tool_entry
+                .as_object_mut()
+                .expect("tool entry is a JSON object")
+                .insert("outputSchema".to_string(), parsed);
+        }
+        tool_jsons.push(tool_entry);
     }
 
     let json_val = serde_json::json!({ "tools": tool_jsons });

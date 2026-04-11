@@ -129,6 +129,51 @@ impl FtsQuery {
             raw: terms.join(" "),
         }
     }
+
+    /// Build a split-OR query: joins sanitized tokens with `OR` instead
+    /// of the default implicit AND.
+    ///
+    /// Used by the recall fallback cascade's broadest tier, where the
+    /// narrower exact and prefix queries have returned nothing and the
+    /// goal is to surface any row that mentions any of the query terms.
+    ///
+    /// Semantics:
+    ///
+    /// * Tokens are sanitized with [`sanitize_word`] (hyphens and other
+    ///   punctuation become spaces, then re-split) so `foo-bar` yields
+    ///   two terms, `foo` and `bar`.
+    /// * FTS5 reserved words `AND`, `OR`, `NOT` (uppercase only, as FTS5
+    ///   interprets them) are stripped; joining them with `OR` would
+    ///   otherwise produce a syntax error like `foo OR OR bar`.
+    /// * Tokens are deduplicated case-insensitively, preserving the first
+    ///   casing encountered, so `Rust rust RUST` collapses to `Rust`.
+    /// * The result is capped at 8 terms to keep the FTS5 query plan cost
+    ///   bounded; terms beyond the cap are truncated silently.
+    /// * Empty input (or input that sanitizes to nothing) returns an
+    ///   empty raw string.
+    pub fn split_or_query(input: &str) -> Self {
+        const MAX_TERMS: usize = 8;
+        let mut terms: Vec<String> = Vec::new();
+
+        'outer: for raw_word in input.split_whitespace() {
+            for token in sanitize_word(raw_word).split_whitespace() {
+                if matches!(token, "AND" | "OR" | "NOT") {
+                    continue;
+                }
+                if terms.iter().any(|t| t.eq_ignore_ascii_case(token)) {
+                    continue;
+                }
+                terms.push(token.to_string());
+                if terms.len() == MAX_TERMS {
+                    break 'outer;
+                }
+            }
+        }
+
+        Self {
+            raw: terms.join(" OR "),
+        }
+    }
 }
 
 /// Sanitize a single word for FTS5: keep alphanumeric and `*` (prefix queries).
@@ -283,6 +328,36 @@ mod tests {
     #[test]
     fn fts_query_empty() {
         let q = FtsQuery::new("");
+        assert_eq!(q.as_str(), "");
+    }
+
+    #[test]
+    fn split_or_multi_word_joins_with_or() {
+        let q = FtsQuery::split_or_query("context matters recent work");
+        assert_eq!(q.as_str(), "context OR matters OR recent OR work");
+    }
+
+    #[test]
+    fn split_or_dedupes_case_insensitive() {
+        let q = FtsQuery::split_or_query("Rust rust RUST");
+        assert_eq!(q.as_str(), "Rust");
+    }
+
+    #[test]
+    fn split_or_caps_at_eight() {
+        let q = FtsQuery::split_or_query("a b c d e f g h i j k l");
+        assert_eq!(q.as_str(), "a OR b OR c OR d OR e OR f OR g OR h");
+    }
+
+    #[test]
+    fn split_or_strips_reserved_words() {
+        let q = FtsQuery::split_or_query("foo AND bar OR baz");
+        assert_eq!(q.as_str(), "foo OR bar OR baz");
+    }
+
+    #[test]
+    fn split_or_empty_input_returns_empty() {
+        let q = FtsQuery::split_or_query("");
         assert_eq!(q.as_str(), "");
     }
 

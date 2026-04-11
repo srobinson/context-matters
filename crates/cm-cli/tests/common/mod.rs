@@ -10,6 +10,7 @@
 
 use cm_core::{ContextStore, MutationSource, NewScope, ScopePath, WriteContext};
 use cm_store::{CmStore, schema};
+use serde_json::Value;
 
 /// Create an isolated store backed by a temp-file SQLite database.
 ///
@@ -77,4 +78,60 @@ pub fn extract_stored_id(text: &str) -> String {
         .find(|l| l.starts_with("stored: "))
         .expect("cx_store ack must contain `stored: <uuid>` line");
     line["stored: ".len()..].trim().to_owned()
+}
+
+/// Walk a top-level JSON Schema fragment and assert that `value` conforms.
+///
+/// Specifically: every key in `schema.required` exists in `value`, and the
+/// JSON type of each present required key matches the schema's
+/// `properties.<key>.type`. Used by ALP-1761 protocol tests to lock the
+/// dual-channel `structuredContent` payload to its declared `outputSchema`.
+///
+/// Intentionally not a full JSON Schema validator. The cx_* tools declare
+/// their schemas via flat top-level required arrays whose types fall in
+/// {object, array, integer, boolean}, none of which need recursive shape
+/// rules to catch contract drift. If schemas grow `oneOf`, `allOf`, or
+/// recursive `items` constraints we'll pull in the `jsonschema` crate
+/// as a dev-dep and replace this helper.
+pub fn assert_top_level_conformance(tool_name: &str, schema: &Value, value: &Value) {
+    let required = schema["required"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{tool_name}: outputSchema missing required array"));
+    let properties = schema["properties"]
+        .as_object()
+        .unwrap_or_else(|| panic!("{tool_name}: outputSchema missing properties object"));
+
+    for req_key in required {
+        let key = req_key
+            .as_str()
+            .unwrap_or_else(|| panic!("{tool_name}: required entry is not a string"));
+        let actual = value.get(key).unwrap_or_else(|| {
+            panic!("{tool_name}: structuredContent missing required key `{key}`")
+        });
+        let expected_type = properties[key]["type"].as_str().unwrap_or_else(|| {
+            panic!("{tool_name}: schema property `{key}` has no top-level type")
+        });
+        let actual_type = json_value_type(actual);
+        assert_eq!(
+            actual_type, expected_type,
+            "{tool_name}: structuredContent[{key}] type `{actual_type}` does not match \
+             outputSchema type `{expected_type}` (value: {actual})"
+        );
+    }
+}
+
+/// Return the JSON Schema type name for a `serde_json::Value`. The
+/// `integer` vs `number` split mirrors JSON Schema semantics: a
+/// `serde_json::Number` parsed as a whole-number literal lands as
+/// integer, anything with a fractional part lands as number.
+pub fn json_value_type(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(n) if n.is_i64() || n.is_u64() => "integer",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
 }

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::mcp::{
-    check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, yaml_response,
+    ToolResult, check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, yaml_response,
 };
 
 use super::{default_created_by, default_scope, parse_confidence};
@@ -58,7 +58,7 @@ struct CxStoreParams {
     supersedes: Option<String>,
 }
 
-pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
 
     let params: CxStoreParams = parse_params(args)?;

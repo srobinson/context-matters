@@ -2,6 +2,27 @@
 //! and query-term matching. No I/O, no allocations except where explicitly
 //! noted.
 
+/// Maximum snippet width (bytes) shown per row across every view
+/// formatter (`browse`, `recall`, `web_view`). Sized to fit a
+/// prose-heavy line within one wide terminal row without wrap, and
+/// small enough that the bracket-insertion pass in [`smart_snippet`]
+/// has headroom before the truncate fallback kicks in.
+pub const SNIPPET_MAX_BYTES: usize = 200;
+
+/// Controls whether [`smart_snippet`] wraps query-term matches in visual
+/// markers after the window is computed.
+///
+/// `None` keeps the current behaviour (plain text). `Bracketed` wraps
+/// each matched token in YAML-safe guillemets `«…»` (U+00AB / U+00BB)
+/// so the match is visible in the rendered snippet. The wrapping runs
+/// on the final windowed snippet, not the full body, so only matches
+/// inside the `max_bytes` window get brackets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HighlightStyle {
+    None,
+    Bracketed,
+}
+
 /// Truncate body to a snippet, safe for multi-byte UTF-8.
 ///
 /// Uses `floor_char_boundary` (stable since Rust 1.82) to avoid
@@ -156,14 +177,153 @@ pub fn snippet_around(body: &str, start: usize, max_bytes: usize) -> String {
 /// markdown heading, then extract a `max_bytes` window centred on the first
 /// query-term match. Falls back to the start of the stripped body when
 /// `query` is `None` or no term matches.
-pub fn smart_snippet(body: &str, query: Option<&str>, max_bytes: usize) -> String {
+///
+/// `style` controls the post-window highlighting pass. `HighlightStyle::None`
+/// returns the window verbatim. `HighlightStyle::Bracketed` wraps each
+/// query-term match inside the final window in guillemets (`«…»`). Bracket
+/// insertion runs only when both `style == Bracketed` and `query.is_some()`.
+/// If the insertion pushes the result past `max_bytes` the tail is trimmed
+/// at a bracket-safe cut point; see [`truncate_respecting_brackets`].
+pub fn smart_snippet(
+    body: &str,
+    query: Option<&str>,
+    style: HighlightStyle,
+    max_bytes: usize,
+) -> String {
     let body = strip_yaml_frontmatter(body);
     let body = strip_leading_markdown_heading(body);
     let start = match query {
         Some(q) => first_query_match_position(body, q).unwrap_or(0),
         None => 0,
     };
-    snippet_around(body, start, max_bytes)
+    let window = snippet_around(body, start, max_bytes);
+    if style != HighlightStyle::Bracketed {
+        return window;
+    }
+    let Some(q) = query else {
+        return window;
+    };
+    let terms = highlight_terms(q);
+    if terms.is_empty() {
+        return window;
+    }
+    let term_refs: Vec<&str> = terms.iter().map(String::as_str).collect();
+    let highlighted = insert_highlights(&window, &term_refs);
+    truncate_respecting_brackets(&highlighted, max_bytes)
+}
+
+/// Extract highlight-ready terms from a raw query string. Mirrors the
+/// token-stripping logic in [`first_query_match_position`] so the two
+/// stay in lock-step: FTS5 operators (`AND`, `OR`, `NOT`), bare
+/// quantifier punctuation (`"`, `*`, `(`, `)`), and empty tokens are
+/// dropped. Terms are lowercased for case-insensitive matching inside
+/// [`insert_highlights`].
+fn highlight_terms(query: &str) -> Vec<String> {
+    query
+        .split_whitespace()
+        .filter_map(|raw| {
+            let cleaned: String = raw
+                .chars()
+                .filter(|c| !matches!(c, '"' | '*' | '(' | ')'))
+                .collect();
+            match cleaned.to_ascii_uppercase().as_str() {
+                "AND" | "OR" | "NOT" | "" => None,
+                _ => Some(cleaned.to_ascii_lowercase()),
+            }
+        })
+        .collect()
+}
+
+/// Walk `snippet` and wrap each case-insensitive occurrence of any
+/// term in `query_terms` with `«…»` guillemets (U+00AB / U+00BB).
+///
+/// * Casing of the body is preserved — `insert_highlights("Hello
+///   WORLD", &["world"])` returns `"Hello «WORLD»"`.
+/// * Empty terms are skipped; the caller is responsible for filtering
+///   but the helper tolerates them defensively.
+/// * Double-bracketing is suppressed: if a match is already surrounded
+///   by `«` and `»` (byte-exact adjacent neighbours) the helper leaves
+///   it alone. This matters when the caller re-highlights a snippet
+///   that already went through one pass.
+/// * Spans are extracted in a single forward scan, which means two
+///   overlapping terms favour whichever one the scan hits first. All
+///   current callers use disjoint terms, so this is a non-issue in
+///   production, but worth documenting.
+pub fn insert_highlights(snippet: &str, query_terms: &[&str]) -> String {
+    let terms: Vec<String> = query_terms
+        .iter()
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_ascii_lowercase())
+        .collect();
+    if terms.is_empty() {
+        return snippet.to_owned();
+    }
+
+    let snippet_lc = snippet.to_ascii_lowercase();
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut cursor = 0;
+    while cursor < snippet_lc.len() {
+        let rest = &snippet_lc[cursor..];
+        let earliest = terms
+            .iter()
+            .filter_map(|t| rest.find(t.as_str()).map(|i| (cursor + i, t.len())))
+            .min_by_key(|(start, _)| *start);
+        let Some((start, len)) = earliest else {
+            break;
+        };
+        let before_is_open = start >= 2 && &snippet[start - 2..start] == "«";
+        let after_is_close =
+            start + len + 2 <= snippet.len() && &snippet[start + len..start + len + 2] == "»";
+        if !(before_is_open && after_is_close) {
+            spans.push((start, len));
+        }
+        cursor = start + len;
+    }
+
+    if spans.is_empty() {
+        return snippet.to_owned();
+    }
+
+    // Each span costs 4 extra bytes (2 per guillemet). Pre-size the
+    // output to avoid reallocations on snippets with many matches.
+    let mut out = String::with_capacity(snippet.len() + spans.len() * 4);
+    let mut prev = 0;
+    for (start, len) in spans {
+        out.push_str(&snippet[prev..start]);
+        out.push('«');
+        out.push_str(&snippet[start..start + len]);
+        out.push('»');
+        prev = start + len;
+    }
+    out.push_str(&snippet[prev..]);
+    out
+}
+
+/// Truncate `s` to at most `max_bytes`, guaranteeing that the cut
+/// point never lands inside a `«…»` guillemet pair.
+///
+/// Walks backward from `floor_char_boundary(max_bytes)` until the
+/// head slice has balanced `«`/`»` counts. On an imbalance we step
+/// back to just before the last unclosed `«`, dropping the partial
+/// bracket entirely rather than leaving a dangling opener.
+fn truncate_respecting_brackets(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_owned();
+    }
+    let mut end = s.floor_char_boundary(max_bytes);
+    loop {
+        let head = &s[..end];
+        let opens = head.matches('«').count();
+        let closes = head.matches('»').count();
+        if opens == closes {
+            break;
+        }
+        match head.rfind('«') {
+            Some(pos) => end = pos,
+            None => break,
+        }
+    }
+    s[..end].to_owned()
 }
 
 /// Rough token estimate: ~4 characters per token for English text.
@@ -328,6 +488,116 @@ mod tests {
     }
 
     #[test]
+    fn insert_highlights_single_match() {
+        // Canonical happy path: a single term inside a plain snippet.
+        // Output wraps the match in U+00AB / U+00BB and leaves the rest
+        // of the string untouched.
+        assert_eq!(
+            insert_highlights("hello world", &["world"]),
+            "hello «world»"
+        );
+    }
+
+    #[test]
+    fn insert_highlights_multi_match() {
+        // All occurrences of a recurring term get bracketed, including
+        // the very first and the very last, and the surrounding spaces
+        // are preserved.
+        assert_eq!(
+            insert_highlights("foo foo foo", &["foo"]),
+            "«foo» «foo» «foo»"
+        );
+    }
+
+    #[test]
+    fn insert_highlights_case_insensitive() {
+        // Search is case-insensitive but output preserves the casing
+        // of the body. A lowercase query term matches an uppercase body
+        // span and the brackets wrap "WORLD" verbatim.
+        assert_eq!(
+            insert_highlights("Hello WORLD", &["world"]),
+            "Hello «WORLD»"
+        );
+    }
+
+    #[test]
+    fn insert_highlights_no_match() {
+        // Zero matches means zero allocations past the initial clone:
+        // body comes out byte-identical.
+        assert_eq!(insert_highlights("hello", &["xyz"]), "hello");
+    }
+
+    #[test]
+    fn insert_highlights_skips_empty_terms() {
+        // Defensive: an empty term would match every position under
+        // str::find (byte 0). The helper must filter it out so the
+        // output does not sprout `«»` guillemets around every char.
+        assert_eq!(insert_highlights("hello", &[""]), "hello");
+        assert_eq!(
+            insert_highlights("hello world", &["", "world"]),
+            "hello «world»"
+        );
+    }
+
+    #[test]
+    fn insert_highlights_avoids_double_bracketing() {
+        // Re-highlighting an already-highlighted snippet is a no-op
+        // for the terms that are already wrapped. This matters when
+        // the caller chains two highlight passes (e.g. history-aware
+        // rendering that does not want to re-emit brackets).
+        let once = insert_highlights("hello world", &["world"]);
+        assert_eq!(once, "hello «world»");
+        assert_eq!(insert_highlights(&once, &["world"]), once);
+    }
+
+    #[test]
+    fn smart_snippet_none_style_leaves_body_unchanged() {
+        // Regression guard: the pre-ALP-1749 call shape (style = None)
+        // must still return exactly the `snippet_around`-windowed body
+        // with no guillemets introduced. The smart_snippet_session_log
+        // test already covers the None-query branch; this one pins the
+        // Some-query branch so the highlighting pass is gated only by
+        // the style parameter.
+        let body = "the quick brown fox jumps over the lazy dog";
+        let result = smart_snippet(body, Some("brown"), HighlightStyle::None, 200);
+        assert_eq!(result, body);
+        assert!(!result.contains('«'));
+        assert!(!result.contains('»'));
+    }
+
+    #[test]
+    fn smart_snippet_bracketed_respects_byte_budget() {
+        // A long body with many matches. The Bracketed style inserts
+        // 4 extra bytes per match. The post-insertion result must still
+        // fit inside `max_bytes`; truncate_respecting_brackets handles
+        // the overflow, and never cuts inside a `«…»` pair.
+        let body = "alpha beta ".repeat(60); // ~660 bytes, many "beta" matches
+        let max_bytes = 120;
+        let result = smart_snippet(&body, Some("beta"), HighlightStyle::Bracketed, max_bytes);
+        assert!(
+            result.len() <= max_bytes,
+            "result len {} exceeds budget {}: {result}",
+            result.len(),
+            max_bytes,
+        );
+        // Any '«' emitted must be closed by a '»' — the truncation
+        // helper drops dangling openers.
+        let opens = result.matches('«').count();
+        let closes = result.matches('»').count();
+        assert_eq!(
+            opens, closes,
+            "unbalanced guillemets in truncated result: {result}",
+        );
+        // And at least one match should survive at the budget of 120
+        // bytes, otherwise the test is not exercising the highlight
+        // pass at all.
+        assert!(
+            result.contains("«beta»"),
+            "expected at least one highlighted beta in: {result}",
+        );
+    }
+
+    #[test]
     fn smart_snippet_session_log_case() {
         let body = "---\n\
                     session: nancy-ALP-1725-iter1\n\
@@ -339,7 +609,7 @@ mod tests {
                     Worked on cx_* MCP payload redesign. Implemented smart_snippet \
                     helper with frontmatter stripping so recall snippets surface \
                     real narrative prose instead of YAML boilerplate.";
-        let result = smart_snippet(body, None, 200);
+        let result = smart_snippet(body, None, HighlightStyle::None, 200);
         assert!(
             !result.contains("session: nancy"),
             "YAML leaked into snippet: {result}"

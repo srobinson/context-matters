@@ -11,26 +11,20 @@
 //! once at the entry point and injected into [`format_browse_view_at`]
 //! so snapshot tests can pin the `age:` column.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
 use chrono::{DateTime, Utc};
 use cm_core::{BrowseSort, Entry};
+use uuid::Uuid;
 
 use super::{
-    collapse_whitespace, detect_id_collisions, hoist_uniform, kind_histogram, relative_age,
-    render_histogram, scope_histogram, short_id, smart_snippet,
+    DrillDownHint, HighlightStyle, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED, SNIPPET_MAX_BYTES,
+    collapse_whitespace, compute_dedup_hints, compute_drill_down_hint, detect_id_collisions,
+    hoist_uniform, kind_histogram, relative_age, render_histogram, scope_histogram, short_id,
+    smart_snippet, tag_histogram,
 };
 use crate::browse::{BrowseRequest, BrowseResult};
-
-/// Maximum snippet width (bytes) shown per row in the browse view. Sized
-/// to fit a prose-heavy line within one wide terminal row without wrap.
-const SNIPPET_MAX_BYTES: usize = 200;
-
-/// Default short-id length. Auto-extends to [`SHORT_ID_LEN_EXTENDED`] when
-/// any two entries in the current result set share their first-8-byte
-/// prefix. Matches the convention shared with the recall formatter.
-const SHORT_ID_LEN: usize = 8;
-const SHORT_ID_LEN_EXTENDED: usize = 12;
 
 /// Render a [`BrowseResult`] as YAML-annotated text for the `cx_browse`
 /// MCP response body. See the module docstring for the target shape.
@@ -61,7 +55,8 @@ pub fn format_browse_view_at(
     out.push_str("---\n");
     render_header(&mut out, result, request, entries, &hoists);
     out.push('\n');
-    render_entries(&mut out, entries, now, &hoists);
+    render_entries(&mut out, entries, now, &hoists, &result.relation_counts);
+    render_advisories(&mut out, entries);
     render_pagination_hint(&mut out, result, request);
     out
 }
@@ -113,7 +108,13 @@ fn render_header(
     }
 }
 
-fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoists: &Hoists) {
+fn render_entries(
+    out: &mut String,
+    entries: &[Entry],
+    now: DateTime<Utc>,
+    hoists: &Hoists,
+    relation_counts: &HashMap<Uuid, u32>,
+) {
     out.push_str("entries:\n");
 
     if entries.is_empty() {
@@ -133,23 +134,40 @@ fn render_entries(out: &mut String, entries: &[Entry], now: DateTime<Utc>, hoist
     //   "  - <id>  "  ⇒  2 (list indent) + 2 ("- ") + id_len + 2 (gap).
     let cont_indent = " ".repeat(4 + id_len + 2);
 
+    // Intra-response dedup pass: first row carrying a given content
+    // hash prefix is the leader; later rows with the same prefix pick
+    // up a `dup_of: <leader short id>` annotation on their trailing
+    // YAML comment. Computed once per response.
+    let entry_refs: Vec<&Entry> = entries.iter().collect();
+    let dedup = compute_dedup_hints(&entry_refs);
+
     for (entry, id_str) in entries.iter().zip(id_strings.iter()) {
         let sid = short_id(id_str, id_len);
         let _ = writeln!(out, "  - {sid}  {}", entry.title);
 
-        let snippet = smart_snippet(&entry.body, None, SNIPPET_MAX_BYTES);
+        let snippet = smart_snippet(&entry.body, None, HighlightStyle::None, SNIPPET_MAX_BYTES);
         let snippet_line = collapse_whitespace(&snippet);
         if !snippet_line.is_empty() {
             let _ = writeln!(out, "{cont_indent}{snippet_line}");
         }
 
-        let comment = render_row_comment(entry, now, hoists);
+        let dup_of = dedup
+            .get(&entry.id)
+            .map(|leader_uuid| short_id(&leader_uuid.to_string(), id_len).to_owned());
+        let rels = relation_counts.get(&entry.id).copied().unwrap_or(0);
+        let comment = render_row_comment(entry, now, hoists, dup_of.as_deref(), rels);
         let _ = writeln!(out, "{cont_indent}# {comment}");
     }
 }
 
-fn render_row_comment(entry: &Entry, now: DateTime<Utc>, hoists: &Hoists) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(4);
+fn render_row_comment(
+    entry: &Entry,
+    now: DateTime<Utc>,
+    hoists: &Hoists,
+    dup_of: Option<&str>,
+    rels: u32,
+) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(6);
     if hoists.scope.is_none() {
         parts.push(format!("scope: {}", entry.scope_path));
     }
@@ -165,7 +183,69 @@ fn render_row_comment(entry: &Entry, now: DateTime<Utc>, hoists: &Hoists) -> Str
     if hoists.created_by.is_none() {
         parts.push(format!("created_by: {}", entry.created_by));
     }
+    if let Some(dup) = dup_of {
+        parts.push(format!("dup_of: {dup}"));
+    }
+    if rels > 0 {
+        parts.push(format!("rels: {rels}"));
+    }
     parts.join("  ")
+}
+
+/// Faceted drill-down advisory: when one kind or tag accounts for at
+/// least the [`super::DRILL_DOWN_THRESHOLD`] share of the result set,
+/// emit a one-line `# narrow: cx_browse(...)` hint that shows the
+/// caller the singular-arg shape to re-issue the browse pre-narrowed
+/// to that facet.
+///
+/// Computes both histograms locally rather than threading them through
+/// `render_header` because the browse header currently surfaces only
+/// the kind histogram on the rendered output, and the tag histogram
+/// is otherwise unused. Walking the rows twice (once in `render_header`
+/// for `kinds:`, once here for both `kinds:` and `tags:` drill-down)
+/// is cheaper than rewriting the header signature.
+///
+/// Suppressed for empty / single-row result sets via the `total < 2`
+/// guard inside [`compute_drill_down_hint`].
+fn render_advisories(out: &mut String, entries: &[Entry]) {
+    let kind_hist = kind_histogram(entries, |e| e.kind.as_str());
+    let tag_hist = tag_histogram(entries, |e| {
+        e.meta.as_ref().map(|m| m.tags.as_slice()).unwrap_or(&[])
+    });
+    if let Some(hint) = compute_drill_down_hint(&kind_hist, &tag_hist, entries.len()) {
+        let _ = writeln!(out, "\n{}", format_browse_drill_down(&hint));
+    }
+}
+
+/// Render the browse-side drill-down advisory line for a populated
+/// [`DrillDownHint`]. Mirrors the cx_browse MCP surface, which takes
+/// **singular** filter args (`kind=...`, `tag=...`) instead of the
+/// plural JSON-array args that recall uses, so the rendered call
+/// drops the brackets and quotes:
+///
+/// ```text
+/// # narrow: cx_browse(kind=observation) - 3 of 3 results are observation
+/// # narrow: cx_browse(tag=session-log) - 14 of 20 results are tagged session-log
+/// ```
+///
+/// The advisory does not echo the existing filter set back to the
+/// caller — the caller already knows the filters they supplied, and
+/// the suggestion is the *additional* facet to add. Recall's advisory
+/// echoes the free-text query because that arg is the variable
+/// part of every recall call; browse has no analogous `query` arg
+/// (only filter fields), so this would be redundant.
+fn format_browse_drill_down(hint: &DrillDownHint) -> String {
+    let DrillDownHint {
+        facet,
+        value,
+        count,
+        total,
+    } = hint;
+    let arg = if facet == "kinds" { "kind" } else { "tag" };
+    let qualifier = if facet == "tags" { "tagged " } else { "" };
+    format!(
+        "# narrow: cx_browse({arg}={value}) - {count} of {total} results are {qualifier}{value}"
+    )
 }
 
 fn render_pagination_hint(out: &mut String, result: &BrowseResult, request: &BrowseRequest) {
@@ -221,7 +301,12 @@ fn reconstruct_query(req: &BrowseRequest) -> Option<String> {
 /// line. `Debug`/`serde` would give `Recent`/`recent`; we want the SQL
 /// shape the sort resolves to, matching how `cx_recall` surfaces the
 /// routing branch in its own header.
-fn sort_as_str(sort: BrowseSort) -> &'static str {
+///
+/// Crate-visible so [`crate::projection::web_view`] can reuse the exact
+/// same rendering for `WebBrowseHeader::sort_used` — the web view and the
+/// YAML view must agree on the sort string, otherwise clients that
+/// read both will see a mental-model drift.
+pub(crate) fn sort_as_str(sort: BrowseSort) -> &'static str {
     match sort {
         BrowseSort::Recent => "updated_at desc",
         BrowseSort::Oldest => "updated_at asc",

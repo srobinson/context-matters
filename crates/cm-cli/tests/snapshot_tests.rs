@@ -13,8 +13,11 @@
 //!   `cap_response` pipeline with realistic fixtures.
 //!
 //! The sole survivor is `cx_export`, which stays on `json_response`
-//! (JSON fidelity > wire compactness for backup/restore), so an
-//! insta snapshot on its JSON blob still earns its keep.
+//! (JSON fidelity > wire compactness for backup/restore). Post
+//! ALP-1760, `json_response` produces a structured-only `ToolResult`
+//! and the envelope builder surfaces it as `structuredContent` with
+//! `content: []`; the insta snapshot asserts against the structured
+//! channel directly instead of parsing a serialised JSON text blob.
 //!
 //! See [`crates/cm-cli/tests/common/mod.rs`] for the shared fixture
 //! and id-extraction helpers.
@@ -61,7 +64,14 @@ async fn snapshot_cx_export() {
         .await
         .unwrap();
 
-    let mut resp: Value = serde_json::from_str(&result).unwrap();
+    // ALP-1760: `cx_export` now returns a structured-only `ToolResult`.
+    // Pull the JSON out of `result.structured` directly — the envelope
+    // builder surfaces it as `structuredContent` with an empty `content`
+    // array, and the snapshot asserts against the same JSON value the
+    // wire would carry.
+    let mut resp: Value = result
+        .structured
+        .expect("cx_export must emit a structured payload");
     redact_dynamic_fields(&mut resp);
 
     snapshot_settings! {

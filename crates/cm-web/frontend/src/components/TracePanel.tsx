@@ -1,34 +1,21 @@
 import { useState } from "react";
+import type { WebBrowseHeader } from "@/api/generated/WebBrowseHeader";
+import type { WebRecallHeader } from "@/api/generated/WebRecallHeader";
 import { cn } from "@/lib/utils";
 
-export interface RecallTrace {
-  routing: string;
-  candidates_before_filter: number;
-  fetch_limit_used: number;
-  token_budget_exhausted: boolean;
-}
-
-export interface BrowseTrace {
-  filter_set: string[];
-  sort: string;
-}
-
-interface RecallTraceData {
+interface RecallHeaderData {
   kind: "recall";
-  trace: RecallTrace;
-  scope_chain: string[];
-  token_estimate: number;
-  returned: number;
+  header: WebRecallHeader;
+  advisories: string[];
 }
 
-interface BrowseTraceData {
+interface BrowseHeaderData {
   kind: "browse";
-  trace: BrowseTrace;
-  total: number;
+  header: Omit<WebBrowseHeader, "total"> & { total: number };
   has_more: boolean;
 }
 
-export type TraceData = RecallTraceData | BrowseTraceData;
+export type TraceData = RecallHeaderData | BrowseHeaderData;
 
 function TraceBadge({
   children,
@@ -63,64 +50,79 @@ function TraceRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function RecallTraceContent({ data }: { data: RecallTraceData }) {
+function HistogramRow({ label, histogram }: { label: string; histogram: Record<string, number> }) {
+  const entries = Object.entries(histogram)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 6);
+  if (entries.length === 0) return null;
+  return (
+    <TraceRow label={label}>
+      {entries.map(([name, count]) => (
+        <TraceBadge key={name}>
+          {name} {count}
+        </TraceBadge>
+      ))}
+    </TraceRow>
+  );
+}
+
+function RecallTraceContent({ data }: { data: RecallHeaderData }) {
+  const { header, advisories } = data;
   return (
     <div className="space-y-1.5">
       <TraceRow label="routing">
-        <TraceBadge variant="active">{data.trace.routing}</TraceBadge>
+        <TraceBadge variant="active">{header.routing}</TraceBadge>
+        {header.tier && <TraceBadge variant="muted">tier: {header.tier}</TraceBadge>}
       </TraceRow>
       <TraceRow label="returned">
-        <span className="font-mono text-xs text-muted-foreground">{data.returned}</span>
+        <span className="font-mono text-xs text-muted-foreground">{header.returned}</span>
         <span className="font-mono text-[10px] text-muted-foreground/50">
-          of {data.trace.candidates_before_filter} candidates
+          of {header.candidates} candidates
         </span>
       </TraceRow>
-      <TraceRow label="fetch limit">
+      <TraceRow label="tokens">
         <span className="font-mono text-xs text-muted-foreground">
-          {data.trace.fetch_limit_used}
+          {header.tokens.toLocaleString()}
         </span>
       </TraceRow>
-      <TraceRow label="token estimate">
-        <span className="font-mono text-xs text-muted-foreground">
-          {data.token_estimate.toLocaleString()}
-        </span>
-        {data.trace.token_budget_exhausted && (
-          <TraceBadge variant="warn">budget exhausted</TraceBadge>
-        )}
-      </TraceRow>
-      {data.scope_chain.length > 0 && (
+      {header.scope_chain.length > 0 && (
         <TraceRow label="scope chain">
           <span className="font-mono text-xs text-muted-foreground">
-            {data.scope_chain.join(" > ")}
+            {header.scope_chain.join(" > ")}
           </span>
+        </TraceRow>
+      )}
+      <HistogramRow label="kinds" histogram={header.kinds_histogram} />
+      <HistogramRow label="tags" histogram={header.tags_histogram} />
+      {advisories.length > 0 && (
+        <TraceRow label="advisories">
+          {advisories.map((msg) => (
+            <TraceBadge key={msg} variant="warn">
+              {msg}
+            </TraceBadge>
+          ))}
         </TraceRow>
       )}
     </div>
   );
 }
 
-function BrowseTraceContent({ data }: { data: BrowseTraceData }) {
+function BrowseTraceContent({ data }: { data: BrowseHeaderData }) {
+  const { header, has_more } = data;
   return (
     <div className="space-y-1.5">
       <TraceRow label="sort">
-        <TraceBadge variant="active">{data.trace.sort}</TraceBadge>
+        <TraceBadge variant="active">{header.sort_used}</TraceBadge>
       </TraceRow>
       <TraceRow label="total">
-        <span className="font-mono text-xs text-muted-foreground">{data.total}</span>
-        {data.has_more && <TraceBadge variant="muted">has more</TraceBadge>}
+        <span className="font-mono text-xs text-muted-foreground">{header.total}</span>
+        <span className="font-mono text-[10px] text-muted-foreground/50">
+          ({header.returned} returned)
+        </span>
+        {has_more && <TraceBadge variant="muted">has more</TraceBadge>}
       </TraceRow>
-      {data.trace.filter_set.length > 0 && (
-        <TraceRow label="filters">
-          {data.trace.filter_set.map((f) => (
-            <TraceBadge key={f}>{f}</TraceBadge>
-          ))}
-        </TraceRow>
-      )}
-      {data.trace.filter_set.length === 0 && (
-        <TraceRow label="filters">
-          <span className="font-mono text-[10px] text-muted-foreground/50">none</span>
-        </TraceRow>
-      )}
+      <HistogramRow label="kinds" histogram={header.kinds_histogram} />
+      <HistogramRow label="tags" histogram={header.tags_histogram} />
     </div>
   );
 }

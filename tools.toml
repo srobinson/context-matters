@@ -57,6 +57,59 @@ This keeps initial responses compact while allowing selective deep reads.
 cli_name        = "recall"
 mcp_description = "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'."
 cli_about       = "Search and retrieve context entries from the store.\n\nCombines FTS5 keyword search with hierarchical scope resolution. When no query is given, returns all entries visible at the target scope."
+# JSON Schema mirrors `WebRecallView` (crates/cm-capabilities/src/projection/web_view.rs:272).
+# `query`, `tier`, `score` are `skip_serializing_if = Option::is_none` and omitted from the
+# JSON when absent — they are listed in `properties` but not in `required`.
+output_schema   = '''
+{
+  "type": "object",
+  "description": "Recall response: query header, ranked rows, and trailing advisories.",
+  "required": ["header", "entries", "advisories"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "description": "Per-response query envelope.",
+      "required": ["routing", "candidates", "returned", "scope_chain", "scope_hits", "kinds_histogram", "tags_histogram", "tokens"],
+      "properties": {
+        "query": {"type": "string", "description": "Free-text query the caller supplied. Omitted when the recall was tag/scope-only."},
+        "routing": {"type": "string", "description": "Routing branch chosen by the recall pipeline (search, browse_fallback, scope_resolve, tag_scope_walk)."},
+        "tier": {"type": "string", "description": "Search tier the cascade settled on (none, exact, prefix, split_or). Omitted on non-search routings."},
+        "candidates": {"type": "integer", "minimum": 0, "description": "Total candidates considered before token-budget trimming."},
+        "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in `entries` after token-budget trimming."},
+        "scope_chain": {"type": "array", "items": {"type": "string"}, "description": "Scope path plus ancestors walked, in order."},
+        "scope_hits": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-scope hit counts in `scope_chain`."},
+        "kinds_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-kind counts across the returned rows."},
+        "tags_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-tag counts across the returned rows."},
+        "tokens": {"type": "integer", "minimum": 0, "description": "Estimated token total of the rendered response."}
+      }
+    },
+    "entries": {
+      "type": "array",
+      "description": "Ranked recall rows. Order is significant.",
+      "items": {
+        "type": "object",
+        "required": ["short_id", "id", "title", "snippet", "age", "scope", "kind", "tags"],
+        "properties": {
+          "short_id": {"type": "string", "description": "8 to 12 char hex prefix unique within the response."},
+          "id": {"type": "string", "format": "uuid", "description": "Full UUID v7."},
+          "score": {"type": "number", "description": "Normalised relevance score in [0, 1] on Search routing. Omitted on non-search routings."},
+          "title": {"type": "string"},
+          "snippet": {"type": "string", "description": "Smart snippet of the entry body, with matched query terms bracketed when applicable."},
+          "age": {"type": "string", "description": "Relative age string (e.g. \"2h\", \"6d\")."},
+          "scope": {"type": "string"},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]},
+          "tags": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "advisories": {
+      "type": "array",
+      "description": "Trailer advisory lines (routing, tier, dedup, drill-down) the formatter would emit as YAML comments.",
+      "items": {"type": "string"}
+    }
+  }
+}
+'''
 
 [[tools.cx_recall.params]]
 name            = "query"
@@ -228,6 +281,53 @@ cli_flag        = "--created-by"
 cli_name        = "browse"
 mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
 cli_about       = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content."
+# JSON Schema mirrors `WebBrowseView` (crates/cm-capabilities/src/projection/web_view.rs:112).
+# Header `scope`, `kind`, `created_by` are `skip_serializing_if = Option::is_none`; row
+# `scope`, `kind` likewise. `next_cursor` is present only when more pages remain.
+output_schema   = '''
+{
+  "type": "object",
+  "description": "Browse response: filtered inventory header, rows, and pagination tail.",
+  "required": ["header", "entries", "has_more"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "description": "Per-response filter + histogram envelope.",
+      "required": ["sort_used", "total", "returned", "kinds_histogram", "tags_histogram"],
+      "properties": {
+        "sort_used": {"type": "string", "description": "Sort order the browse pipeline applied (e.g. updated_desc)."},
+        "total": {"type": "integer", "minimum": 0, "description": "Total matching rows in the store before pagination."},
+        "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in `entries` on this page."},
+        "scope": {"type": "string", "description": "Scope filter the caller supplied. Omitted when unset."},
+        "kind": {"type": "string", "description": "Kind filter the caller supplied. Omitted when unset."},
+        "created_by": {"type": "string", "description": "Created-by filter the caller supplied. Omitted when unset."},
+        "kinds_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-kind counts across the returned rows."},
+        "tags_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-tag counts across the returned rows."}
+      }
+    },
+    "entries": {
+      "type": "array",
+      "description": "Browse rows on this page. Order is significant (sort_used governs).",
+      "items": {
+        "type": "object",
+        "required": ["short_id", "id", "title", "snippet", "age", "tags"],
+        "properties": {
+          "short_id": {"type": "string", "description": "8 to 12 char hex prefix unique within the response."},
+          "id": {"type": "string", "format": "uuid", "description": "Full UUID v7."},
+          "title": {"type": "string"},
+          "snippet": {"type": "string", "description": "Smart snippet of the entry body."},
+          "age": {"type": "string", "description": "Relative age string (e.g. \"2h\", \"6d\")."},
+          "scope": {"type": "string", "description": "Row scope path. Omitted when the row has no scope."},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"], "description": "Entry kind. Omitted when unset."},
+          "tags": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "next_cursor": {"type": "string", "description": "Opaque cursor to feed back as `cursor` on the next page. Omitted when `has_more` is false."},
+    "has_more": {"type": "boolean", "description": "True when another page is available via `next_cursor`."}
+  }
+}
+'''
 
 [[tools.cx_browse.params]]
 name            = "scope_path"
@@ -281,16 +381,56 @@ cli_flag        = "--cursor"
 
 [tools.cx_get]
 cli_name        = "get"
-mcp_description = "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. IDs that do not exist are silently omitted. Maximum 100 IDs per request."
+mcp_description = "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts the full hyphenated UUIDv7 or the short prefix (≥ 8 hex chars) surfaced in cx_recall / cx_browse row headers. IDs that do not exist are silently omitted; an ambiguous prefix that matches multiple entries errors the whole batch with a listing. Maximum 100 IDs per request."
 cli_about       = "Fetch full entry content by ID.\n\nReturns complete entries including body. Use after cx_recall or cx_browse for full content."
+# JSON Schema mirrors the structured shape that `crates/cm-capabilities/src/projection/get_view.rs::format_get_view`
+# renders to YAML today. `WebGetView` itself is not yet a Rust type — the §3 parity pass only produced
+# `WebBrowseView` and `WebRecallView`. This schema documents the byte-for-byte shape ALP-1760 must produce
+# when it wires `structuredContent` for cx_get; the sibling sub-issue is expected to introduce the struct.
+# Optional row fields (`tags`, `confidence`) follow the same `skip_serializing_if` convention as
+# `cm_core::EntryMeta`.
+output_schema   = '''
+{
+  "type": "object",
+  "description": "Get response: request/found counts, missing ids, and full entries.",
+  "required": ["requested", "found"],
+  "properties": {
+    "requested": {"type": "integer", "minimum": 0, "description": "Number of ids the caller supplied."},
+    "found": {"type": "integer", "minimum": 0, "description": "Number of entries successfully resolved from the store."},
+    "missing": {
+      "type": "array",
+      "description": "Ids the caller supplied that did not resolve. Omitted when empty.",
+      "items": {"type": "string", "description": "Verbatim id the caller passed; not guaranteed to be a valid UUID."}
+    },
+    "entries": {
+      "type": "array",
+      "description": "Resolved entries with full body. Omitted when empty. Order mirrors the caller's request.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "scope", "kind", "age", "body"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid", "description": "Full UUID v7."},
+          "title": {"type": "string"},
+          "scope": {"type": "string", "description": "Canonical scope path."},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]},
+          "tags": {"type": "array", "items": {"type": "string"}, "description": "Entry tags. Omitted when `meta.tags` is empty."},
+          "confidence": {"type": "string", "enum": ["high", "medium", "low"], "description": "Entry confidence level. Omitted when `meta.confidence` is unset."},
+          "age": {"type": "string", "description": "Relative age string (e.g. \"2h\", \"6d\")."},
+          "body": {"type": "string", "description": "Full markdown body."}
+        }
+      }
+    }
+  }
+}
+'''
 
 [[tools.cx_get.params]]
 name            = "ids"
 type            = "array"
 items_type      = "string"
 required        = true
-mcp_description = "Entry IDs to retrieve (UUIDv7 format). Maximum 100 per request. Missing IDs are silently omitted."
-cli_help        = "Entry IDs to retrieve (space-separated, max 100)"
+mcp_description = "Entry IDs: full hyphenated UUIDv7 or ≥8-char prefix from cx_recall/cx_browse rows. Max 100. Ambiguous prefix errors."
+cli_help        = "Entry IDs to retrieve (full UUID or ≥8-char prefix, space-separated, max 100)"
 cli_flag        = "ids"
 
 [tools.cx_update]
@@ -353,6 +493,57 @@ cli_flag        = "ids"
 cli_name        = "stats"
 mcp_description = "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists."
 cli_about       = "Show store statistics.\n\nDisplays entry counts by kind, scope, and tag, relation count, database size, and scope tree."
+# JSON Schema documents the structured shape the stats projection will expose via
+# `structuredContent` once ALP-1760 wires dual-channel. `WebStatsView` is not yet a Rust type —
+# today `crates/cm-capabilities/src/projection/stats_view.rs::format_stats_view` takes a
+# `cm_capabilities::stats::StatsResult` (which wraps `cm_core::StoreStats` + a `Vec<ScopeTreeNode>`)
+# and renders YAML directly. The fields below are a flattened projection of `StatsResult` +
+# `StoreStats` (dropping the redundant `entries_by_scope` map that `scope_tree` already carries).
+output_schema   = '''
+{
+  "type": "object",
+  "description": "Stats response: store totals, per-kind histogram, top tags, and scope tree.",
+  "required": ["active", "superseded", "scopes", "relations", "db_size_bytes", "kinds", "top_tags", "scope_tree"],
+  "properties": {
+    "active": {"type": "integer", "minimum": 0, "description": "Number of active (non-superseded) entries."},
+    "superseded": {"type": "integer", "minimum": 0, "description": "Number of superseded (soft-deleted or replaced) entries."},
+    "scopes": {"type": "integer", "minimum": 0, "description": "Total scopes in the store."},
+    "relations": {"type": "integer", "minimum": 0, "description": "Total relations in the store."},
+    "db_size_bytes": {"type": "integer", "minimum": 0, "description": "SQLite database file size in bytes."},
+    "kinds": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0},
+      "description": "Per-kind entry counts across active entries."
+    },
+    "top_tags": {
+      "type": "array",
+      "description": "Most frequent tags, capped at 10 by `TOP_TAGS_LIMIT`.",
+      "items": {
+        "type": "object",
+        "required": ["tag", "count"],
+        "properties": {
+          "tag": {"type": "string"},
+          "count": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "scope_tree": {
+      "type": "array",
+      "description": "Scope tree rows in traversal order.",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "label", "entry_count"],
+        "properties": {
+          "path": {"type": "string", "description": "Canonical scope path."},
+          "kind": {"type": "string", "description": "ScopeKind serialised as a string (global, project, repo, session)."},
+          "label": {"type": "string", "description": "Human-readable label for the scope."},
+          "entry_count": {"type": "integer", "minimum": 0, "description": "Active entries at this scope (non-recursive)."}
+        }
+      }
+    }
+  }
+}
+'''
 
 [[tools.cx_stats.params]]
 name            = "tag_sort"
@@ -366,6 +557,72 @@ cli_flag        = "--tag-sort"
 cli_name        = "export"
 mcp_description = "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree."
 cli_about       = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter to a subtree."
+# JSON Schema matches the current ad-hoc JSON envelope emitted by
+# `crates/cm-cli/src/mcp/tools/export.rs`. Unlike the other read tools, cx_export already
+# returns structured JSON (not YAML) because the JSON *is* the canonical output.
+# `entries[]` and `scopes[]` follow the `cm_core::Entry` and `cm_core::Scope` serde layouts;
+# optional fields (`meta`, `superseded_by`, `parent_path`) use `skip_serializing_if = Option::is_none`.
+# The nested shapes are documented inline rather than linked out, so external clients can
+# validate the payload without chasing Rust source.
+output_schema   = '''
+{
+  "type": "object",
+  "description": "Export response: full entry and scope snapshots plus provenance metadata.",
+  "required": ["entries", "scopes", "exported_at", "count"],
+  "properties": {
+    "count": {"type": "integer", "minimum": 0, "description": "Length of `entries`."},
+    "exported_at": {"type": "string", "format": "date-time", "description": "Export timestamp in RFC 3339."},
+    "entries": {
+      "type": "array",
+      "description": "Active entries in the export scope. Mirrors `cm_core::Entry`.",
+      "items": {
+        "type": "object",
+        "required": ["id", "scope_path", "kind", "title", "body", "content_hash", "created_by", "created_at", "updated_at"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "scope_path": {"type": "string", "description": "Canonical scope path."},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]},
+          "title": {"type": "string"},
+          "body": {"type": "string", "description": "Full markdown body."},
+          "content_hash": {"type": "string", "description": "BLAKE3 hex digest of the body."},
+          "meta": {
+            "type": "object",
+            "description": "Optional metadata envelope. Omitted when every sub-field is empty.",
+            "properties": {
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+              "source": {"type": "string"},
+              "expires_at": {"type": "string", "format": "date-time"},
+              "priority": {"type": "integer"}
+            },
+            "additionalProperties": true
+          },
+          "created_by": {"type": "string", "description": "Attribution string (e.g. agent:claude-code)."},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "superseded_by": {"type": "string", "format": "uuid", "description": "Id of the replacement entry when this row is soft-deleted."}
+        }
+      }
+    },
+    "scopes": {
+      "type": "array",
+      "description": "Scopes touched by the export. Mirrors `cm_core::Scope`.",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "label", "created_at"],
+        "properties": {
+          "path": {"type": "string"},
+          "kind": {"type": "string", "description": "ScopeKind serialised as a string."},
+          "label": {"type": "string"},
+          "parent_path": {"type": "string", "description": "Parent scope path. Omitted for the root scope."},
+          "meta": {"type": "object", "description": "Free-form scope metadata. Omitted when unset.", "additionalProperties": true},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  }
+}
+'''
 
 [[tools.cx_export.params]]
 name            = "scope_path"

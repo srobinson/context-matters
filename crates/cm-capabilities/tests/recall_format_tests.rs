@@ -17,19 +17,42 @@
 //! No SQLite store is involved. The formatter is pure (`RecallResult`
 //! in, `String` out) so every fixture is built inline.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
 
 use cm_capabilities::projection::{RecallRow, format_recall_view_at};
-use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting};
+use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 use cm_core::{Entry, EntryKind, EntryMeta, ScopePath};
 
 const GOLDEN_SEARCH: &str = include_str!("snapshots/recall_view_search.txt");
+const GOLDEN_SEARCH_PREFIX_TIER: &str =
+    include_str!("snapshots/recall_view_search_prefix_tier.txt");
+const GOLDEN_SEARCH_SPLIT_OR_TIER: &str =
+    include_str!("snapshots/recall_view_search_split_or_tier.txt");
 const GOLDEN_BROWSE_FALLBACK: &str = include_str!("snapshots/recall_view_browse_fallback.txt");
 const GOLDEN_EMPTY: &str = include_str!("snapshots/recall_view_empty.txt");
+const GOLDEN_DEDUP: &str = include_str!("snapshots/recall_view_dedup.txt");
+const GOLDEN_RELS: &str = include_str!("snapshots/recall_view_rels.txt");
 
 fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
+}
+
+/// Derives a unique 64-char hex `content_hash` from the test row's
+/// `id_hex` so every fixture row hashes differently by default. Keeps
+/// the intra-response dedup pass from flagging unrelated test rows as
+/// dupes just because they all share a placeholder hash. Tests that
+/// intentionally exercise the dedup codepath override this by calling
+/// [`make_row_with_hash`] directly.
+fn content_hash_from(id_hex: &str) -> String {
+    let clean = id_hex.replace('-', "");
+    assert!(
+        clean.len() <= 64,
+        "test fixture id_hex must fit inside 64 hex chars",
+    );
+    format!("{clean:0<64}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -43,6 +66,31 @@ fn make_row(
     updated_at: DateTime<Utc>,
     score: Option<f32>,
 ) -> RecallRow {
+    make_row_with_hash(
+        id_hex,
+        kind,
+        title,
+        body,
+        scope,
+        tags,
+        updated_at,
+        score,
+        &content_hash_from(id_hex),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_row_with_hash(
+    id_hex: &str,
+    kind: EntryKind,
+    title: &str,
+    body: &str,
+    scope: &str,
+    tags: &[&str],
+    updated_at: DateTime<Utc>,
+    score: Option<f32>,
+    content_hash: &str,
+) -> RecallRow {
     RecallRow {
         entry: Entry {
             id: Uuid::parse_str(id_hex).expect("test fixture uuid parses"),
@@ -50,7 +98,7 @@ fn make_row(
             kind,
             title: title.to_owned(),
             body: body.to_owned(),
-            content_hash: "0".repeat(64),
+            content_hash: content_hash.to_owned(),
             meta: Some(EntryMeta {
                 tags: tags.iter().map(|t| (*t).to_owned()).collect(),
                 ..Default::default()
@@ -120,8 +168,10 @@ fn search_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         ],
         token_estimate: 3_420,
         routing: RecallRouting::Search,
+        tier: Some(SearchTier::Exact),
         candidates_before_filter: 47,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
 
     let request = RecallRequest {
@@ -131,6 +181,18 @@ fn search_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         ..Default::default()
     };
 
+    (result, request, now)
+}
+
+/// Cascade-tier override on top of [`search_fixture`]. Used by the
+/// prefix and split_or tier snapshot tests so the three tier
+/// renderings stay byte-identical except for the header suffix and
+/// trailing advisory. Mutating the tier in place keeps the row data
+/// and scores in one place (DRY) and means any future change to
+/// `search_fixture` automatically propagates to every tier test.
+fn search_fixture_with_tier(tier: SearchTier) -> (RecallResult, RecallRequest, DateTime<Utc>) {
+    let (mut result, request, now) = search_fixture();
+    result.tier = Some(tier);
     (result, request, now)
 }
 
@@ -172,14 +234,161 @@ fn browse_fallback_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         scope_hits: vec![("global".to_owned(), 2)],
         token_estimate: 220,
         routing: RecallRouting::BrowseFallback,
+        tier: None,
         candidates_before_filter: 5,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
 
     let request = RecallRequest {
         query: None,
         limit: 50,
         max_tokens: None,
+        ..Default::default()
+    };
+
+    (result, request, now)
+}
+
+/// Dedup fixture: three rows where rows 1 and 3 carry the same
+/// BLAKE3-hash 16-char prefix (simulating "I stored the same lesson
+/// twice") while row 2 is genuinely distinct. The expected rendering
+/// annotates row 3 with `dup_of: <row 1 short id>` on its trailing
+/// YAML comment and leaves the other two rows untouched.
+fn dedup_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
+    let now = fixed_now();
+    // Two 16-char hex prefixes padded out to a full 64-char hash. The
+    // dedup pass keys on the first 16 chars, so two rows that share a
+    // leading `deaddeaddeaddead` will collide and the third row with
+    // `cafecafecafecafe` will not.
+    let hash_shared: String = format!("{:0<64}", "deaddeaddeaddead");
+    let hash_unique: String = format!("{:0<64}", "cafecafecafecafe");
+    let entries = vec![
+        make_row_with_hash(
+            "019dedaa-0000-7000-8000-000000000001",
+            EntryKind::Lesson,
+            "Stored the same lesson twice",
+            "Run `just test` before committing. Skipping it hides regressions that only surface on CI.",
+            "global",
+            &["lesson-log"],
+            now - Duration::hours(3),
+            Some(-0.5),
+            &hash_shared,
+        ),
+        make_row_with_hash(
+            "019ded55-0000-7000-8000-000000000002",
+            EntryKind::Lesson,
+            "Unrelated lesson that hashes differently",
+            "A separate lesson body that pads out the result set without colliding on its content hash prefix.",
+            "global",
+            &["lesson-log"],
+            now - Duration::hours(6),
+            Some(-1.0),
+            &hash_unique,
+        ),
+        make_row_with_hash(
+            "019dedcc-0000-7000-8000-000000000003",
+            EntryKind::Lesson,
+            "Stored the same lesson twice (again)",
+            "Re-store of the same lesson body. Shares the `deaddeaddeaddead` hash prefix with row one.",
+            "global",
+            &["lesson-log"],
+            now - Duration::days(1),
+            Some(-1.5),
+            &hash_shared,
+        ),
+    ];
+
+    let result = RecallResult {
+        entries,
+        scope_chain: vec!["global".to_owned()],
+        scope_hits: vec![("global".to_owned(), 3)],
+        token_estimate: 520,
+        routing: RecallRouting::Search,
+        tier: Some(SearchTier::Exact),
+        candidates_before_filter: 5,
+        fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
+    };
+
+    let request = RecallRequest {
+        query: Some("lesson".to_owned()),
+        limit: 50,
+        max_tokens: Some(8_000),
+        ..Default::default()
+    };
+
+    (result, request, now)
+}
+
+/// Rels fixture: three rows where rows 1 and 2 have populated
+/// `relation_counts` entries (3 and 1 outgoing edges respectively)
+/// while row 3 is absent from the map. The expected rendering
+/// annotates rows 1 and 2 with `rels: N` on their trailing YAML
+/// comment and leaves row 3 untouched. Each row carries a unique
+/// content hash so the dedup pass never fires in parallel.
+fn rels_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
+    let now = fixed_now();
+    let row1_id =
+        Uuid::parse_str("019de1aa-0000-7000-8000-000000000001").expect("test fixture uuid parses");
+    let row2_id =
+        Uuid::parse_str("019de155-0000-7000-8000-000000000002").expect("test fixture uuid parses");
+    let entries = vec![
+        make_row(
+            "019de1aa-0000-7000-8000-000000000001",
+            EntryKind::Decision,
+            "Adopt new storage engine",
+            "Rationale for adopting the new storage engine. The graph \
+             touches three downstream decisions that cite this entry.",
+            "global",
+            &["decision-log"],
+            now - Duration::hours(2),
+            Some(-1.5),
+        ),
+        make_row(
+            "019de155-0000-7000-8000-000000000002",
+            EntryKind::Fact,
+            "Supporting benchmark result",
+            "A supporting benchmark figure that one upstream decision \
+             in the graph cites for its adoption rationale.",
+            "global",
+            &["bench"],
+            now - Duration::hours(6),
+            Some(-2.0),
+        ),
+        make_row(
+            "019de1cc-0000-7000-8000-000000000003",
+            EntryKind::Lesson,
+            "Standalone lesson with no graph edges",
+            "Isolated lesson whose row renders without any trailing \
+             rels annotation, because no edges point in or out.",
+            "global",
+            &["lesson-log"],
+            now - Duration::days(1),
+            Some(-0.5),
+        ),
+    ];
+
+    let mut relation_counts: HashMap<Uuid, u32> = HashMap::new();
+    relation_counts.insert(row1_id, 3);
+    relation_counts.insert(row2_id, 1);
+
+    let result = RecallResult {
+        entries,
+        scope_chain: vec!["global".to_owned()],
+        scope_hits: vec![("global".to_owned(), 3)],
+        token_estimate: 520,
+        routing: RecallRouting::Search,
+        tier: Some(SearchTier::Exact),
+        candidates_before_filter: 5,
+        fetch_limit_used: 50,
+        relation_counts,
+    };
+
+    let request = RecallRequest {
+        query: Some("storage engine".to_owned()),
+        limit: 50,
+        max_tokens: Some(8_000),
         ..Default::default()
     };
 
@@ -198,8 +407,10 @@ fn empty_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         scope_hits: Vec::new(),
         token_estimate: 0,
         routing: RecallRouting::Search,
+        tier: Some(SearchTier::None),
         candidates_before_filter: 0,
         fetch_limit_used: 50,
+        relation_counts: HashMap::new(),
     };
     let request = RecallRequest {
         query: Some("extremely obscure search phrase".to_owned()),
@@ -221,6 +432,34 @@ fn format_recall_view_matches_search_golden() {
 }
 
 #[test]
+fn format_recall_view_matches_search_prefix_tier_golden() {
+    // Prefix tier: header carries `, tier: prefix` and the trailer
+    // emits a `# tier: prefix - ...` advisory teaching the caller
+    // that the exact implicit-AND query returned zero rows and the
+    // cascade advanced to the prefix-match tier.
+    let (result, request, now) = search_fixture_with_tier(SearchTier::Prefix);
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_SEARCH_PREFIX_TIER,
+        "rendered recall search (prefix tier) view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_search_split_or_tier_golden() {
+    // SplitOr tier: header carries `, tier: split_or` and the
+    // trailer emits a `# tier: split_or - ...` advisory teaching
+    // the caller that both the exact and prefix tiers returned
+    // zero rows before the OR-joined cascade arm succeeded.
+    let (result, request, now) = search_fixture_with_tier(SearchTier::SplitOr);
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_SEARCH_SPLIT_OR_TIER,
+        "rendered recall search (split_or tier) view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
 fn format_recall_view_matches_browse_fallback_golden() {
     let (result, request, now) = browse_fallback_fixture();
     let rendered = format_recall_view_at(&result, &request, now);
@@ -237,6 +476,101 @@ fn format_recall_view_matches_empty_golden() {
     assert_eq!(
         rendered, GOLDEN_EMPTY,
         "rendered recall empty view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_dedup_golden() {
+    // Intra-response dedup hint: rows 1 and 3 carry the same
+    // `deaddeaddeaddead...` content-hash prefix, so row 3 must pick
+    // up a `dup_of: 019dedaa` annotation in its trailing YAML
+    // comment. Row 2's hash differs entirely, so it renders without
+    // annotation. Row 1 is the leader and is also unannotated.
+    let (result, request, now) = dedup_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_DEDUP,
+        "rendered recall dedup view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+    // Behavioural assertions on top of the byte-for-byte check so any
+    // future golden regeneration surfaces the intent if the diff
+    // drifts: row 3 carries `dup_of:` pointing at row 1, and no
+    // other row does.
+    assert!(
+        rendered.contains("dup_of: 019dedaa"),
+        "row 3 should carry dup_of pointing at row 1:\n{rendered}",
+    );
+    assert_eq!(
+        rendered.matches("dup_of:").count(),
+        1,
+        "exactly one dup_of annotation expected (row 3 only):\n{rendered}",
+    );
+}
+
+#[test]
+fn format_recall_view_matches_rels_golden() {
+    // Relation-count annotations: rows 1 and 2 carry populated
+    // `relation_counts` entries (3 and 1 respectively), so their
+    // trailing YAML comments must pick up `rels: 3` and `rels: 1`.
+    // Row 3 is absent from the map and renders without any rels
+    // annotation at all (aggressive omit-when-default).
+    let (result, request, now) = rels_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    assert_eq!(
+        rendered, GOLDEN_RELS,
+        "rendered recall rels view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+    // Behavioural assertions on top of the byte-for-byte check so any
+    // future golden regeneration surfaces the intent if the diff
+    // drifts: row 1 renders with `rels: 3`, row 2 with `rels: 1`, and
+    // exactly two rows carry the annotation.
+    assert!(
+        rendered.contains("rels: 3"),
+        "row 1 should carry rels: 3:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("rels: 1"),
+        "row 2 should carry rels: 1:\n{rendered}",
+    );
+    assert_eq!(
+        rendered.matches("rels: ").count(),
+        2,
+        "exactly two rels annotations expected (rows 1 and 2):\n{rendered}",
+    );
+    // Row 3's id must appear without any `rels:` suffix in the same
+    // comment line. Check that the substring for row 3's short id
+    // through to its age string contains no `rels:`.
+    let row3_line = rendered
+        .lines()
+        .find(|l| l.contains("scope: global  kind: lesson"))
+        .expect("row 3 comment line present");
+    assert!(
+        !row3_line.contains("rels:"),
+        "row 3 should carry no rels annotation:\n{row3_line}",
+    );
+}
+
+#[test]
+fn format_recall_view_drill_down_advisory_fires_on_dominant_kind() {
+    // Faceted drill-down advisory: the search fixture carries 2/3
+    // `decision` rows (66.7%), which clears the 60% dominance
+    // threshold, so the trailer must append a `# narrow: cx_recall(...)`
+    // line keyed on the dominant kind. Asserted behaviourally on top
+    // of the byte-for-byte search-golden check above so the intent
+    // stays legible if the golden ever drifts.
+    let (result, request, now) = search_fixture();
+    let rendered = format_recall_view_at(&result, &request, now);
+    let expected = "# narrow: cx_recall(query=\"snippet strategy\", \
+                    kinds=[\"decision\"]) - 2 of 3 results are decision";
+    assert!(
+        rendered.contains(expected),
+        "drill-down advisory line missing or malformed:\n{rendered}",
+    );
+    // The advisory must fire exactly once per response.
+    assert_eq!(
+        rendered.matches("# narrow:").count(),
+        1,
+        "exactly one drill-down advisory expected:\n{rendered}",
     );
 }
 

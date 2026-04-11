@@ -16,7 +16,12 @@ use cm_cli::yaml_response;
 fn yaml_response_passes_text_unchanged() {
     let input = "stored: abcd1234\nscope: global\nkind: fact\ncontent_hash: deadbeef\n".to_owned();
     let got = yaml_response(input.clone()).expect("yaml_response is infallible");
-    assert_eq!(got, input);
+    // `yaml_response` now wraps the string in a text-only `ToolResult`
+    // (ALP-1760 dual-channel envelope); the text channel must equal the
+    // caller-provided YAML byte-for-byte and the structured channel must
+    // be absent for write tools.
+    assert_eq!(got.text, input);
+    assert!(got.structured.is_none());
 }
 
 // ── cap_response ─────────────────────────────────────────────────

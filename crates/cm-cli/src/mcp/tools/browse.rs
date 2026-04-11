@@ -1,13 +1,13 @@
 //! Handler for the `cx_browse` tool.
 
 use cm_capabilities::browse::{self, BrowseRequest};
-use cm_capabilities::projection::format_browse_view;
+use cm_capabilities::projection::{format_browse_view, project_web_browse};
 use cm_capabilities::validation::clamp_limit;
 use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{cm_err_to_string, parse_params, yaml_response};
+use crate::mcp::{ToolResult, cm_err_to_string, dual_response, parse_params};
 
 #[derive(Debug, Deserialize)]
 struct CxBrowseParams {
@@ -40,7 +40,7 @@ struct CxBrowseParams {
     cursor: Option<String>,
 }
 
-pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String, String> {
+pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let params: CxBrowseParams = parse_params(args)?;
 
     let scope_path = match &params.scope_path {
@@ -70,5 +70,7 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<String
         .await
         .map_err(cm_err_to_string)?;
 
-    yaml_response(format_browse_view(&result, &request))
+    let text = format_browse_view(&result, &request);
+    let view = project_web_browse(&result);
+    dual_response(text, &view)
 }

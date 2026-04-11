@@ -1,0 +1,24 @@
+---
+query: snippet strategy
+routing: search  # FTS5 ranking, tier: prefix
+candidates: 47 -> 3 shown
+scope_chain: [global/project:helioy, global]
+scope_hits: global/project:helioy=2, global=1
+kinds: decision=2, lesson=1
+tags: projection=3, snippet=2, edge-case=1
+tokens: 3,420 of 8,000 budget
+
+entries:
+  - 019d8a01  1.00  Snippet strategy: centre on first query-term match
+                    The byte-prefix «snippet» drops mid-word; floor_char_boundary plus a word-boundary walk gives a «snippet» «strategy» that keeps tokens whole without ever panicking on multi-byte UTF-8.
+                    # scope: global/project:helioy  kind: decision  tags: projection, snippet  age: 1d
+  - 019d7f3e  0.09  Query-centred snippet window has to survive empty queries
+                    When the caller passes an empty query string the smart_«snippet» helper must fall back to the stripped body start instead of centring on byte offset zero of a non-match.
+                    # scope: global/project:helioy  kind: decision  tags: projection, snippet, edge-case  age: 3h
+  - 019d6a22  0.00  Snippet truncation must respect UTF-8 char boundaries
+                    We learned the hard way: str indexing at a byte offset that lands inside a multi-byte character panics at runtime. Always round down to the nearest char boundary before slicing.
+                    # scope: global  kind: lesson  tags: projection  age: 5d
+
+# routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth
+# tier: prefix - original query had zero exact hits, tried prefix match
+# narrow: cx_recall(query="snippet strategy", kinds=["decision"]) - 2 of 3 results are decision

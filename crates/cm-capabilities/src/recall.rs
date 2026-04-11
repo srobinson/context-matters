@@ -1,5 +1,11 @@
-use cm_core::{CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath};
+use std::collections::HashMap;
+
+use cm_core::{
+    CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery, Pagination, ScopePath,
+};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+use uuid::Uuid;
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
@@ -27,6 +33,25 @@ pub enum RecallRouting {
     BrowseFallback,
 }
 
+/// Which tier of the FTS5 fallback cascade produced the returned rows.
+///
+/// The recall cascade tries progressively broader query shapes until one
+/// returns a non-empty row set. `Exact` is the strictest (implicit AND on
+/// raw tokens), `Prefix` relaxes each token to a prefix match, and
+/// `SplitOr` joins tokens with `OR` so any shared term will hit. `None` is
+/// reserved for the case where all three tiers were tried and none
+/// returned rows (distinct from `RecallResult.tier == None`, which signals
+/// the cascade was never entered because the routing was not `Search`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchTier {
+    Exact,
+    Prefix,
+    SplitOr,
+    None,
+}
+
 /// Result of a recall operation.
 #[derive(Debug, Clone)]
 pub struct RecallResult {
@@ -42,8 +67,17 @@ pub struct RecallResult {
     /// Total estimated tokens across all returned entries (full body, not snippets).
     pub token_estimate: u32,
     pub routing: RecallRouting,
+    /// Which tier of the FTS5 cascade produced the rows. `Some(_)` only when
+    /// `routing == Search`; non-search routings leave this as `None`.
+    pub tier: Option<SearchTier>,
     pub candidates_before_filter: usize,
     pub fetch_limit_used: u32,
+    /// Outgoing-relation counts per row id, populated by a single
+    /// `ContextStore::count_relations_for` batch call after the row set is
+    /// finalised. Ids with zero outgoing edges are **omitted** from the map
+    /// (per the trait contract); the projection layer treats absence as
+    /// zero and elides the `rels:` annotation entirely.
+    pub relation_counts: HashMap<Uuid, u32>,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -66,7 +100,8 @@ pub async fn recall(
     // Route to the appropriate query path. The result is already wrapped in
     // `RecallRow`: the `Search` branch populates `score`; every other branch
     // leaves it `None`.
-    let (raw_rows, routing, actual_fetch_limit) = route_query(store, &request, fetch_limit).await?;
+    let (raw_rows, routing, actual_fetch_limit, tier) =
+        route_query(store, &request, fetch_limit).await?;
     let candidates_before_filter = raw_rows.len();
 
     // Post-filter by kinds. Some routing paths (ScopeResolve, TagScopeWalk)
@@ -130,6 +165,13 @@ pub async fn recall(
         budget_rows.push(row.clone());
     }
 
+    // Single batched fetch of outgoing-relation counts for the final row
+    // set. Runs after the budget loop so we never count edges for rows the
+    // caller will not see, and contracts to one round-trip regardless of
+    // result-set size (the trait short-circuits on empty input).
+    let relation_count_ids: Vec<Uuid> = budget_rows.iter().map(|r| r.entry.id).collect();
+    let relation_counts = store.count_relations_for(&relation_count_ids).await?;
+
     // Build scope chain and hits
     let (scope_chain, scope_hits) = match &request.scope {
         Some(sp) => {
@@ -173,8 +215,10 @@ pub async fn recall(
         scope_hits,
         token_estimate: total_tokens,
         routing,
+        tier,
         candidates_before_filter,
         fetch_limit_used: actual_fetch_limit,
+        relation_counts,
     })
 }
 
@@ -191,28 +235,76 @@ fn wrap_scoreless(entries: Vec<Entry>) -> Vec<RecallRow> {
         .collect()
 }
 
-/// Returns `(rows, routing, actual_fetch_limit)`.
+/// Returns `(rows, routing, actual_fetch_limit, tier)`.
 ///
 /// The third element is the SQL LIMIT actually used in the fetch, which differs
 /// from the top-level `fetch_limit` for `TagScopeWalk` (uses `MAX_LIMIT` per page).
+///
+/// The fourth element is `Some(_)` only when `routing == Search`, identifying
+/// which tier of the FTS5 cascade produced the rows. Non-search routings
+/// return `None`.
 async fn route_query(
     store: &impl ContextStore,
     request: &RecallRequest,
     fetch_limit: u32,
-) -> Result<(Vec<RecallRow>, RecallRouting, u32), CmError> {
+) -> Result<(Vec<RecallRow>, RecallRouting, u32, Option<SearchTier>), CmError> {
     match &request.query {
         Some(query) => {
-            let scored = store
-                .search(query, request.scope.as_ref(), fetch_limit)
-                .await?;
-            let rows: Vec<RecallRow> = scored
-                .into_iter()
-                .map(|s| RecallRow {
-                    entry: s.entry,
-                    score: Some(s.score),
-                })
-                .collect();
-            Ok((rows, RecallRouting::Search, fetch_limit))
+            // Tiered FTS5 cascade: try progressively broader query shapes and
+            // return the first non-empty tier. If every tier comes up empty,
+            // return zero rows with `tier = Some(SearchTier::None)` so the
+            // caller can surface the exhausted-cascade state.
+            if let Some(rows) = try_search_tier(
+                store,
+                FtsQuery::new(query),
+                request.scope.as_ref(),
+                fetch_limit,
+            )
+            .await?
+            {
+                return Ok((
+                    rows,
+                    RecallRouting::Search,
+                    fetch_limit,
+                    Some(SearchTier::Exact),
+                ));
+            }
+            if let Some(rows) = try_search_tier(
+                store,
+                FtsQuery::prefix_query(query),
+                request.scope.as_ref(),
+                fetch_limit,
+            )
+            .await?
+            {
+                return Ok((
+                    rows,
+                    RecallRouting::Search,
+                    fetch_limit,
+                    Some(SearchTier::Prefix),
+                ));
+            }
+            if let Some(rows) = try_search_tier(
+                store,
+                FtsQuery::split_or_query(query),
+                request.scope.as_ref(),
+                fetch_limit,
+            )
+            .await?
+            {
+                return Ok((
+                    rows,
+                    RecallRouting::Search,
+                    fetch_limit,
+                    Some(SearchTier::SplitOr),
+                ));
+            }
+            Ok((
+                Vec::new(),
+                RecallRouting::Search,
+                fetch_limit,
+                Some(SearchTier::None),
+            ))
         }
         None => {
             if !request.tags.is_empty() {
@@ -228,6 +320,7 @@ async fn route_query(
                     wrap_scoreless(entries),
                     RecallRouting::TagScopeWalk,
                     MAX_LIMIT,
+                    None,
                 ))
             } else {
                 match &request.scope {
@@ -239,6 +332,7 @@ async fn route_query(
                             wrap_scoreless(entries),
                             RecallRouting::ScopeResolve,
                             fetch_limit,
+                            None,
                         ))
                     }
                     None => {
@@ -259,12 +353,43 @@ async fn route_query(
                             wrap_scoreless(paged.items),
                             RecallRouting::BrowseFallback,
                             fetch_limit,
+                            None,
                         ))
                     }
                 }
             }
         }
     }
+}
+
+/// Run a single FTS5 tier and return its rows if the query is non-empty and
+/// the store returned at least one match.
+///
+/// Returns `Ok(None)` both when the sanitized query is empty (so we would
+/// otherwise hand FTS5 a bare empty MATCH expression) and when the store
+/// returned zero rows, letting the cascade advance cleanly to the next tier.
+async fn try_search_tier(
+    store: &impl ContextStore,
+    fts: FtsQuery,
+    scope: Option<&ScopePath>,
+    limit: u32,
+) -> Result<Option<Vec<RecallRow>>, CmError> {
+    if fts.as_str().is_empty() {
+        return Ok(None);
+    }
+    let scored = store.search(fts.as_str(), scope, limit).await?;
+    if scored.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        scored
+            .into_iter()
+            .map(|s| RecallRow {
+                entry: s.entry,
+                score: Some(s.score),
+            })
+            .collect(),
+    ))
 }
 
 // ── Private Helpers ──────────────────────────────────────────────

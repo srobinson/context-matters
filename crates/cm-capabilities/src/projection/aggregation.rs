@@ -4,11 +4,23 @@
 //! Used by the recall/browse YAML formatters to shape result-set headers
 //! and row identifiers before rendering.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::hash::Hash;
 
 use chrono::{DateTime, Utc};
+use cm_core::Entry;
+use uuid::Uuid;
+
+/// Default short-id length for entry-row rendering. Used by every view
+/// formatter (`browse`, `recall`, `web_view`) so a result set that does
+/// not collide on its first 8 bytes renders an 8-char short id.
+pub const SHORT_ID_LEN: usize = 8;
+
+/// Extended short-id length used when any two entries in the current
+/// result set share their first 8 bytes. Keeps cross-view parity: every
+/// formatter widens to the same 12 bytes on a collision.
+pub const SHORT_ID_LEN_EXTENDED: usize = 12;
 
 /// First `len` bytes of `id`, safe for multi-byte UTF-8.
 ///
@@ -157,6 +169,144 @@ pub fn fmt_with_commas(n: impl Into<u64>) -> String {
         out.push(*b as char);
     }
     out
+}
+
+/// Length of the content-hash prefix used for intra-response dedup.
+///
+/// 16 hex characters carry 64 bits of entropy, so BLAKE3 prefix
+/// collisions on realistic result-set sizes are negligible. Exposed so
+/// the recall/browse formatters that render `dup_of:` annotations can
+/// reference the same constant.
+pub const CONTENT_HASH_DEDUP_PREFIX: usize = 16;
+
+/// Intra-response dedup pass: map each duplicate row's id to the id of
+/// the first row (the leader) that carries the same content-hash prefix.
+///
+/// Walks `rows` in order, indexing the first 16 hex characters of each
+/// row's `content_hash` into a leader table. Rows whose prefix is
+/// already in the table are duplicates: their id maps to the leader's
+/// id in the returned map. The leader itself is never present in the
+/// output, so callers drive rendering as:
+///
+/// ```ignore
+/// let dedup = compute_dedup_hints(&rows);
+/// for row in &rows {
+///     if let Some(leader_id) = dedup.get(&row.id) {
+///         // render `dup_of: <short leader id>`
+///     }
+/// }
+/// ```
+///
+/// Runs in O(n) with one `HashMap` allocation plus one short-string
+/// allocation per row. Order-stable: if rows 1, 2, and 3 share a
+/// prefix, both rows 2 and 3 map to row 1 (not a chain).
+pub fn compute_dedup_hints(rows: &[&Entry]) -> HashMap<Uuid, Uuid> {
+    let mut leaders: HashMap<String, Uuid> = HashMap::new();
+    let mut dupes: HashMap<Uuid, Uuid> = HashMap::new();
+    for row in rows {
+        let prefix = short_id(&row.content_hash, CONTENT_HASH_DEDUP_PREFIX).to_owned();
+        if let Some(&leader_id) = leaders.get(&prefix) {
+            dupes.insert(row.id, leader_id);
+        } else {
+            leaders.insert(prefix, row.id);
+        }
+    }
+    dupes
+}
+
+/// Share of the most-frequent facet at or above which the formatter
+/// emits a faceted drill-down advisory. `0.60` means: if one kind or
+/// tag accounts for 60% or more of a result set, the renderer tells
+/// the caller how to re-query narrowed to that facet.
+///
+/// Exposed as a named constant so the 60% figure lives in one place
+/// and every site that reasons about dominance (the hint builder plus
+/// the unit tests) reads the same value.
+pub const DRILL_DOWN_THRESHOLD: f32 = 0.60;
+
+/// A single-facet dominance hint derived from a result set's kind and
+/// tag histograms. `facet` is either `"kinds"` or `"tags"` and maps
+/// directly to the filter argument name on `cx_recall` / `cx_browse`
+/// so the rendered advisory can embed it verbatim.
+///
+/// `count` uses `usize` to match the upstream `BTreeMap<String, usize>`
+/// histogram shape without a lossy cast; `total` is the full row count
+/// the histogram was computed from. The pair lets the formatter emit
+/// `"... — N of M results are X"` without re-counting the slice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrillDownHint {
+    pub facet: String,
+    pub value: String,
+    pub count: usize,
+    pub total: usize,
+}
+
+/// Compute a faceted drill-down hint from the kind and tag histograms.
+///
+/// Returns `Some` when one facet's most-frequent value accounts for at
+/// least [`DRILL_DOWN_THRESHOLD`] of `total`, otherwise `None`. Kinds
+/// are checked first and a qualifying kind wins outright without
+/// inspecting tags, so kind dominance beats tag dominance on ties
+/// (e.g. both at exactly 60%). Single-row result sets (`total < 2`)
+/// always return `None` because a trivially-dominant single row would
+/// emit a `narrow:` advisory that offers nothing to narrow into.
+///
+/// The "most-frequent" value within a histogram is selected
+/// deterministically: alphabetical first-wins on intra-histogram ties,
+/// mirroring how [`render_histogram`] surfaces ties in header order.
+pub fn compute_drill_down_hint(
+    kinds: &BTreeMap<String, usize>,
+    tags: &BTreeMap<String, usize>,
+    total: usize,
+) -> Option<DrillDownHint> {
+    if total < 2 {
+        return None;
+    }
+    if let Some(hint) = dominant_facet("kinds", kinds, total) {
+        return Some(hint);
+    }
+    dominant_facet("tags", tags, total)
+}
+
+/// Helper for [`compute_drill_down_hint`]. Picks the most-frequent
+/// entry from `hist` and emits a [`DrillDownHint`] when that entry's
+/// share of `total` is at least [`DRILL_DOWN_THRESHOLD`]. `facet` is
+/// the caller-supplied tag (`"kinds"` or `"tags"`) embedded in the
+/// hint unchanged.
+fn dominant_facet(
+    facet: &str,
+    hist: &BTreeMap<String, usize>,
+    total: usize,
+) -> Option<DrillDownHint> {
+    let (value, count) = most_frequent(hist)?;
+    let share = count as f32 / total as f32;
+    if share < DRILL_DOWN_THRESHOLD {
+        return None;
+    }
+    Some(DrillDownHint {
+        facet: facet.to_owned(),
+        value: value.to_owned(),
+        count,
+        total,
+    })
+}
+
+/// Pick the most-frequent `(key, count)` pair from a histogram with a
+/// deterministic tie-break: walks the `BTreeMap` in its natural
+/// alphabetical order and keeps the first entry at any given max
+/// count. Empty histograms return `None`.
+fn most_frequent(hist: &BTreeMap<String, usize>) -> Option<(&str, usize)> {
+    let mut best: Option<(&str, usize)> = None;
+    for (k, &v) in hist {
+        match best {
+            None => best = Some((k.as_str(), v)),
+            Some((_, best_count)) if v > best_count => best = Some((k.as_str(), v)),
+            // Strict >: a later entry at the same count is *not* preferred, so
+            // alphabetical-first wins on intra-histogram ties.
+            _ => {}
+        }
+    }
+    best
 }
 
 #[cfg(test)]
@@ -328,5 +478,219 @@ mod tests {
         assert_eq!(hist.get("sqlite"), Some(&1));
         assert_eq!(hist.get("mcp"), Some(&1));
         assert_eq!(hist.len(), 3);
+    }
+
+    /// Minimal `Entry` builder used only by the `compute_dedup_hints`
+    /// unit tests. Every field other than `id` and `content_hash` is
+    /// filled with placeholder values because dedup cares only about
+    /// those two fields; setting anything else risks test coupling to
+    /// the rest of the `Entry` shape.
+    fn fixture_entry(id_hex: &str, content_hash: &str) -> Entry {
+        use cm_core::{EntryKind, ScopePath};
+        let now = Utc::now();
+        Entry {
+            id: Uuid::parse_str(id_hex).expect("test fixture uuid parses"),
+            scope_path: ScopePath::parse("global").expect("global scope parses"),
+            kind: EntryKind::Fact,
+            title: String::new(),
+            body: String::new(),
+            content_hash: content_hash.to_owned(),
+            meta: None,
+            created_by: "test".to_owned(),
+            created_at: now,
+            updated_at: now,
+            superseded_by: None,
+        }
+    }
+
+    /// `0`-padded 64-char hex literal from a short unique head. Lets a
+    /// test spell out a content hash without typing 64 characters.
+    fn hash(head: &str) -> String {
+        assert!(
+            head.len() <= 64,
+            "dedup test hash head must fit inside 64 hex chars"
+        );
+        format!("{head:0<64}")
+    }
+
+    #[test]
+    fn dedup_empty_rows() {
+        let rows: Vec<&Entry> = Vec::new();
+        assert!(compute_dedup_hints(&rows).is_empty());
+    }
+
+    #[test]
+    fn dedup_all_unique() {
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("bbbbbbbbbbbbbbbb"),
+        );
+        let e3 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000003",
+            &hash("cccccccccccccccc"),
+        );
+        let rows = vec![&e1, &e2, &e3];
+        let map = compute_dedup_hints(&rows);
+        assert!(
+            map.is_empty(),
+            "three distinct content hashes must not flag any dupes: {map:?}"
+        );
+    }
+
+    #[test]
+    fn dedup_one_pair() {
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("bbbbbbbbbbbbbbbb"),
+        );
+        let e3 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000003",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let rows = vec![&e1, &e2, &e3];
+        let map = compute_dedup_hints(&rows);
+        assert_eq!(map.len(), 1, "exactly one dupe expected: {map:?}");
+        assert_eq!(
+            map.get(&e3.id),
+            Some(&e1.id),
+            "row 3 should map to row 1 leader",
+        );
+        // Leader and unique row are never keys in the output.
+        assert!(!map.contains_key(&e1.id));
+        assert!(!map.contains_key(&e2.id));
+    }
+
+    #[test]
+    fn dedup_triplet() {
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let e3 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000003",
+            &hash("aaaaaaaaaaaaaaaa"),
+        );
+        let rows = vec![&e1, &e2, &e3];
+        let map = compute_dedup_hints(&rows);
+        assert_eq!(map.len(), 2, "two dupes expected against leader: {map:?}");
+        // Both later rows map to the FIRST occurrence, not a chain.
+        assert_eq!(map.get(&e2.id), Some(&e1.id));
+        assert_eq!(map.get(&e3.id), Some(&e1.id));
+        assert!(!map.contains_key(&e1.id));
+    }
+
+    #[test]
+    fn dedup_keys_only_on_first_16_hex_chars() {
+        // Two hashes that share the leading 16 hex chars but differ at
+        // byte 17 are still treated as duplicates. The prefix compare
+        // is the whole point of the cheap dedup pass.
+        let e1 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000001",
+            &hash("aaaaaaaaaaaaaaaa11"),
+        );
+        let e2 = fixture_entry(
+            "019d8a01-0000-7000-8000-000000000002",
+            &hash("aaaaaaaaaaaaaaaa22"),
+        );
+        let rows = vec![&e1, &e2];
+        let map = compute_dedup_hints(&rows);
+        assert_eq!(map.get(&e2.id), Some(&e1.id));
+    }
+
+    /// Builder for [`compute_drill_down_hint`] inputs. Each test passes
+    /// `(kind, count)` and `(tag, count)` slices that are converted into
+    /// the `BTreeMap<String, usize>` shape the function expects, plus the
+    /// row total separately so a test can probe the threshold edge
+    /// without re-summing the histogram.
+    fn drill_down_inputs(
+        kinds: &[(&str, usize)],
+        tags: &[(&str, usize)],
+    ) -> (BTreeMap<String, usize>, BTreeMap<String, usize>) {
+        let to_map = |pairs: &[(&str, usize)]| -> BTreeMap<String, usize> {
+            pairs.iter().map(|(k, v)| ((*k).to_owned(), *v)).collect()
+        };
+        (to_map(kinds), to_map(tags))
+    }
+
+    #[test]
+    fn drill_down_kind_dominates() {
+        // 12/20 = 60.0% kind share — exactly at the threshold so the
+        // hint must fire (the comparison is `share >= 0.60`, not `>`).
+        let (kinds, tags) = drill_down_inputs(
+            &[("decision", 12), ("fact", 5), ("lesson", 3)],
+            &[("rust", 8), ("sqlite", 7), ("mcp", 5)],
+        );
+        let hint = compute_drill_down_hint(&kinds, &tags, 20).expect("dominant kind fires");
+        assert_eq!(hint.facet, "kinds");
+        assert_eq!(hint.value, "decision");
+        assert_eq!(hint.count, 12);
+        assert_eq!(hint.total, 20);
+    }
+
+    #[test]
+    fn drill_down_tag_dominates() {
+        // No kind clears the threshold (max 8/20 = 40%); a tag does
+        // (14/20 = 70%) so the function falls through to the tag pass
+        // and returns the tag-keyed hint.
+        let (kinds, tags) = drill_down_inputs(
+            &[("decision", 8), ("fact", 7), ("lesson", 5)],
+            &[("session-log", 14), ("rust", 4), ("sqlite", 2)],
+        );
+        let hint = compute_drill_down_hint(&kinds, &tags, 20).expect("dominant tag fires");
+        assert_eq!(hint.facet, "tags");
+        assert_eq!(hint.value, "session-log");
+        assert_eq!(hint.count, 14);
+        assert_eq!(hint.total, 20);
+    }
+
+    #[test]
+    fn drill_down_below_threshold_none() {
+        // Top kind 5/20 = 25%, top tag 7/20 = 35%; neither clears the
+        // 60% bar so the function returns None instead of guessing.
+        let (kinds, tags) = drill_down_inputs(
+            &[("decision", 5), ("fact", 5), ("lesson", 5), ("note", 5)],
+            &[("rust", 7), ("sqlite", 7), ("mcp", 6)],
+        );
+        assert!(compute_drill_down_hint(&kinds, &tags, 20).is_none());
+    }
+
+    #[test]
+    fn drill_down_single_row_none() {
+        // Single-row result sets are trivially "100% dominant" by any
+        // facet, but a `narrow:` advisory there has nothing to narrow
+        // into. The `total < 2` guard ensures the function bails out.
+        let (kinds, tags) = drill_down_inputs(&[("decision", 1)], &[("rust", 1)]);
+        assert!(compute_drill_down_hint(&kinds, &tags, 1).is_none());
+        // Zero rows also returns None (the same guard catches it).
+        let empty: BTreeMap<String, usize> = BTreeMap::new();
+        assert!(compute_drill_down_hint(&empty, &empty, 0).is_none());
+    }
+
+    #[test]
+    fn drill_down_kind_beats_tag_on_tie() {
+        // Both facets sit at exactly 60% (6/10 each). Kinds are
+        // checked first and a qualifying kind wins outright, so the
+        // returned hint is keyed on kinds even though the tag share
+        // is identical.
+        let (kinds, tags) = drill_down_inputs(
+            &[("decision", 6), ("fact", 4)],
+            &[("session-log", 6), ("rust", 4)],
+        );
+        let hint = compute_drill_down_hint(&kinds, &tags, 10).expect("kind tie wins");
+        assert_eq!(hint.facet, "kinds");
+        assert_eq!(hint.value, "decision");
+        assert_eq!(hint.count, 6);
     }
 }

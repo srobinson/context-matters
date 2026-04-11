@@ -166,8 +166,10 @@ fn render_missing_trailer(out: &mut String, missing: &[&str]) {
 /// `serde(rename_all = "snake_case")` rendering on the enum so log
 /// channels and the text envelope agree on the canonical name. The
 /// enum has no `Display`/`as_str`, so this inline helper is the single
-/// source of truth for the text form.
-fn confidence_as_str(c: Confidence) -> &'static str {
+/// source of truth for the text form. `pub(crate)` so the sibling
+/// `web_view::project_web_get` projection can use the same mapping
+/// without duplicating the match arms (DRY rule from CLAUDE.md).
+pub(crate) fn confidence_as_str(c: Confidence) -> &'static str {
     match c {
         Confidence::High => "high",
         Confidence::Medium => "medium",

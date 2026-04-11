@@ -20,26 +20,20 @@
 //! an inversion, so the best match always renders as `1.00` regardless
 //! of the raw range. See [`normalise_bm25`] for the formula.
 
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
 use chrono::{DateTime, Utc};
 use cm_core::Entry;
+use uuid::Uuid;
 
 use super::{
-    RecallRow, collapse_whitespace, detect_id_collisions, estimate_tokens, fmt_with_commas,
-    kind_histogram, relative_age, render_histogram, short_id, smart_snippet, tag_histogram,
+    DrillDownHint, HighlightStyle, RecallRow, SHORT_ID_LEN, SHORT_ID_LEN_EXTENDED,
+    SNIPPET_MAX_BYTES, collapse_whitespace, compute_dedup_hints, compute_drill_down_hint,
+    detect_id_collisions, estimate_tokens, fmt_with_commas, kind_histogram, relative_age,
+    render_histogram, short_id, smart_snippet, tag_histogram,
 };
-use crate::recall::{RecallRequest, RecallResult, RecallRouting};
-
-/// Maximum snippet width (bytes) shown per row in the recall view. Sized
-/// to fit one wide terminal row without wrapping.
-const SNIPPET_MAX_BYTES: usize = 200;
-
-/// Default short-id length. Auto-extends to [`SHORT_ID_LEN_EXTENDED`] when
-/// any two entries in the current slice share their first-8-byte prefix.
-/// Matches the convention shared with the browse formatter.
-const SHORT_ID_LEN: usize = 8;
-const SHORT_ID_LEN_EXTENDED: usize = 12;
+use crate::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 
 /// Per-row body size above which the formatter emits a `cx_get(...)` hint
 /// suggesting the caller fetch full content separately. Tuned to slightly
@@ -105,17 +99,42 @@ struct Layout<'a> {
     /// `None` when the caller did not supply one (tag-/scope-only recall)
     /// or when the query is an empty string.
     query: Option<&'a str>,
+    /// Per-row snippet highlight style. [`HighlightStyle::Bracketed`] only
+    /// when the routing branch is `Search` and `query` is populated, so
+    /// matched terms render as `«term»`. Any other routing (browse
+    /// fallback, tag/scope walk) renders with [`HighlightStyle::None`]
+    /// because the caller did not supply a query context the highlighter
+    /// could meaningfully mark up.
+    highlight_style: HighlightStyle,
     /// Reference instant for relative-age formatting. Captured once by
     /// the public entry point so every row renders with a consistent
     /// `age:` value even if the underlying system clock drifts during
     /// the render call.
     now: DateTime<Utc>,
+    /// Outgoing-relation counts per row id, sourced from the
+    /// [`RecallResult::relation_counts`] map produced by the single
+    /// batched `count_relations_for` call in the recall capability.
+    /// Borrowed so [`render_row_comment`] can do an `O(1)` lookup per
+    /// row without cloning the map. Ids absent from the map carry zero
+    /// outgoing edges and suppress the `rels:` annotation entirely.
+    relation_counts: &'a HashMap<Uuid, u32>,
+    /// Per-result-set kind histogram, computed once at layout time so
+    /// that [`render_header`] and [`render_trailers`] read the same
+    /// `BTreeMap` instead of recomputing it. The trailer needs the
+    /// histogram to feed [`compute_drill_down_hint`] without paging
+    /// over `rows` a second time.
+    kind_hist: BTreeMap<String, usize>,
+    /// Per-result-set tag histogram, computed once at layout time for
+    /// the same reason as `kind_hist`. Each tag on each row contributes
+    /// one bucket increment, mirroring the histogram the header line
+    /// has always rendered.
+    tag_hist: BTreeMap<String, usize>,
 }
 
 impl<'a> Layout<'a> {
     fn new(
         rows: &'a [RecallRow],
-        result: &RecallResult,
+        result: &'a RecallResult,
         request: &'a RecallRequest,
         now: DateTime<Utc>,
     ) -> Self {
@@ -125,8 +144,8 @@ impl<'a> Layout<'a> {
         } else {
             SHORT_ID_LEN
         };
-        let show_score = matches!(result.routing, RecallRouting::Search)
-            && rows.iter().any(|r| r.score.is_some());
+        let is_search = matches!(result.routing, RecallRouting::Search);
+        let show_score = is_search && rows.iter().any(|r| r.score.is_some());
         let norm_scores = if show_score {
             let raws: Vec<f32> = rows.iter().map(|r| r.score.unwrap_or(0.0)).collect();
             normalise_bm25(&raws)
@@ -134,6 +153,19 @@ impl<'a> Layout<'a> {
             Vec::new()
         };
         let query = request.query.as_deref().filter(|q| !q.trim().is_empty());
+        let highlight_style = if is_search && query.is_some() {
+            HighlightStyle::Bracketed
+        } else {
+            HighlightStyle::None
+        };
+        let kind_hist = kind_histogram(rows, |row| row.entry.kind.as_str());
+        let tag_hist = tag_histogram(rows, |row| {
+            row.entry
+                .meta
+                .as_ref()
+                .map(|m| m.tags.as_slice())
+                .unwrap_or(&[])
+        });
         Self {
             rows,
             id_strings,
@@ -141,7 +173,11 @@ impl<'a> Layout<'a> {
             show_score,
             norm_scores,
             query,
+            highlight_style,
             now,
+            relation_counts: &result.relation_counts,
+            kind_hist,
+            tag_hist,
         }
     }
 }
@@ -156,7 +192,19 @@ fn render_header(
         let _ = writeln!(out, "query: {q}");
     }
     let (routing_str, routing_explain) = routing_explanation(&result.routing);
-    let _ = writeln!(out, "routing: {routing_str}  # {routing_explain}");
+    let tier_suffix = if matches!(result.routing, RecallRouting::Search) {
+        result
+            .tier
+            .and_then(search_tier_header_tag)
+            .map(|tag| format!(", tier: {tag}"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let _ = writeln!(
+        out,
+        "routing: {routing_str}  # {routing_explain}{tier_suffix}"
+    );
     let _ = writeln!(
         out,
         "candidates: {before} -> {shown} shown",
@@ -175,23 +223,17 @@ fn render_header(
         let _ = writeln!(out, "scope_hits: {}", rendered.join(", "));
     }
     if !result.entries.is_empty() {
-        let kind_hist = kind_histogram(result.entries.as_slice(), |row| row.entry.kind.as_str());
-        if !kind_hist.is_empty() {
-            let _ = writeln!(out, "kinds: {}", render_histogram(&kind_hist));
+        // Histograms are precomputed once on `Layout` so the header
+        // and the trailer's drill-down advisory read the same data.
+        if !layout.kind_hist.is_empty() {
+            let _ = writeln!(out, "kinds: {}", render_histogram(&layout.kind_hist));
         }
         // Per-tag histogram mirrors `kinds:` so agents can scan tag
         // density on the result set without paging through rows.
         // Falls through when no row carries any tag so the header
         // does not sprout an empty `tags:` line on tag-free stores.
-        let tag_hist = tag_histogram(result.entries.as_slice(), |row| {
-            row.entry
-                .meta
-                .as_ref()
-                .map(|m| m.tags.as_slice())
-                .unwrap_or(&[])
-        });
-        if !tag_hist.is_empty() {
-            let _ = writeln!(out, "tags: {}", render_histogram(&tag_hist));
+        if !layout.tag_hist.is_empty() {
+            let _ = writeln!(out, "tags: {}", render_histogram(&layout.tag_hist));
         }
     }
     match request.max_tokens {
@@ -226,6 +268,13 @@ fn render_entries(out: &mut String, layout: &Layout) {
         " ".repeat(4 + layout.id_len + 2)
     };
 
+    // Intra-response dedup: first occurrence of each content-hash
+    // prefix is the leader; every later row whose prefix collides
+    // with a leader gets a `dup_of: <short leader id>` annotation in
+    // its trailing comment. Computed once per render pass.
+    let entries: Vec<&Entry> = layout.rows.iter().map(|r| &r.entry).collect();
+    let dedup = compute_dedup_hints(&entries);
+
     for (i, (row, id_str)) in layout.rows.iter().zip(layout.id_strings.iter()).enumerate() {
         let sid = short_id(id_str, layout.id_len);
         if layout.show_score {
@@ -235,19 +284,37 @@ fn render_entries(out: &mut String, layout: &Layout) {
             let _ = writeln!(out, "  - {sid}  {}", row.entry.title);
         }
 
-        let snippet = smart_snippet(&row.entry.body, layout.query, SNIPPET_MAX_BYTES);
+        let snippet = smart_snippet(
+            &row.entry.body,
+            layout.query,
+            layout.highlight_style,
+            SNIPPET_MAX_BYTES,
+        );
         let snippet_line = collapse_whitespace(&snippet);
         if !snippet_line.is_empty() {
             let _ = writeln!(out, "{cont_indent}{snippet_line}");
         }
 
-        let comment = render_row_comment(&row.entry, layout.now);
+        let dup_of = dedup
+            .get(&row.entry.id)
+            .map(|leader_uuid| short_id(&leader_uuid.to_string(), layout.id_len).to_owned());
+        let rels = layout
+            .relation_counts
+            .get(&row.entry.id)
+            .copied()
+            .unwrap_or(0);
+        let comment = render_row_comment(&row.entry, layout.now, dup_of.as_deref(), rels);
         let _ = writeln!(out, "{cont_indent}# {comment}");
     }
 }
 
-fn render_row_comment(entry: &Entry, now: DateTime<Utc>) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(5);
+fn render_row_comment(
+    entry: &Entry,
+    now: DateTime<Utc>,
+    dup_of: Option<&str>,
+    rels: u32,
+) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(6);
     parts.push(format!("scope: {}", entry.scope_path));
     parts.push(format!("kind: {}", entry.kind.as_str()));
     let tags: &[String] = entry
@@ -259,6 +326,12 @@ fn render_row_comment(entry: &Entry, now: DateTime<Utc>) -> String {
         parts.push(format!("tags: {}", tags.join(", ")));
     }
     parts.push(format!("age: {}", relative_age(entry.updated_at, now)));
+    if let Some(dup) = dup_of {
+        parts.push(format!("dup_of: {dup}"));
+    }
+    if rels > 0 {
+        parts.push(format!("rels: {rels}"));
+    }
     parts.join("  ")
 }
 
@@ -267,6 +340,31 @@ fn render_trailers(out: &mut String, result: &RecallResult, layout: &Layout) {
 
     let (routing_str, routing_advice) = routing_advice(&result.routing);
     let _ = writeln!(out, "# routing: {routing_str} - {routing_advice}");
+
+    // Tier advisory teaches the caller that the result set was
+    // produced by a fallback query shape (prefix or split_or) rather
+    // than the exact implicit-AND that they wrote. Fires only on the
+    // two fallback tiers; exact is the happy path, none already
+    // surfaces through the `no matches` trailer below.
+    if matches!(result.routing, RecallRouting::Search)
+        && let Some(tier) = result.tier
+        && let Some(line) = search_tier_trailer(tier)
+    {
+        let _ = writeln!(out, "{line}");
+    }
+
+    // Faceted drill-down advisory: when one kind or tag accounts for
+    // ≥60% of the result set, append a one-line `narrow:` hint that
+    // shows the caller the exact `cx_recall(...)` shape to re-issue
+    // pre-narrowed to that facet. The advisory is suppressed for
+    // empty / single-row result sets via the `total < 2` guard inside
+    // `compute_drill_down_hint`, so this call is safe to make
+    // unconditionally before the empty-result early return below.
+    if let Some(hint) =
+        compute_drill_down_hint(&layout.kind_hist, &layout.tag_hist, layout.rows.len())
+    {
+        let _ = writeln!(out, "{}", format_recall_drill_down(&hint, layout.query));
+    }
 
     if layout.rows.is_empty() {
         let _ = writeln!(
@@ -318,7 +416,7 @@ fn render_trailers(out: &mut String, result: &RecallResult, layout: &Layout) {
 /// `0.00`. When every raw score is equal (including the single-row case)
 /// the formula's divisor is zero; this function emits `1.00` for every
 /// row in that case rather than returning NaN.
-pub(crate) fn normalise_bm25(scores: &[f32]) -> Vec<f32> {
+pub fn normalise_bm25(scores: &[f32]) -> Vec<f32> {
     if scores.is_empty() {
         return Vec::new();
     }
@@ -339,7 +437,12 @@ pub(crate) fn normalise_bm25(scores: &[f32]) -> Vec<f32> {
 /// The tag matches the serde `rename_all = "snake_case"` rendering of the
 /// enum so callers searching by routing name find the same string in
 /// the text envelope and the structured log channel.
-fn routing_explanation(routing: &RecallRouting) -> (&'static str, &'static str) {
+///
+/// Crate-visible so [`crate::projection::web_view`] can pick the same
+/// tag for `WebRecallHeader::routing` without re-matching every enum
+/// variant. Only the `.0` tag is needed there; the explanation text is
+/// YAML-specific and stays in the trailer.
+pub(crate) fn routing_explanation(routing: &RecallRouting) -> (&'static str, &'static str) {
     match routing {
         RecallRouting::Search => ("search", "FTS5 ranking"),
         RecallRouting::TagScopeWalk => ("tag_scope_walk", "tag + ancestor walk"),
@@ -370,6 +473,74 @@ fn routing_advice(routing: &RecallRouting) -> (&'static str, &'static str) {
         }
     };
     (tag, advice)
+}
+
+/// Header suffix tag for the cascade's winning [`SearchTier`]. Returns
+/// the snake_case name for the three winning tiers and `None` for
+/// [`SearchTier::None`], so the header stays clean when all three
+/// tiers were exhausted (the empty-result trailer covers that case).
+///
+/// Crate-visible so [`crate::projection::web_view`] can project the
+/// same tag into `WebRecallHeader::tier`. Shared so the YAML and web
+/// views cannot drift on the stringified tier name.
+pub(crate) fn search_tier_header_tag(tier: SearchTier) -> Option<&'static str> {
+    match tier {
+        SearchTier::Exact => Some("exact"),
+        SearchTier::Prefix => Some("prefix"),
+        SearchTier::SplitOr => Some("split_or"),
+        SearchTier::None => None,
+    }
+}
+
+/// Render the recall-side drill-down advisory line for a populated
+/// [`DrillDownHint`]. The output shape mirrors the cx_recall MCP
+/// surface so the caller can copy the suggested call verbatim:
+///
+/// ```text
+/// # narrow: cx_recall(query="snippet strategy", kinds=["decision"]) - 2 of 3 results are decision
+/// # narrow: cx_recall(query="snippet strategy", tags=["session-log"]) - 14 of 20 results are tagged session-log
+/// # narrow: cx_recall(kinds=["fact"]) - 2 of 2 results are fact
+/// ```
+///
+/// `query` is `None` when the recall request had no free-text query
+/// (tag/scope-only routing), in which case the rendered call drops the
+/// `query=...` argument entirely. The trailing prose qualifier toggles
+/// `tagged ` for tag dominance so the line reads naturally for both
+/// facets ("results are decision" / "results are tagged session-log").
+fn format_recall_drill_down(hint: &DrillDownHint, query: Option<&str>) -> String {
+    let DrillDownHint {
+        facet,
+        value,
+        count,
+        total,
+    } = hint;
+    let call = match query {
+        Some(q) => format!("cx_recall(query={q:?}, {facet}=[{value:?}])"),
+        None => format!("cx_recall({facet}=[{value:?}])"),
+    };
+    let qualifier = if facet == "tags" { "tagged " } else { "" };
+    format!("# narrow: {call} - {count} of {total} results are {qualifier}{value}")
+}
+
+/// Trailer advisory line for the cascade's winning [`SearchTier`].
+/// Fires only on `Prefix` and `SplitOr`: those tiers produced a result
+/// set from a query shape the caller did not write, so the LLM needs
+/// to be told about the rewrite to learn what succeeded. `Exact` is
+/// the happy path (silent); `None` is covered by the `no matches`
+/// trailer, so a tier advisory there would be redundant noise.
+fn search_tier_trailer(tier: SearchTier) -> Option<String> {
+    let (tag, advice) = match tier {
+        SearchTier::Prefix => (
+            "prefix",
+            "original query had zero exact hits, tried prefix match",
+        ),
+        SearchTier::SplitOr => (
+            "split_or",
+            "original query had zero prefix hits, OR-joined tokens",
+        ),
+        SearchTier::Exact | SearchTier::None => return None,
+    };
+    Some(format!("# tier: {tag} - {advice}"))
 }
 
 #[cfg(test)]
@@ -457,6 +628,48 @@ mod tests {
             );
             assert!(!routing_advice(&routing).1.is_empty());
         }
+    }
+
+    #[test]
+    fn search_tier_header_tag_hides_none_variant() {
+        // Exact / Prefix / SplitOr surface in the header; SearchTier::None
+        // returns None so the header omits the tier suffix when the
+        // cascade exhausted every tier without a hit.
+        assert_eq!(search_tier_header_tag(SearchTier::Exact), Some("exact"));
+        assert_eq!(search_tier_header_tag(SearchTier::Prefix), Some("prefix"));
+        assert_eq!(
+            search_tier_header_tag(SearchTier::SplitOr),
+            Some("split_or"),
+        );
+        assert_eq!(search_tier_header_tag(SearchTier::None), None);
+    }
+
+    #[test]
+    fn search_tier_trailer_fires_only_on_fallback_tiers() {
+        // Exact is the happy path (no advisory). None is already covered
+        // by the `no matches` trailer, so duplicating it would be noise.
+        assert!(search_tier_trailer(SearchTier::Exact).is_none());
+        assert!(search_tier_trailer(SearchTier::None).is_none());
+        // Prefix and SplitOr emit a trailing advisory describing the
+        // rewrite so the LLM learns which fallback succeeded.
+        let prefix = search_tier_trailer(SearchTier::Prefix).expect("prefix emits");
+        assert!(
+            prefix.starts_with("# tier: prefix - "),
+            "prefix advisory shape: {prefix}",
+        );
+        assert!(
+            prefix.contains("zero exact hits"),
+            "prefix advisory text: {prefix}",
+        );
+        let split_or = search_tier_trailer(SearchTier::SplitOr).expect("split_or emits");
+        assert!(
+            split_or.starts_with("# tier: split_or - "),
+            "split_or advisory shape: {split_or}",
+        );
+        assert!(
+            split_or.contains("OR-joined"),
+            "split_or advisory text: {split_or}",
+        );
     }
 
     #[test]

@@ -17,6 +17,10 @@ test:
 test-doc:
     cargo test --workspace --doc
 
+# Run criterion benchmarks for cm-capabilities hot paths (ALP-1762)
+bench:
+    cargo bench -p cm-capabilities
+
 fmt:
     cargo fmt --all
 
@@ -41,15 +45,16 @@ web-check:
 
 # Install frontend dependencies
 web-install:
-    cd crates/cm-web/frontend && npm install
+    cd crates/cm-web/frontend && pnpm install
 
 # Start cm-web (backend + frontend dev server)
 web: web-install
     overmind start -f Procfile.dev
 
-# Regenerate TypeScript types from cm-core via ts-rs
+# Regenerate TypeScript types from cm-core + cm-capabilities via ts-rs
 gen-types:
     cargo test -p cm-core export_bindings_ 2>/dev/null; true
+    cargo test -p cm-capabilities export_bindings_ 2>/dev/null; true
 
 # Regenerate sqlx offline query cache (commit .sqlx/ after running)
 sqlx-prepare:

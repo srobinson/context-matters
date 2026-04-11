@@ -1,7 +1,13 @@
 //! Agent-parity API handlers.
 //!
-//! These endpoints mirror the MCP tool semantics (cx_recall, cx_browse) over HTTP,
-//! producing structurally identical results so the web UI can offer an "agent view."
+//! These endpoints produce the `WebBrowseView` / `WebRecallView`
+//! projection shapes that the MCP `cx_browse` / `cx_recall` tools
+//! surface over their YAML channel, so the cm-web Curator UI and the
+//! MCP adapter render the exact same mental model of the store.
+//!
+//! The shared `execute_*` helpers are also reused by the
+//! `/api/entries/*` compatibility aliases in `entries.rs` so the two
+//! HTTP prefixes cannot drift.
 
 use std::sync::Arc;
 
@@ -9,15 +15,15 @@ use axum::Router;
 use axum::extract::{Query, RawQuery, State};
 use axum::response::Json;
 use axum::routing::get;
-use cm_capabilities::browse::{self, BrowseRequest};
+use cm_capabilities::browse::{self, BrowseRequest, BrowseResult};
 use cm_capabilities::projection::{
-    BrowseEntryView, RecallEntryView, project_browse_entry, project_recall_entry,
+    WebBrowseView, WebRecallView, project_web_browse, project_web_recall,
 };
-use cm_capabilities::recall::{self, RecallRequest, RecallRouting};
+use cm_capabilities::recall::{self, RecallRequest, RecallResult};
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{BrowseSort, EntryKind, ScopePath};
 use cm_store::CmStore;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::form_urlencoded;
 
 use crate::AppState;
@@ -29,7 +35,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/agent/browse", get(browse_handler))
 }
 
-// ── Shared query parsing ────────────────────────────────────────
+// ── Shared recall query parsing ─────────────────────────────────
 
 #[derive(Debug)]
 pub(crate) struct RecallQuery {
@@ -85,28 +91,22 @@ pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiEr
 
 // ── Shared recall execution ─────────────────────────────────────
 
-/// Intermediate result from executing a recall, shared by both
-/// `/api/agent/recall` (with `_trace`) and `/api/entries/recall` (without).
-pub(crate) struct RecallOutput {
-    pub results: Vec<RecallEntryView>,
-    pub returned: usize,
-    pub scope_chain: Vec<String>,
-    pub scope_hits: Vec<(String, usize)>,
-    pub token_estimate: u32,
-    pub routing: RecallRouting,
-    pub candidates_before_filter: usize,
-    pub fetch_limit_used: u32,
-    pub post_filters_applied: Vec<String>,
-    pub token_budget_exhausted: bool,
-    pub hint: Option<String>,
+/// Raw capability result paired with the exact `RecallRequest` that
+/// produced it. `/api/agent/recall` and `/api/entries/recall` both
+/// project this pair via [`project_web_recall`] so the two endpoints
+/// cannot drift.
+pub(crate) struct ExecutedRecall {
+    pub result: RecallResult,
+    pub request: RecallRequest,
 }
 
-/// Execute a recall against the store, returning all data needed by both
-/// the agent endpoint and the compatibility alias.
+/// Parse a raw recall query string, validate inputs, invoke the
+/// `recall` capability, and return the result plus the originating
+/// request. Shared by `/api/agent/recall` and `/api/entries/recall`.
 pub(crate) async fn execute_recall(
     store: &CmStore,
     raw_query: Option<&str>,
-) -> Result<RecallOutput, ApiError> {
+) -> Result<ExecutedRecall, ApiError> {
     let rq = parse_recall_query(raw_query)?;
 
     if let Some(ref q) = rq.query {
@@ -127,99 +127,20 @@ pub(crate) async fn execute_recall(
 
     let limit = clamp_limit(rq.limit);
 
-    // Capture query for hint generation (before move)
-    let original_query = rq.query.clone();
-
-    let mut post_filters_applied = Vec::new();
-    if !kinds.is_empty() {
-        post_filters_applied.push("kinds".to_owned());
-    }
-    if !rq.tags.is_empty() {
-        post_filters_applied.push("tags".to_owned());
-    }
-
-    let result = recall::recall(
-        store,
-        RecallRequest {
-            query: rq.query,
-            scope,
-            kinds,
-            tags: rq.tags,
-            limit,
-            max_tokens: rq.max_tokens,
-        },
-    )
-    .await
-    .map_err(ApiError)?;
-
-    let entries_len = result.entries.len();
-    let results: Vec<RecallEntryView> = result
-        .entries
-        .iter()
-        .map(|row| project_recall_entry(&row.entry))
-        .collect();
-
-    let token_budget_exhausted = rq.max_tokens.is_some_and(|budget| {
-        result.token_estimate >= budget && entries_len < result.candidates_before_filter
-    });
-
-    // Build hint for zero-result queries with too many words
-    let hint = if results.is_empty() {
-        if let Some(ref q) = original_query {
-            let word_count = q.split_whitespace().count();
-            if word_count > 3 {
-                Some(format!(
-                    "Query has {word_count} words with implicit AND. Try fewer keywords (1-3) or use OR between synonyms. Example: instead of '{q}', try '{}'.",
-                    q.split_whitespace().take(2).collect::<Vec<_>>().join(" ")
-                ))
-            } else if word_count > 1 {
-                Some("No matches. Try fewer keywords, prefix matching (e.g. 'migrat*'), or OR between synonyms.".to_string())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
+    let request = RecallRequest {
+        query: rq.query,
+        scope,
+        kinds,
+        tags: rq.tags,
+        limit,
+        max_tokens: rq.max_tokens,
     };
 
-    Ok(RecallOutput {
-        returned: results.len(),
-        results,
-        scope_chain: result.scope_chain,
-        scope_hits: result.scope_hits,
-        token_estimate: result.token_estimate,
-        routing: result.routing,
-        candidates_before_filter: result.candidates_before_filter,
-        fetch_limit_used: result.fetch_limit_used,
-        post_filters_applied,
-        token_budget_exhausted,
-        hint,
-    })
-}
+    let result = recall::recall(store, request.clone())
+        .await
+        .map_err(ApiError)?;
 
-// ── Recall response types ───────────────────────────────────────
-
-#[derive(Debug, Serialize)]
-struct AgentRecallResponse {
-    results: Vec<RecallEntryView>,
-    returned: usize,
-    scope_chain: Vec<String>,
-    scope_hits: std::collections::BTreeMap<String, usize>,
-    token_estimate: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    hint: Option<String>,
-    _trace: RecallTrace,
-}
-
-#[derive(Debug, Serialize)]
-struct RecallTrace {
-    routing: String,
-    candidates_before_filter: usize,
-    fetch_limit_used: u32,
-    post_filters_applied: Vec<String>,
-    token_budget_exhausted: bool,
+    Ok(ExecutedRecall { result, request })
 }
 
 // ── Recall handler ──────────────────────────────────────────────
@@ -227,74 +148,35 @@ struct RecallTrace {
 async fn recall_handler(
     State(state): State<Arc<AppState>>,
     raw_query: RawQuery,
-) -> Result<Json<AgentRecallResponse>, ApiError> {
-    let output = execute_recall(&state.store, raw_query.0.as_deref()).await?;
-
-    let scope_hits: std::collections::BTreeMap<String, usize> =
-        output.scope_hits.iter().cloned().collect();
-
-    Ok(Json(AgentRecallResponse {
-        returned: output.returned,
-        results: output.results,
-        scope_chain: output.scope_chain,
-        scope_hits,
-        token_estimate: output.token_estimate,
-        hint: output.hint,
-        _trace: RecallTrace {
-            routing: match output.routing {
-                RecallRouting::Search => "search".to_owned(),
-                RecallRouting::TagScopeWalk => "tag_scope_walk".to_owned(),
-                RecallRouting::ScopeResolve => "scope_resolve".to_owned(),
-                RecallRouting::BrowseFallback => "browse_fallback".to_owned(),
-            },
-            candidates_before_filter: output.candidates_before_filter,
-            fetch_limit_used: output.fetch_limit_used,
-            post_filters_applied: output.post_filters_applied,
-            token_budget_exhausted: output.token_budget_exhausted,
-        },
-    }))
+) -> Result<Json<WebRecallView>, ApiError> {
+    let ExecutedRecall { result, request } =
+        execute_recall(&state.store, raw_query.0.as_deref()).await?;
+    Ok(Json(project_web_recall(&result, &request)))
 }
 
-// ── Browse ──────────────────────────────────────────────────────
+// ── Shared browse parsing + execution ────────────────────────────
 
 #[derive(Debug, Deserialize)]
-struct BrowseQuery {
-    scope_path: Option<String>,
-    kind: Option<String>,
-    tag: Option<String>,
-    created_by: Option<String>,
-    include_superseded: Option<bool>,
-    limit: Option<u32>,
-    cursor: Option<String>,
+pub(crate) struct BrowseQuery {
+    pub scope_path: Option<String>,
+    pub kind: Option<String>,
+    pub tag: Option<String>,
+    pub created_by: Option<String>,
+    pub sort: Option<String>,
+    pub include_superseded: Option<bool>,
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-struct AgentBrowseResponse {
-    entries: Vec<BrowseEntryView>,
-    total: u64,
-    has_more: bool,
-    next_cursor: Option<String>,
-    _trace: BrowseTrace,
-}
-
-#[derive(Debug, Serialize)]
-struct BrowseTrace {
-    filter_set: BrowseFilterSet,
-    sort: String,
-}
-
-#[derive(Debug, Serialize)]
-struct BrowseFilterSet {
-    scope_path: Option<String>,
-    kind: Option<String>,
-    tag: Option<String>,
-    include_superseded: bool,
-}
-
-async fn browse_handler(
-    State(state): State<Arc<AppState>>,
-    Query(bq): Query<BrowseQuery>,
-) -> Result<Json<AgentBrowseResponse>, ApiError> {
+/// Validate a parsed [`BrowseQuery`], convert it into a
+/// [`BrowseRequest`], and invoke the `browse` capability. Shared by
+/// `/api/agent/browse` and `/api/entries` so the two endpoints produce
+/// the same projection. `sort` defaults to [`BrowseSort::Recent`]
+/// when the caller omits it.
+pub(crate) async fn execute_browse(
+    store: &CmStore,
+    bq: BrowseQuery,
+) -> Result<BrowseResult, ApiError> {
     if let Some(ref t) = bq.tag {
         check_input_size(t, "tag").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
@@ -311,46 +193,51 @@ async fn browse_handler(
 
     let kind = bq
         .kind
+        .as_deref()
         .map(|k| k.parse::<EntryKind>().map_err(ApiError))
         .transpose()?;
+
+    let sort = bq
+        .sort
+        .as_deref()
+        .map(parse_browse_sort)
+        .transpose()?
+        .unwrap_or(BrowseSort::Recent);
 
     let include_superseded = bq.include_superseded.unwrap_or(false);
     let limit = clamp_limit(bq.limit);
 
-    // Echo back the actual filter values for the trace
-    let filter_set = BrowseFilterSet {
-        scope_path: scope_path.as_ref().map(|sp| sp.as_str().to_owned()),
-        kind: kind.map(|k| k.as_str().to_owned()),
-        tag: bq.tag.clone(),
-        include_superseded,
-    };
-
-    let result = browse::browse(
-        &state.store,
+    browse::browse(
+        store,
         BrowseRequest {
             scope_path,
             kind,
             tag: bq.tag,
             created_by: bq.created_by,
             include_superseded,
-            sort: BrowseSort::Recent,
+            sort,
             limit,
             cursor: bq.cursor,
         },
     )
     .await
-    .map_err(ApiError)?;
+    .map_err(ApiError)
+}
 
-    let entries: Vec<BrowseEntryView> = result.entries.iter().map(project_browse_entry).collect();
+fn parse_browse_sort(s: &str) -> Result<BrowseSort, ApiError> {
+    serde_json::from_value::<BrowseSort>(serde_json::Value::String(s.to_owned())).map_err(|_| {
+        ApiError(cm_core::CmError::Validation(format!(
+            "invalid sort: '{s}' (expected recent, oldest, title_asc, title_desc, scope_asc, scope_desc, kind_asc, kind_desc)"
+        )))
+    })
+}
 
-    Ok(Json(AgentBrowseResponse {
-        total: result.total,
-        has_more: result.has_more,
-        next_cursor: result.next_cursor,
-        entries,
-        _trace: BrowseTrace {
-            filter_set,
-            sort: "recent".to_owned(),
-        },
-    }))
+// ── Browse handler ──────────────────────────────────────────────
+
+async fn browse_handler(
+    State(state): State<Arc<AppState>>,
+    Query(bq): Query<BrowseQuery>,
+) -> Result<Json<WebBrowseView>, ApiError> {
+    let result = execute_browse(&state.store, bq).await?;
+    Ok(Json(project_web_browse(&result)))
 }

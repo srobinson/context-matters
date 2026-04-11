@@ -9,6 +9,8 @@
 //! No SQLite store is involved. The formatter is pure (`BrowseResult`
 //! in, `String` out) so every fixture is built inline.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
 
@@ -26,6 +28,19 @@ fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
 }
 
+/// Derives a unique 64-char hex `content_hash` from the test row's
+/// `id_hex` so every fixture row hashes differently by default. Keeps
+/// the intra-response dedup pass from flagging unrelated test rows as
+/// dupes just because they all share a placeholder hash.
+fn content_hash_from(id_hex: &str) -> String {
+    let clean = id_hex.replace('-', "");
+    assert!(
+        clean.len() <= 64,
+        "test fixture id_hex must fit inside 64 hex chars",
+    );
+    format!("{clean:0<64}")
+}
+
 fn make_entry(
     id_hex: &str,
     title: &str,
@@ -40,7 +55,7 @@ fn make_entry(
         kind: EntryKind::Observation,
         title: title.to_owned(),
         body: body.to_owned(),
-        content_hash: "0".repeat(64),
+        content_hash: content_hash_from(id_hex),
         meta: Some(EntryMeta {
             tags: tags.iter().map(|t| (*t).to_owned()).collect(),
             ..Default::default()
@@ -87,6 +102,7 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
         next_cursor: Some("eyJzb3J0IjoicmVjZW50IiwibGFzdCI6ImZvbyJ9".to_owned()),
         has_more: true,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
 
     let request = BrowseRequest {
@@ -128,6 +144,7 @@ fn format_browse_view_empty_result_renders_clean() {
         next_cursor: None,
         has_more: false,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
     let request = BrowseRequest {
         limit: 50,
@@ -159,6 +176,75 @@ fn format_browse_view_empty_result_renders_clean() {
 }
 
 #[test]
+fn format_browse_view_rels_annotation_fires_only_for_populated_rows() {
+    // Relation-count annotations: entry 1 has 2 outgoing edges
+    // declared in `relation_counts`, entries 2 and 3 are absent from
+    // the map. The renderer must emit `rels: 2` on entry 1's trailing
+    // comment and leave the other two rows untouched. Asserted
+    // behaviourally rather than via a golden snapshot so any future
+    // row-comment reshuffle can be validated with a targeted rerun.
+    let (mut result, request, now) = session_log_fixture();
+    let target_id = result.entries[0].id;
+    let mut counts: HashMap<Uuid, u32> = HashMap::new();
+    counts.insert(target_id, 2);
+    result.relation_counts = counts;
+
+    let rendered = format_browse_view_at(&result, &request, now);
+    assert!(
+        rendered.contains("rels: 2"),
+        "entry 1 should carry rels: 2:\n{rendered}",
+    );
+    assert_eq!(
+        rendered.matches("rels: ").count(),
+        1,
+        "exactly one rels annotation expected (entry 1 only):\n{rendered}",
+    );
+    // Row 1's comment carries the annotation at the end of the line;
+    // rows 2 and 3 must not mention `rels:` anywhere in their comments.
+    let comment_lines: Vec<&str> = rendered
+        .lines()
+        .filter(|l| l.trim_start().starts_with("# "))
+        .collect();
+    assert!(
+        comment_lines
+            .iter()
+            .any(|l| l.contains("age: 2h") && l.contains("rels: 2")),
+        "entry 1's comment should carry rels: 2:\n{rendered}",
+    );
+    assert!(
+        comment_lines
+            .iter()
+            .filter(|l| !l.contains("age: 2h"))
+            .all(|l| !l.contains("rels:")),
+        "only entry 1 should carry rels:\n{rendered}",
+    );
+}
+
+#[test]
+fn format_browse_view_drill_down_advisory_fires_on_dominant_kind() {
+    // Faceted drill-down advisory: the session-log fixture carries
+    // 3/3 `observation` rows (100%), well above the 60% dominance
+    // threshold, so the trailer must append a `# narrow: cx_browse(...)`
+    // line keyed on the dominant kind. Browse uses singular filter
+    // args (`kind=observation`, no brackets) where recall would emit
+    // the plural array form, so the rendered call shape differs from
+    // the recall-side advisory by design.
+    let (result, request, now) = session_log_fixture();
+    let rendered = format_browse_view_at(&result, &request, now);
+    let expected = "# narrow: cx_browse(kind=observation) - 3 of 3 results are observation";
+    assert!(
+        rendered.contains(expected),
+        "drill-down advisory line missing or malformed:\n{rendered}",
+    );
+    // The advisory must fire exactly once per response.
+    assert_eq!(
+        rendered.matches("# narrow:").count(),
+        1,
+        "exactly one drill-down advisory expected:\n{rendered}",
+    );
+}
+
+#[test]
 fn format_browse_view_single_entry_hoists_all_uniform_fields() {
     let now = fixed_now();
     let entry = make_entry(
@@ -175,6 +261,7 @@ fn format_browse_view_single_entry_hoists_all_uniform_fields() {
         next_cursor: None,
         has_more: false,
         sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
     };
     let request = BrowseRequest {
         limit: 50,

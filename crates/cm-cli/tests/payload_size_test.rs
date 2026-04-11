@@ -18,6 +18,15 @@
 //! session-log golden under 1,200 bytes) and catches regressions in
 //! the whole handler → formatter → cap_response → JSON-RPC envelope
 //! pipeline with a realistic row count.
+//!
+//! ALP-1760 note: the handler now returns a dual-channel `ToolResult`
+//! (YAML text + structured JSON). The cap lives on the *text* channel
+//! because that is what lands in the LLM prompt; `structuredContent`
+//! is consumed out-of-band by MCP clients and does not spend the
+//! model's context window. This test therefore measures the text
+//! channel wrapped in the `content[0].text` shape the server emits
+//! and deliberately ignores the structured channel — the byte budget
+//! protects LLM ergonomics, not total wire bytes.
 
 mod common;
 
@@ -72,7 +81,7 @@ async fn cx_browse_wire_payload_stays_under_6k_for_20_session_logs() {
     // with an explicit `limit=20` so the paginator does not clip
     // the fixture and a `tag=session-log` filter that exercises
     // the formatter's "query header" reconstruct path.
-    let body = tools::cx_browse(
+    let result = tools::cx_browse(
         &store,
         &json!({
             "tag": "session-log",
@@ -82,11 +91,12 @@ async fn cx_browse_wire_payload_stays_under_6k_for_20_session_logs() {
     .await
     .unwrap();
 
-    // The server applies `apply_cap_for_tool` to the raw formatter
-    // output before wrapping it in the CallToolResult envelope.
-    // Run the same cap here so the measurement matches what a
-    // client would actually see on the wire.
-    let capped = apply_cap_for_tool("cx_browse", body);
+    // ALP-1760: the handler returns a dual-channel `ToolResult`. The
+    // text channel is what the cap protects and what lands in the LLM
+    // prompt. The structured channel is consumed out-of-band by MCP
+    // clients and does not count against the context-byte budget, so
+    // the measurement deliberately discards it here.
+    let capped = apply_cap_for_tool("cx_browse", result.text);
 
     // Reconstruct the exact JSON-RPC response shape the server
     // emits (`mcp/mod.rs:310-312`). The trailing `\n` mirrors the

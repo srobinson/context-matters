@@ -7,14 +7,14 @@ import {
 } from "@tanstack/react-query";
 import {
   type AgentBrowseParams,
-  type AgentRecallResponse,
   api,
   type BrowseParams,
+  type BrowseView,
   type EntryDetail,
   type MutationListParams,
   type PagedResponse,
   type RecallParams,
-  type RecallResponse,
+  type RecallView,
   type SearchParams,
   type Stats,
 } from "./client";
@@ -73,19 +73,14 @@ export function useStats(options?: Partial<UseQueryOptions<Stats>>) {
 }
 
 export function useSearch(params: Omit<SearchParams, "cursor">) {
-  return useInfiniteQuery({
+  return useQuery({
     queryKey: queryKeys.entries.search(params),
-    queryFn: ({ pageParam }) => api.entries.search({ ...params, cursor: pageParam }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    queryFn: () => api.entries.search(params),
     enabled: !!params.query,
   });
 }
 
-export function useRecall(
-  params: RecallParams,
-  options?: Partial<UseQueryOptions<RecallResponse>>,
-) {
+export function useRecall(params: RecallParams, options?: Partial<UseQueryOptions<RecallView>>) {
   return useQuery({
     queryKey: queryKeys.entries.recall(params),
     queryFn: () => api.entries.recall(params),
@@ -95,7 +90,7 @@ export function useRecall(
 
 export function useAgentRecall(
   params: RecallParams,
-  options?: Partial<UseQueryOptions<AgentRecallResponse>>,
+  options?: Partial<UseQueryOptions<RecallView>>,
 ) {
   return useQuery({
     queryKey: queryKeys.agent.recall(params),
@@ -104,7 +99,10 @@ export function useAgentRecall(
   });
 }
 
-export function useAgentBrowse(params: AgentBrowseParams, options?: { enabled?: boolean }) {
+export function useAgentBrowse(
+  params: AgentBrowseParams,
+  options?: Partial<UseQueryOptions<BrowseView>>,
+) {
   return useQuery({
     queryKey: queryKeys.agent.browse(params),
     queryFn: () => api.agent.browse(params),

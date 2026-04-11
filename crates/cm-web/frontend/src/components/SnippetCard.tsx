@@ -1,28 +1,9 @@
 import { useRef, useState } from "react";
-import type { EntryKind } from "@/api/generated/EntryKind";
 import { useEntry } from "@/api/hooks";
-import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { type EntryRow, EntrySummary } from "./composed/EntrySummary";
 import { MarkdownContent } from "./composed/MarkdownContent";
-import { KindBadge } from "./domain/KindBadge";
 import { EntryEditor } from "./EntryEditor";
-
-export interface SnippetEntry {
-  id: string;
-  scope_path: string;
-  kind: EntryKind;
-  title: string;
-  snippet: string;
-  created_by: string;
-  updated_at: string;
-  tags?: string[];
-  confidence?: "high" | "medium" | "low" | null;
-}
-
-function getAgentName(createdBy: string) {
-  const parts = createdBy.split(":");
-  return parts.length > 1 ? parts.slice(1).join(":") : createdBy;
-}
 
 function ExpandedBody({
   entryId,
@@ -123,12 +104,14 @@ function ExpandedBody({
 }
 
 export function SnippetCard({
-  entry,
+  row,
+  highlightMatches = false,
   isExpanded,
   onToggle,
   className,
 }: {
-  entry: SnippetEntry;
+  row: EntryRow;
+  highlightMatches?: boolean;
   isExpanded?: boolean;
   onToggle?: () => void;
   className?: string;
@@ -137,9 +120,6 @@ export function SnippetCard({
   const isOpen = isExpanded ?? expanded;
   const handleToggle = onToggle ?? (() => setExpanded((p) => !p));
   const articleRef = useRef<HTMLElement>(null);
-
-  const agentName = getAgentName(entry.created_by);
-  const tags = entry.tags ?? [];
 
   return (
     <article
@@ -162,48 +142,10 @@ export function SnippetCard({
           }
         }}
       >
-        <div className="flex items-start justify-between gap-3">
-          <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
-            {entry.title}
-          </p>
-          <time
-            dateTime={entry.updated_at}
-            className="shrink-0 font-mono text-[10px] text-muted-foreground/70"
-            title={new Date(entry.updated_at).toLocaleString()}
-          >
-            {timeAgo(entry.updated_at)}
-          </time>
-        </div>
-
-        <p className="mt-1.5 line-clamp-2 font-mono text-xs leading-relaxed text-muted-foreground">
-          {entry.snippet}
-        </p>
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-muted-foreground">
-          <KindBadge kind={entry.kind} className="shrink-0" />
-          <span className="text-muted-foreground/30">/</span>
-          <span>{agentName}</span>
-          <span className="text-muted-foreground/30">/</span>
-          <span className="truncate">{entry.scope_path}</span>
-          {tags.length > 0 && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <span className="truncate">
-                {tags.slice(0, 2).join(", ")}
-                {tags.length > 2 && ` +${tags.length - 2}`}
-              </span>
-            </>
-          )}
-          {entry.confidence && (
-            <>
-              <span className="text-muted-foreground/30">/</span>
-              <span>{entry.confidence}</span>
-            </>
-          )}
-        </div>
+        <EntrySummary row={row} highlightMatches={highlightMatches} />
       </div>
 
-      {isOpen && <ExpandedBody entryId={entry.id} containerRef={articleRef} />}
+      {isOpen && <ExpandedBody entryId={row.id} containerRef={articleRef} />}
     </article>
   );
 }

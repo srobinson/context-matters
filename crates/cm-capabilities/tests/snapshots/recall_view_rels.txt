@@ -1,0 +1,22 @@
+---
+query: storage engine
+routing: search  # FTS5 ranking, tier: exact
+candidates: 5 -> 3 shown
+scope_chain: [global]
+scope_hits: global=3
+kinds: decision=1, fact=1, lesson=1
+tags: bench=1, decision-log=1, lesson-log=1
+tokens: 520 of 8,000 budget
+
+entries:
+  - 019de1aa  0.67  Adopt new storage engine
+                    Rationale for adopting the new «storage» «engine». The graph touches three downstream decisions that cite this entry.
+                    # scope: global  kind: decision  tags: decision-log  age: 2h  rels: 3
+  - 019de155  1.00  Supporting benchmark result
+                    A supporting benchmark figure that one upstream decision in the graph cites for its adoption rationale.
+                    # scope: global  kind: fact  tags: bench  age: 6h  rels: 1
+  - 019de1cc  0.00  Standalone lesson with no graph edges
+                    Isolated lesson whose row renders without any trailing rels annotation, because no edges point in or out.
+                    # scope: global  kind: lesson  tags: lesson-log  age: 1d
+
+# routing: search - re-query with OR between synonyms or prefix match (term*) for more breadth

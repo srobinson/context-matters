@@ -18,4 +18,6 @@ entries:
               Removed stale worktrees for ALP-1720 through ALP-1724 after the merge. Freed ~2.3 GB of disk.
               # scope: global  tags: session-log  age: 6d
 
+# narrow: cx_browse(kind=observation) - 3 of 3 results are observation
+
 # 110 more - cx_browse(cursor="eyJzb3J0IjoicmVjZW50IiwibGFzdCI6ImZvbyJ9", limit=50) to page

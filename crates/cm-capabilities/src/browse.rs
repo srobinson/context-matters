@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use cm_core::{
     BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
 };
+use uuid::Uuid;
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -28,6 +31,12 @@ pub struct BrowseResult {
     /// to `BrowseSort::Recent` when the caller omits `sort`). The browse
     /// formatter surfaces this in the result header, e.g. `sort: recent`.
     pub sort_used: BrowseSort,
+    /// Outgoing-relation counts per row id, populated by a single
+    /// `ContextStore::count_relations_for` batch call after the page is
+    /// fetched. Ids with zero outgoing edges are **omitted** from the map
+    /// (per the trait contract); the projection layer treats absence as
+    /// zero and elides the `rels:` annotation entirely.
+    pub relation_counts: HashMap<Uuid, u32>,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -62,11 +71,18 @@ pub async fn browse(
     let result = store.browse(filter).await?;
     let has_more = result.next_cursor.is_some();
 
+    // Single batched fetch of outgoing-relation counts for the page. Runs
+    // after `store.browse` returns so we never count edges for rows the
+    // caller will not see; the trait short-circuits on empty input.
+    let relation_count_ids: Vec<Uuid> = result.items.iter().map(|e| e.id).collect();
+    let relation_counts = store.count_relations_for(&relation_count_ids).await?;
+
     Ok(BrowseResult {
         entries: result.items,
         total: result.total,
         next_cursor: result.next_cursor,
         has_more,
         sort_used,
+        relation_counts,
     })
 }
