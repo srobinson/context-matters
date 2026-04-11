@@ -21,7 +21,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
 
 use cm_capabilities::projection::{RecallRow, format_recall_view_at};
-use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting};
+use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 use cm_core::{Entry, EntryKind, EntryMeta, ScopePath};
 
 const GOLDEN_SEARCH: &str = include_str!("snapshots/recall_view_search.txt");
@@ -120,6 +120,7 @@ fn search_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         ],
         token_estimate: 3_420,
         routing: RecallRouting::Search,
+        tier: Some(SearchTier::Exact),
         candidates_before_filter: 47,
         fetch_limit_used: 50,
     };
@@ -172,6 +173,7 @@ fn browse_fallback_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         scope_hits: vec![("global".to_owned(), 2)],
         token_estimate: 220,
         routing: RecallRouting::BrowseFallback,
+        tier: None,
         candidates_before_filter: 5,
         fetch_limit_used: 50,
     };
@@ -198,6 +200,7 @@ fn empty_fixture() -> (RecallResult, RecallRequest, DateTime<Utc>) {
         scope_hits: Vec::new(),
         token_estimate: 0,
         routing: RecallRouting::Search,
+        tier: Some(SearchTier::None),
         candidates_before_filter: 0,
         fetch_limit_used: 50,
     };
