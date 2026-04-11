@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/srobinson/context-matters/compare/v0.1.12...v0.2.0) (2026-04-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* redesign cx_* MCP response payloads to YAML text ([#27](https://github.com/srobinson/context-matters/issues/27))
+
+### Features
+
+* redesign cx_* MCP response payloads to YAML text ([#27](https://github.com/srobinson/context-matters/issues/27)) ([859bc11](https://github.com/srobinson/context-matters/commit/859bc11d18316e329b07e3c5c89c6e500a782178))
+
 ## [0.1.12](https://github.com/srobinson/context-matters/compare/v0.1.11...v0.1.12) (2026-03-21)
 
 
