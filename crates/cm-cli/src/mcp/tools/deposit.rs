@@ -1,25 +1,21 @@
 //! Handler for the `cx_deposit` tool.
+//!
+//! Thin MCP adapter: parses JSON params, delegates to the shared
+//! [`cm_capabilities::deposit::deposit`] capability, and renders the
+//! result through [`format_deposit_ack`]. All validation and write
+//! logic lives in the capability so the CLI (`cm deposit`) and MCP
+//! (`cx_deposit`) channels surface byte-identical behaviour.
 
+use cm_capabilities::deposit::{self, DepositRequest, Exchange};
 use cm_capabilities::projection::format_deposit_ack;
-use cm_core::{
-    ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, RelationKind, ScopePath,
-    WriteContext,
-};
+use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
+use uuid::Uuid;
 
-use crate::mcp::{
-    ToolResult, check_input_size, cm_err_to_string, ensure_scope_chain, parse_params, snippet,
-    yaml_response,
-};
+use crate::mcp::{ToolResult, cm_err_to_string, parse_params, yaml_response};
 
 use super::{default_created_by, default_scope};
-
-/// Maximum exchanges per deposit call.
-const MAX_EXCHANGES: usize = 50;
-
-/// Title truncation length for exchange entries.
-const EXCHANGE_TITLE_LEN: usize = 80;
 
 #[derive(Debug, Deserialize)]
 struct CxDepositParams {
@@ -39,116 +35,26 @@ struct CxDepositParams {
     created_by: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct Exchange {
-    user: String,
-    assistant: String,
-    #[serde(default)]
-    title: Option<String>,
-}
-
 pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
-
     let params: CxDepositParams = parse_params(args)?;
 
-    if params.exchanges.is_empty() {
-        return Err("Validation error: exchanges cannot be empty".to_owned());
-    }
-    if params.exchanges.len() > MAX_EXCHANGES {
-        return Err(format!(
-            "Validation error: maximum {MAX_EXCHANGES} exchanges per deposit"
-        ));
-    }
-
-    // Validate individual exchange sizes and explicit titles
-    for (i, ex) in params.exchanges.iter().enumerate() {
-        check_input_size(&ex.user, &format!("exchanges[{i}].user"))?;
-        check_input_size(&ex.assistant, &format!("exchanges[{i}].assistant"))?;
-        if let Some(ref t) = ex.title
-            && (t.is_empty() || t.len() > EXCHANGE_TITLE_LEN)
-        {
-            return Err(format!(
-                "Validation error: exchanges[{i}].title must be 1-{EXCHANGE_TITLE_LEN} bytes"
-            ));
-        }
-    }
-
-    let scope_path =
-        ScopePath::parse(&params.scope_path).map_err(|e| cm_err_to_string(e.into()))?;
-
-    // Auto-create scope chain
-    ensure_scope_chain(store, &scope_path, &ctx).await?;
-
-    let mut entry_ids = Vec::with_capacity(params.exchanges.len());
-
-    // Create one entry per exchange
-    for ex in &params.exchanges {
-        let title = match &ex.title {
-            Some(t) => t.clone(),
-            None => snippet(&ex.user, EXCHANGE_TITLE_LEN),
-        };
-        let body = format!("{}\n\n---\n\n{}", ex.user, ex.assistant);
-
-        let new_entry = NewEntry {
-            scope_path: scope_path.clone(),
-            kind: EntryKind::Observation,
-            title,
-            body,
-            created_by: params.created_by.clone(),
-            meta: Some(EntryMeta {
-                tags: vec!["conversation".to_owned()],
-                ..EntryMeta::default()
-            }),
-        };
-
-        let entry = store
-            .create_entry(new_entry, &ctx)
-            .await
-            .map_err(cm_err_to_string)?;
-        entry_ids.push(entry.id);
-    }
-
-    // Create summary entry and link to exchanges
-    let summary_id = if let Some(ref summary_text) = params.summary {
-        check_input_size(summary_text, "summary")?;
-
-        let summary_entry = NewEntry {
-            scope_path: scope_path.clone(),
-            kind: EntryKind::Observation,
-            title: "Session summary".to_owned(),
-            body: summary_text.clone(),
-            created_by: params.created_by.clone(),
-            meta: Some(EntryMeta {
-                tags: vec!["conversation".to_owned(), "summary".to_owned()],
-                ..EntryMeta::default()
-            }),
-        };
-
-        let entry = store
-            .create_entry(summary_entry, &ctx)
-            .await
-            .map_err(cm_err_to_string)?;
-        let sid = entry.id;
-
-        // Link summary to each exchange via elaborates relation
-        for &exchange_id in &entry_ids {
-            store
-                .create_relation(sid, exchange_id, RelationKind::Elaborates, &ctx)
-                .await
-                .map_err(cm_err_to_string)?;
-        }
-
-        Some(sid)
-    } else {
-        None
+    let request = DepositRequest {
+        exchanges: params.exchanges,
+        summary: params.summary,
+        scope_path: params.scope_path,
+        created_by: params.created_by,
     };
 
-    let id_strings: Vec<String> = entry_ids.iter().map(|id| id.to_string()).collect();
-    let summary_str = summary_id.map(|id| id.to_string());
+    let result = deposit::deposit(store, request, &ctx)
+        .await
+        .map_err(cm_err_to_string)?;
+
+    let id_strings: Vec<String> = result.entry_ids.iter().map(Uuid::to_string).collect();
+    let summary_str = result.summary_id.map(|id| id.to_string());
     yaml_response(format_deposit_ack(
         &id_strings,
         summary_str.as_deref(),
-        scope_path.as_str(),
+        &result.scope_path,
     ))
 }

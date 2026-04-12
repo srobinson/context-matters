@@ -166,7 +166,7 @@ pub enum Commands {
     /// Batch-store conversation exchanges.
     #[command(long_about = gh::DEPOSIT_ABOUT, after_help = ht::DEPOSIT_AFTER_HELP)]
     Deposit {
-        #[arg(help = gh::DEPOSIT_EXCHANGES_HELP)]
+        #[arg(long, help = gh::DEPOSIT_EXCHANGES_HELP)]
         exchanges: String,
         #[arg(long, help = gh::DEPOSIT_SUMMARY_HELP)]
         summary: Option<String>,

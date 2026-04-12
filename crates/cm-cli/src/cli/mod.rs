@@ -4,6 +4,7 @@ pub mod admin;
 pub mod browse;
 pub mod cli_def;
 pub mod colors;
+pub mod deposit;
 pub mod errors;
 pub mod forget;
 pub mod get;

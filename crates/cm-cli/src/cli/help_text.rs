@@ -123,9 +123,10 @@ pub const UPDATE_AFTER_HELP: &str = cstr!(
 /// `after_help` for `cm deposit`.
 pub const DEPOSIT_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>cm deposit '[{"user":"...","assistant":"..."}]'</bold>
-  <dim>$</dim> <bold>cm deposit '[...]' --summary "session recap"</bold>
-  <dim>$</dim> <bold>cm deposit '[...]' --scope global/project:helioy</bold>"#
+  <dim>$</dim> <bold>cm deposit --exchanges '[{"user":"...","assistant":"..."}]'</bold>
+  <dim>$</dim> <bold>cm deposit --exchanges '[...]' --summary "session recap"</bold>
+  <dim>$</dim> <bold>cm deposit --exchanges '[...]' --scope global/project:helioy</bold>
+  <dim>$</dim> <bold>cat session.json | cm deposit --exchanges -</bold>         <dim># read blob from stdin</dim>"#
 );
 
 /// `after_help` for `cm forget`.
