@@ -5,6 +5,7 @@ pub mod cli_def;
 pub mod colors;
 pub mod errors;
 pub mod help_text;
+pub mod scope;
 
 #[path = "generated_help.rs"]
 pub mod generated_help;

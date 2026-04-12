@@ -40,7 +40,7 @@ impl Colors {
     /// exercise the `NO_COLOR`/`TERM` branches without depending on the real
     /// stdio handles. `IsTerminal` is a sealed trait, so a fake stream type
     /// is not implementable; passing a `bool` sidesteps the seal.
-    fn for_tty(is_terminal: bool) -> Self {
+    pub(crate) fn for_tty(is_terminal: bool) -> Self {
         if should_colorize(is_terminal) {
             Self::enabled()
         } else {
