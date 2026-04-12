@@ -4,6 +4,13 @@ use anyhow::{Result, bail};
 use clap::{ColorChoice, Parser, Subcommand};
 use cm_store::CmStore;
 
+fn main() {
+    if let Err(err) = run() {
+        cli::errors::print_error(&err);
+        std::process::exit(1);
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "cm",
@@ -38,7 +45,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     let cli_args = Cli::parse();
 
     // Initialize tracing (stderr only, never stdout: MCP uses stdout)
