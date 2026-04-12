@@ -11,6 +11,7 @@ pub mod help_text;
 pub mod recall;
 pub mod scope;
 pub mod stats;
+pub mod update;
 
 #[path = "generated_help.rs"]
 pub mod generated_help;

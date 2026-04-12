@@ -112,7 +112,21 @@ async fn run() -> Result<()> {
 
         // ---------------- WRITE ----------------
         Some(Commands::Store { .. }) => todo!("ALP-1781: cm store stub"),
-        Some(Commands::Update { .. }) => todo!("ALP-1779: cm update handler"),
+        Some(Commands::Update {
+            id,
+            title,
+            body,
+            kind,
+            meta,
+            json,
+        }) => {
+            let store = cli::open_store().await?;
+            cli::update::run(&store, id, title, body, kind, meta, json).await?;
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
+            Ok(())
+        }
         Some(Commands::Deposit { .. }) => todo!("ALP-1780: cm deposit handler"),
         Some(Commands::Forget { ids }) => {
             let store = cli::open_store().await?;

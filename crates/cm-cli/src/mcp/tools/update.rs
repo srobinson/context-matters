@@ -1,13 +1,12 @@
 //! Handler for the `cx_update` tool.
 
 use cm_capabilities::projection::format_update_ack;
-use cm_core::{ContextStore, EntryKind, EntryMeta, MutationSource, UpdateEntry, WriteContext};
+use cm_capabilities::validation::MetaInput;
+use cm_core::{ContextStore, EntryKind, MutationSource, UpdateEntry, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::mcp::{ToolResult, check_input_size, cm_err_to_string, parse_params, yaml_response};
-
-use super::parse_confidence;
 
 #[derive(Debug, Deserialize)]
 struct CxUpdateParams {
@@ -28,21 +27,7 @@ struct CxUpdateParams {
 
     /// Replace metadata entirely.
     #[serde(default)]
-    meta: Option<CxMetaInput>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CxMetaInput {
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(default)]
-    confidence: Option<String>,
-    #[serde(default)]
-    source: Option<String>,
-    #[serde(default)]
-    expires_at: Option<String>,
-    #[serde(default)]
-    priority: Option<i32>,
+    meta: Option<MetaInput>,
 }
 
 pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
@@ -74,32 +59,11 @@ pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         None => None,
     };
 
-    // Parse meta if provided
+    // Project the shared `MetaInput` wire shape into an `EntryMeta`. The
+    // CLI `cm update --meta` handler uses the same projection for
+    // byte-identical semantics across channels.
     let meta = match params.meta {
-        Some(m) => {
-            let confidence = match &m.confidence {
-                Some(c) => Some(parse_confidence(c)?),
-                None => None,
-            };
-            let expires_at = match &m.expires_at {
-                Some(s) => Some(
-                    chrono::DateTime::parse_from_rfc3339(s)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .map_err(|e| {
-                            format!("Invalid expires_at: {e}. Expected ISO 8601 format.")
-                        })?,
-                ),
-                None => None,
-            };
-            Some(EntryMeta {
-                tags: m.tags,
-                confidence,
-                source: m.source,
-                expires_at,
-                priority: m.priority,
-                extra: std::collections::HashMap::new(),
-            })
-        }
+        Some(m) => Some(m.into_entry_meta()?),
         None => None,
     };
 
