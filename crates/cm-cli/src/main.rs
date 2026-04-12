@@ -49,7 +49,22 @@ async fn run() -> Result<()> {
 
     match cli_args.command {
         // ---------------- READ ----------------
-        Some(Commands::Recall { .. }) => todo!("ALP-1774: cm recall handler"),
+        Some(Commands::Recall {
+            query,
+            scope,
+            kinds,
+            tags,
+            limit,
+            max_tokens,
+            json,
+        }) => {
+            let store = cli::open_store().await?;
+            cli::recall::run(&store, query, scope, kinds, tags, limit, max_tokens, json).await?;
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
+            Ok(())
+        }
         Some(Commands::Browse { .. }) => todo!("ALP-1775: cm browse handler"),
         Some(Commands::Get { .. }) => todo!("ALP-1776: cm get handler"),
         Some(Commands::Stats { .. }) => {
