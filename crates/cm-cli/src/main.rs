@@ -111,7 +111,7 @@ async fn run() -> Result<()> {
         }
 
         // ---------------- WRITE ----------------
-        Some(Commands::Store { .. }) => todo!("ALP-1781: cm store stub"),
+        Some(Commands::Store { .. }) => cli::store::run(),
         Some(Commands::Update {
             id,
             title,
