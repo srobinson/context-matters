@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/srobinson/context-matters/compare/v0.2.2...v0.2.3) (2026-04-12)
+
+
+### Bug Fixes
+
+* **cx:** utf-8 boundary crash in insert_highlights + mcp panic boundary ([#33](https://github.com/srobinson/context-matters/issues/33)) ([d6a054e](https://github.com/srobinson/context-matters/commit/d6a054e1a3e72be6952077ac2c544d3c58391e50))
+
 ## [0.2.2](https://github.com/srobinson/context-matters/compare/v0.2.1...v0.2.2) (2026-04-11)
 
 
