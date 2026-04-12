@@ -29,6 +29,10 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4.5"
+clap_mangen = "0.2"
+clap-markdown = "0.1"
+color-print = "0.3"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

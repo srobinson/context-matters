@@ -1,5 +1,7 @@
 //! CLI command handlers for context-matters.
 
+pub mod colors;
+
 #[path = "generated_help.rs"]
 pub mod generated_help;
 
