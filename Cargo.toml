@@ -25,6 +25,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 
 # Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "signal", "time"] }
+futures = { version = "0.3", default-features = false, features = ["std"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

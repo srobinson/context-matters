@@ -103,6 +103,13 @@ async fn open_store() -> Result<CmStore> {
 }
 
 async fn cmd_serve() -> Result<()> {
+    // Install the MCP panic hook before any handler runs. With this
+    // in place, a panic in any tool handler is converted to a
+    // JSON-RPC `-32603` error response by the run loop instead of
+    // tearing down the server process. See crates/cm-cli/src/mcp/
+    // panic_guard.rs for the capture mechanism.
+    mcp::install_panic_hook();
+
     tracing::info!("context-matters v{}", env!("CARGO_PKG_VERSION"));
 
     let store = open_store().await?;

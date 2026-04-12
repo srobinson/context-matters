@@ -271,9 +271,21 @@ pub fn insert_highlights(snippet: &str, query_terms: &[&str]) -> String {
         let Some((start, len)) = earliest else {
             break;
         };
-        let before_is_open = start >= 2 && &snippet[start - 2..start] == "«";
-        let after_is_close =
-            start + len + 2 <= snippet.len() && &snippet[start + len..start + len + 2] == "»";
+        // Raw byte slicing would panic when the 2 bytes before or after
+        // the match straddle a multi-byte char boundary (e.g. an em dash
+        // `—` encoded as 3 bytes sitting across the cut point). `str::get`
+        // returns `None` on non-boundary ranges, so a non-guillemet
+        // neighbour is treated as "not already bracketed" and highlighting
+        // proceeds. The guillemets themselves are 2 bytes each in UTF-8
+        // (`«` = `C2 AB`, `»` = `C2 BB`), so a genuine bracket neighbour
+        // is still detected by the equality check.
+        let before_is_open = snippet
+            .get(start.saturating_sub(2)..start)
+            .is_some_and(|s| s == "«")
+            && start >= 2;
+        let after_is_close = snippet
+            .get(start + len..start + len + 2)
+            .is_some_and(|s| s == "»");
         if !(before_is_open && after_is_close) {
             spans.push((start, len));
         }
@@ -548,6 +560,50 @@ mod tests {
         let once = insert_highlights("hello world", &["world"]);
         assert_eq!(once, "hello «world»");
         assert_eq!(insert_highlights(&once, &["world"]), once);
+    }
+
+    #[test]
+    fn insert_highlights_em_dash_after_match_does_not_panic() {
+        // Regression for the char-boundary panic: when a matched term
+        // ends at a byte position whose following 2 bytes straddle a
+        // multi-byte char (`—` is 3 bytes: E2 80 94), the pre-fix code
+        // evaluated `&snippet[start+len..start+len+2]` and panicked on
+        // a non-boundary cut. This is the exact prose that reproduced
+        // the cm-0.2.2 crash on scope-filtered cx_recall.
+        let snippet = "v0.2.1 — parent issue **ALP-1745** \"feat: cx_* \
+                       world-class retrieval — query robustness, enrichment\"";
+        let out = insert_highlights(snippet, &["retrieval"]);
+        assert!(out.contains("«retrieval»"), "missing highlight: {out}");
+    }
+
+    #[test]
+    fn insert_highlights_em_dash_before_match_does_not_panic() {
+        // Mirror regression for the `before_is_open` branch. Place a
+        // 3-byte em dash right before the matched term so the check
+        // at `start - 2` lands mid-character.
+        let snippet = "alpha —beta gamma";
+        let out = insert_highlights(snippet, &["beta"]);
+        assert!(out.contains("«beta»"), "missing highlight: {out}");
+    }
+
+    #[test]
+    fn insert_highlights_suppresses_rebracket_around_multibyte_neighbours() {
+        // Verify the "already bracketed" suppression still fires when
+        // the only multi-byte content in the snippet is the guillemets
+        // themselves. No panic, no double-bracketing.
+        let snippet = "prefix «retrieval» tail";
+        let out = insert_highlights(snippet, &["retrieval"]);
+        assert_eq!(out, snippet);
+    }
+
+    #[test]
+    fn insert_highlights_cjk_around_match_does_not_panic() {
+        // Broader char-boundary coverage: 3-byte CJK characters flanking
+        // an ASCII match. The 2-byte lookbehind / lookahead would land
+        // mid-character on the raw-slice implementation.
+        let snippet = "前 alpha 後";
+        let out = insert_highlights(snippet, &["alpha"]);
+        assert!(out.contains("«alpha»"), "missing highlight: {out}");
     }
 
     #[test]

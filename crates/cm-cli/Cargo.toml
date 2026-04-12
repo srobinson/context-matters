@@ -19,6 +19,7 @@ cm-capabilities = { workspace = true }
 cm-core = { workspace = true }
 cm-store = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 clap = { workspace = true }
 base64 = { workspace = true }
 serde = { workspace = true }
