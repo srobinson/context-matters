@@ -5,6 +5,7 @@ pub mod browse;
 pub mod cli_def;
 pub mod colors;
 pub mod errors;
+pub mod get;
 pub mod help_text;
 pub mod recall;
 pub mod scope;

@@ -93,7 +93,14 @@ async fn run() -> Result<()> {
             }
             Ok(())
         }
-        Some(Commands::Get { .. }) => todo!("ALP-1776: cm get handler"),
+        Some(Commands::Get { ids, json }) => {
+            let store = cli::open_store().await?;
+            cli::get::run(&store, ids, json).await?;
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
+            Ok(())
+        }
         Some(Commands::Stats { .. }) => {
             // tag_sort + json are parsed but ignored until ALP-1777 rewires
             // this handler through cm-capabilities.
