@@ -13,14 +13,15 @@
 //! and have no `_at` deterministic variant, mirroring
 //! [`format_stats_view`](super::format_stats_view).
 //!
-//! A separate [`ForgetError`] struct surfaces per-row forget failures so
-//! the formatter can enumerate them under an indented `errors:` block
-//! without collapsing the id-to-reason mapping into a single opaque
-//! `message` string.
+//! The [`ForgetError`](crate::forget::ForgetError) struct that surfaces
+//! per-row forget failures lives next to the `forget` capability; this
+//! module imports it so [`format_forget_ack`] can render the indented
+//! `errors:` block without a crate-level dependency inversion.
 
 use std::fmt::Write as _;
 
 use super::{fmt_with_commas, hex_prefix};
+use crate::forget::ForgetError;
 
 /// Byte-prefix width used to slice the BLAKE3 content hash for display.
 /// Eight hex chars is enough to catch routine dedup collisions during
@@ -28,22 +29,6 @@ use super::{fmt_with_commas, hex_prefix};
 /// wire payload; callers that need the full hash can fetch the entry
 /// via `cx_get`.
 const CONTENT_HASH_WIDTH: usize = 8;
-
-/// One failed row from `cx_forget`, used by [`format_forget_ack`] to surface
-/// the id-to-reason mapping under an indented `errors:` block.
-///
-/// The existing handler in `crates/cm-cli/src/mcp/tools/forget.rs` folds
-/// per-row errors into an opaque `message` string, losing which ids
-/// failed and why. This struct gives the formatter the structured input
-/// it needs to enumerate failures explicitly.
-#[derive(Debug, Clone)]
-pub struct ForgetError {
-    /// Full hyphenated UUID of the entry that failed to be forgotten.
-    pub id: String,
-    /// One-line reason for the failure. Rendered verbatim; callers must
-    /// strip newlines before passing.
-    pub error: String,
-}
 
 /// Render a `cx_store` ack as YAML text. The `superseded` parameter carries
 /// the prior entry's id when this write supersedes an existing entry;

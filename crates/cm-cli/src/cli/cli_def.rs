@@ -181,7 +181,7 @@ pub enum Commands {
     /// Soft-delete entries.
     #[command(long_about = gh::FORGET_ABOUT, after_help = ht::FORGET_AFTER_HELP)]
     Forget {
-        #[arg(help = gh::FORGET_IDS_HELP)]
+        #[arg(required = true, num_args = 1..=100, help = gh::FORGET_IDS_HELP)]
         ids: Vec<String>,
     },
 

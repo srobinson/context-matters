@@ -1,6 +1,7 @@
 pub mod browse;
 pub mod constants;
 pub mod error;
+pub mod forget;
 pub mod projection;
 pub mod recall;
 pub mod scope;
