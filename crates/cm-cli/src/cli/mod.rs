@@ -6,6 +6,7 @@ pub mod cli_def;
 pub mod colors;
 pub mod deposit;
 pub mod errors;
+pub mod export;
 pub mod forget;
 pub mod get;
 pub mod help_text;

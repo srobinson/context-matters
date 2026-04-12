@@ -153,7 +153,14 @@ async fn run() -> Result<()> {
         // ---------------- ADMIN ----------------
         Some(Commands::Init { global, force }) => cli::cmd_init(global, force),
         Some(Commands::Serve) => cli::cmd_serve().await,
-        Some(Commands::Export { .. }) => todo!("ALP-1782: cm export handler"),
+        Some(Commands::Export { scope_path, format }) => {
+            let store = cli::open_store().await?;
+            cli::export::run(&store, scope_path, format).await?;
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
+            Ok(())
+        }
         Some(Commands::Completions { shell }) => {
             use clap_complete::generate;
             let mut cmd = Cli::command();
