@@ -65,7 +65,34 @@ async fn run() -> Result<()> {
             }
             Ok(())
         }
-        Some(Commands::Browse { .. }) => todo!("ALP-1775: cm browse handler"),
+        Some(Commands::Browse {
+            scope_path,
+            kind,
+            tag,
+            created_by,
+            include_superseded,
+            limit,
+            cursor,
+            json,
+        }) => {
+            let store = cli::open_store().await?;
+            cli::browse::run(
+                &store,
+                scope_path,
+                kind,
+                tag,
+                created_by,
+                include_superseded,
+                limit,
+                cursor,
+                json,
+            )
+            .await?;
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
+            Ok(())
+        }
         Some(Commands::Get { .. }) => todo!("ALP-1776: cm get handler"),
         Some(Commands::Stats { .. }) => {
             // tag_sort + json are parsed but ignored until ALP-1777 rewires

@@ -1,6 +1,7 @@
 //! CLI command handlers for context-matters.
 
 pub mod admin;
+pub mod browse;
 pub mod cli_def;
 pub mod colors;
 pub mod errors;
