@@ -4,15 +4,20 @@
 //! No rmcp dependency. The protocol is simple enough that a library
 //! adds more complexity than it removes.
 
+mod panic_guard;
 mod schema;
 pub mod tools;
 
 use std::io::{self, BufRead, Write};
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 use cm_core::ContextStore;
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+pub use panic_guard::install_panic_hook;
 
 // Re-export helpers for internal use by tool handlers.
 pub(crate) use cm_capabilities::constants::MAX_BATCH_IDS;
@@ -193,6 +198,19 @@ impl<S: ContextStore> McpServer<S> {
     /// not via `tokio::spawn()`, so `Send` is not required; (2) the MCP
     /// stdio protocol is single-client sequential request/response;
     /// (3) there is no concurrent work to preempt.
+    ///
+    /// Error isolation. Every handler invocation is wrapped in
+    /// [`futures::FutureExt::catch_unwind`] so a panic in any tool
+    /// handler is converted to a JSON-RPC `-32603` error response
+    /// instead of unwinding through `main` and terminating the
+    /// server. The panic hook installed by [`install_panic_hook`]
+    /// captures the payload, location, and backtrace so the response
+    /// can surface them to the client. Similarly, response
+    /// serialization and stdout writes never propagate errors out of
+    /// the loop: they fall back to a minimal synthetic error response
+    /// on serialization failure, exit cleanly on `BrokenPipe`, and
+    /// log-and-continue on any other I/O error. The invariant is
+    /// simple: one bad request must never take the server down.
     pub async fn run(&self) -> anyhow::Result<()> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
@@ -216,23 +234,37 @@ impl<S: ContextStore> McpServer<S> {
                             data: None,
                         }),
                     };
-                    writeln!(stdout, "{}", serde_json::to_string(&error_response)?)?;
-                    stdout.flush()?;
+                    if write_response(&mut stdout, &error_response).is_broken_pipe() {
+                        return Ok(());
+                    }
                     continue;
                 }
             };
 
-            let response = self.handle_request(&request).await;
+            let request_id = request.id.clone().unwrap_or(Value::Null);
+            let handler_result = AssertUnwindSafe(self.handle_request(&request))
+                .catch_unwind()
+                .await;
 
-            if let Some(resp) = response {
-                let write_result = writeln!(stdout, "{}", serde_json::to_string(&resp)?)
-                    .and_then(|()| stdout.flush());
-                if let Err(e) = write_result {
-                    if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        return Ok(());
-                    }
-                    return Err(e.into());
+            let response = match handler_result {
+                Ok(resp) => resp,
+                Err(_payload) => {
+                    // The panic hook ran synchronously on the same
+                    // thread before the unwind reached us, so the
+                    // snapshot should be populated. In the pathological
+                    // case where it is not (e.g. a panic raised by
+                    // code that bypasses the hook), fall back to a
+                    // minimal error envelope keyed off the request id
+                    // so the client can still correlate the failure.
+                    let snapshot = panic_guard::take_last_panic();
+                    Some(panic_error_response(request_id, snapshot))
                 }
+            };
+
+            if let Some(resp) = response
+                && write_response(&mut stdout, &resp).is_broken_pipe()
+            {
+                return Ok(());
             }
         }
 
@@ -327,6 +359,107 @@ impl<S: ContextStore> McpServer<S> {
                 "content": [{"type": "text", "text": format!("ERROR: {e}")}]
             })),
         }
+    }
+}
+
+/// Outcome of a single response write. Used by [`write_response`] to
+/// tell the run loop whether the transport is still usable.
+enum WriteOutcome {
+    /// Response written (or the write was a non-fatal, logged no-op).
+    Ok,
+    /// Peer closed the pipe. The run loop should exit cleanly.
+    BrokenPipe,
+}
+
+impl WriteOutcome {
+    fn is_broken_pipe(&self) -> bool {
+        matches!(self, WriteOutcome::BrokenPipe)
+    }
+}
+
+/// Write a JSON-RPC response to stdout with error-isolated framing.
+///
+/// Never propagates errors out of the run loop:
+/// * Serialization failure (`serde_json::to_string` returning `Err`)
+///   emits a fallback internal-error envelope keyed off the original
+///   request id. If even the fallback fails to serialize, a static
+///   last-resort JSON string is written instead.
+/// * `BrokenPipe` on write returns [`WriteOutcome::BrokenPipe`] so the
+///   loop can exit cleanly.
+/// * Any other I/O error is logged via `tracing::error!` and swallowed;
+///   the run loop continues on the next iteration.
+fn write_response<W: Write>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutcome {
+    let serialized = match serde_json::to_string(resp) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "response serialization failed, emitting fallback");
+            let fallback = JsonRpcResponse {
+                jsonrpc: "2.0".to_owned(),
+                id: resp.id.clone(),
+                result: None,
+                error: Some(JsonRpcError {
+                    code: -32603,
+                    message: format!("Internal error: response serialization failed: {e}"),
+                    data: None,
+                }),
+            };
+            serde_json::to_string(&fallback).unwrap_or_else(|_| {
+                r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"serialization failure"}}"#
+                    .to_owned()
+            })
+        }
+    };
+
+    match writeln!(stdout, "{serialized}").and_then(|()| stdout.flush()) {
+        Ok(()) => WriteOutcome::Ok,
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => WriteOutcome::BrokenPipe,
+        Err(e) => {
+            tracing::error!(error = %e, "stdout write failed, continuing");
+            WriteOutcome::Ok
+        }
+    }
+}
+
+/// Build a JSON-RPC `-32603` error response for a caught handler panic.
+///
+/// Surfaces the captured panic snapshot (message, `file:line:column`,
+/// backtrace) to the MCP client via the error `data` field so operators
+/// can diagnose the failure without tailing the server logs. Falls back
+/// to a generic envelope when the snapshot is missing (hook not
+/// installed, or an unusual panic path that bypassed it).
+fn panic_error_response(
+    id: Value,
+    snapshot: Option<panic_guard::PanicSnapshot>,
+) -> JsonRpcResponse {
+    let (message, data) = match snapshot {
+        Some(snap) => {
+            let location = snap.location.as_deref().unwrap_or("<unknown>");
+            let message = format!(
+                "Internal error: handler panicked at {location}: {}",
+                snap.message
+            );
+            let data = json!({
+                "panic_message": snap.message,
+                "panic_location": snap.location,
+                "backtrace": snap.backtrace,
+            });
+            (message, data)
+        }
+        None => (
+            "Internal error: handler panicked (no capture available)".to_owned(),
+            json!({}),
+        ),
+    };
+
+    JsonRpcResponse {
+        jsonrpc: "2.0".to_owned(),
+        id,
+        result: None,
+        error: Some(JsonRpcError {
+            code: -32603,
+            message,
+            data: Some(data),
+        }),
     }
 }
 
