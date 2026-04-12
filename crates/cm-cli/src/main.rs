@@ -5,7 +5,7 @@
 //! per-command handlers ship in the Read/Write phase sub-issues
 //! (ALP-1774..ALP-1782) and are stubbed with `todo!()` until then.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 use cm_cli::cli::{self, Cli, Commands};
 
@@ -19,6 +19,23 @@ fn main() {
 #[tokio::main]
 async fn run() -> Result<()> {
     let cli_args = Cli::parse();
+
+    // Hidden documentation flags. Both are `exclusive = true` so clap
+    // rejects combining them with a subcommand. Handle them before
+    // initializing tracing — the doc emitters write to stdout and we do
+    // not want stray log lines on stderr in CI capture.
+    if cli_args.markdown_help {
+        print!("{}", clap_markdown::help_markdown::<Cli>());
+        return Ok(());
+    }
+    if let Some(dir) = cli_args.generate_man_pages.as_deref() {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("creating man page output directory {}", dir.display()))?;
+        let cmd = Cli::command();
+        clap_mangen::generate_to(cmd, dir).context("generating man pages")?;
+        println!("wrote man pages to {}", dir.display());
+        return Ok(());
+    }
 
     // Initialize tracing (stderr only, never stdout: MCP uses stdout).
     let filter = if cli_args.verbose { "debug" } else { "warn" };

@@ -7,6 +7,8 @@
 //! — `#[arg(help = …)]` is used everywhere so the help strings stay in
 //! lockstep with the generated table.
 
+use std::path::PathBuf;
+
 use clap::{ColorChoice, Parser, Subcommand};
 use clap_complete::Shell;
 
@@ -34,6 +36,18 @@ pub struct Cli {
         help = "Enable verbose debug output (debug-level tracing on stderr)"
     )]
     pub verbose: bool,
+
+    /// Hidden: emit clap-derived markdown reference to stdout. Used to
+    /// regenerate the CLI section of `README.md`. Mutually exclusive with
+    /// any subcommand.
+    #[arg(long, hide = true, exclusive = true)]
+    pub markdown_help: bool,
+
+    /// Hidden: emit one roff `.1` file per subcommand into `<DIR>`. Used by
+    /// the release pipeline to ship man pages. Mutually exclusive with any
+    /// subcommand.
+    #[arg(long, hide = true, value_name = "DIR", exclusive = true)]
+    pub generate_man_pages: Option<PathBuf>,
 
     #[command(subcommand)]
     pub command: Option<Commands>,
