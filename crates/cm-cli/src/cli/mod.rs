@@ -1,15 +1,22 @@
 //! CLI command handlers for context-matters.
 
+pub mod admin;
+pub mod cli_def;
 pub mod colors;
 pub mod errors;
+pub mod help_text;
 
 #[path = "generated_help.rs"]
 pub mod generated_help;
 
+pub use admin::{cmd_init, cmd_serve, open_store};
+pub use cli_def::{Cli, Commands};
+
 use anyhow::Result;
 use cm_core::ContextStore;
 
-/// Display store statistics on stdout.
+/// Display store statistics on stdout. Replaced in ALP-1777 by a
+/// `cm-capabilities`-backed handler that supports `--tag-sort` and `-j`.
 pub async fn cmd_stats(store: &impl ContextStore) -> Result<()> {
     let stats = store.stats().await.map_err(|e| anyhow::anyhow!("{e}"))?;
 

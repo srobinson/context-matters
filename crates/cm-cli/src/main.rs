@@ -1,8 +1,13 @@
-use cm_cli::{cli, mcp};
+//! `cm` binary entry point.
+//!
+//! Thin parse-and-dispatch shell. The clap surface lives in
+//! [`cm_cli::cli::cli_def`]; admin handlers live in [`cm_cli::cli::admin`];
+//! per-command handlers ship in the Read/Write phase sub-issues
+//! (ALP-1774..ALP-1782) and are stubbed with `todo!()` until then.
 
-use anyhow::{Result, bail};
-use clap::{ColorChoice, Parser, Subcommand};
-use cm_store::CmStore;
+use anyhow::Result;
+use clap::{CommandFactory, Parser};
+use cm_cli::cli::{self, Cli, Commands};
 
 fn main() {
     if let Err(err) = run() {
@@ -11,44 +16,11 @@ fn main() {
     }
 }
 
-#[derive(Parser)]
-#[command(
-    name = "cm",
-    about = "Structured context store for AI agents",
-    version,
-    color = ColorChoice::Auto
-)]
-struct Cli {
-    /// Enable verbose debug output
-    #[arg(long, global = true)]
-    verbose: bool,
-
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Generate a commented config file with default values
-    Init {
-        /// Write to ~/.context-matters/ instead of CWD
-        #[arg(long)]
-        global: bool,
-        /// Overwrite an existing config file
-        #[arg(long)]
-        force: bool,
-    },
-    /// Start MCP server on stdio transport
-    Serve,
-    /// Show store statistics
-    Stats,
-}
-
 #[tokio::main]
 async fn run() -> Result<()> {
     let cli_args = Cli::parse();
 
-    // Initialize tracing (stderr only, never stdout: MCP uses stdout)
+    // Initialize tracing (stderr only, never stdout: MCP uses stdout).
     let filter = if cli_args.verbose { "debug" } else { "warn" };
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -58,77 +30,44 @@ async fn run() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    match &cli_args.command {
-        Commands::Init { global, force } => cmd_init(*global, *force),
-        Commands::Serve => cmd_serve().await,
-        Commands::Stats => {
-            let store = open_store().await?;
+    match cli_args.command {
+        // ---------------- READ ----------------
+        Some(Commands::Recall { .. }) => todo!("ALP-1774: cm recall handler"),
+        Some(Commands::Browse { .. }) => todo!("ALP-1775: cm browse handler"),
+        Some(Commands::Get { .. }) => todo!("ALP-1776: cm get handler"),
+        Some(Commands::Stats { .. }) => {
+            // tag_sort + json are parsed but ignored until ALP-1777 rewires
+            // this handler through cm-capabilities.
+            let store = cli::open_store().await?;
             cli::cmd_stats(&store).await?;
             if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
                 tracing::debug!(error = %e, "WAL checkpoint failed");
             }
             Ok(())
         }
+
+        // ---------------- WRITE ----------------
+        Some(Commands::Store { .. }) => todo!("ALP-1781: cm store stub"),
+        Some(Commands::Update { .. }) => todo!("ALP-1779: cm update handler"),
+        Some(Commands::Deposit { .. }) => todo!("ALP-1780: cm deposit handler"),
+        Some(Commands::Forget { .. }) => todo!("ALP-1778: cm forget handler"),
+
+        // ---------------- ADMIN ----------------
+        Some(Commands::Init { global, force }) => cli::cmd_init(global, force),
+        Some(Commands::Serve) => cli::cmd_serve().await,
+        Some(Commands::Export { .. }) => todo!("ALP-1782: cm export handler"),
+        Some(Commands::Completions { shell }) => {
+            use clap_complete::generate;
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "cm", &mut std::io::stdout());
+            Ok(())
+        }
+
+        // No subcommand: show long help.
+        None => {
+            Cli::command().print_long_help()?;
+            println!();
+            Ok(())
+        }
     }
-}
-
-fn cmd_init(global: bool, force: bool) -> Result<()> {
-    let path = if global {
-        let base = cm_store::default_base_dir()?;
-        std::fs::create_dir_all(&base)?;
-        base.join(cm_store::CONFIG_FILENAME)
-    } else {
-        std::env::current_dir()?.join(cm_store::CONFIG_FILENAME)
-    };
-
-    if path.exists() && !force {
-        bail!(
-            "config file already exists: {}\nUse --force to overwrite.",
-            path.display()
-        );
-    }
-
-    std::fs::write(&path, cm_store::config_template())?;
-    println!("{}", path.display());
-    Ok(())
-}
-
-/// Open the database, run migrations, and return a ready-to-use store.
-async fn open_store() -> Result<CmStore> {
-    let config = cm_store::load_config()?;
-    let db_path = config.db_path();
-
-    // Ensure the data directory exists
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let (write_pool, read_pool) = cm_store::schema::create_pools(&db_path).await?;
-    cm_store::schema::run_migrations(&write_pool).await?;
-
-    Ok(CmStore::new(write_pool, read_pool))
-}
-
-async fn cmd_serve() -> Result<()> {
-    // Install the MCP panic hook before any handler runs. With this
-    // in place, a panic in any tool handler is converted to a
-    // JSON-RPC `-32603` error response by the run loop instead of
-    // tearing down the server process. See crates/cm-cli/src/mcp/
-    // panic_guard.rs for the capture mechanism.
-    mcp::install_panic_hook();
-
-    tracing::info!("context-matters v{}", env!("CARGO_PKG_VERSION"));
-
-    let store = open_store().await?;
-    let server = mcp::McpServer::new(store);
-
-    tracing::info!("MCP server ready on stdio");
-    server.run().await?;
-
-    tracing::info!("shutdown, running WAL checkpoint");
-    if let Err(e) = cm_store::schema::wal_checkpoint(server.store().write_pool()).await {
-        tracing::debug!(error = %e, "WAL checkpoint failed");
-    }
-
-    Ok(())
 }
