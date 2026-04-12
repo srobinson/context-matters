@@ -101,11 +101,9 @@ async fn run() -> Result<()> {
             }
             Ok(())
         }
-        Some(Commands::Stats { .. }) => {
-            // tag_sort + json are parsed but ignored until ALP-1777 rewires
-            // this handler through cm-capabilities.
+        Some(Commands::Stats { tag_sort, json }) => {
             let store = cli::open_store().await?;
-            cli::cmd_stats(&store).await?;
+            cli::stats::run(&store, tag_sort, json).await?;
             if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
                 tracing::debug!(error = %e, "WAL checkpoint failed");
             }
