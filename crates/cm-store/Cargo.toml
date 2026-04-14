@@ -3,6 +3,7 @@ name = "cm-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SQLite persistence layer for context-matters"
 
 [dependencies]

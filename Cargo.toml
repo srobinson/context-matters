@@ -64,3 +64,28 @@ lto = true
 codegen-units = 1
 strip = true
 opt-level = 3
+
+[workspace.metadata.dist]
+cargo-dist-version = "0.31.0"
+ci = "github"
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+installers = ["shell", "powershell"]
+github-attestations = true
+# release-please creates the GitHub Release; cargo-dist only uploads into it.
+create-release = false
+unix-archive = ".tar.gz"
+windows-archive = ".zip"
+include = ["LICENSE", "README.md"]
+auto-includes = false
+pr-run-mode = "plan"
+# release.yml appends a publish-npm job that cargo-dist does not know about;
+# allow dist generate --check to tolerate that drift.
+allow-dirty = ["ci"]
