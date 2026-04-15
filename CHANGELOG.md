@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/srobinson/context-matters/compare/v0.2.4...v0.2.5) (2026-04-15)
+
+
+### Bug Fixes
+
+* **release:** add missing [profile.dist] for cargo-dist builds ([#37](https://github.com/srobinson/context-matters/issues/37)) ([e3ae040](https://github.com/srobinson/context-matters/commit/e3ae0409f438b7118b0a9699d0e465dc3c6c623b))
+
 ## [0.2.4](https://github.com/srobinson/context-matters/compare/v0.2.3...v0.2.4) (2026-04-15)
 
 
