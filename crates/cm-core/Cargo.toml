@@ -3,6 +3,7 @@ name = "cm-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Domain types and traits for the context-matters store"
 
 [dependencies]

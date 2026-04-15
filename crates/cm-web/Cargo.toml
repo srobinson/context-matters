@@ -3,7 +3,11 @@ name = "cm-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Web monitoring interface for context-matters"
+
+[package.metadata.dist]
+dist = false
 
 [lib]
 name = "cm_web"

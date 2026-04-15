@@ -17,6 +17,16 @@
           "type": "json",
           "path": "npm/context-matters/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/@context-matters/cli/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/@context-matters/cli/package.json",
+          "jsonpath": "$.dependencies.context-matters"
         }
       ],
       "changelog-sections": [

@@ -3,6 +3,7 @@ name = "cm-capabilities"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Shared application capabilities for context-matters adapters"
 
 [dependencies]

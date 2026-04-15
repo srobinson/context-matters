@@ -11,6 +11,9 @@ const http = require("http");
 
 const REPO = "srobinson/context-matters";
 const BIN_NAME = "cm";
+// Archive filename prefix. cargo-dist names archives after the crate (cm-cli),
+// while the extracted binary keeps its [[bin]] name (cm).
+const ARCHIVE_PREFIX = "cm-cli";
 
 const PLATFORM_MAP = {
   "darwin-arm64": "aarch64-apple-darwin",
@@ -78,32 +81,27 @@ function computeSha256(buffer) {
 }
 
 async function verifySha256(tarball, artifact, version) {
-  const sumsUrl = `https://github.com/${REPO}/releases/download/v${version}/sha256sums.txt`;
+  // cargo-dist emits one sha256 file per artifact, content format:
+  //   "<hex-digest> *<filename>\n"  (GNU coreutils binary mode)
+  // We only care about the first whitespace-separated field (the digest).
+  const sumUrl = `https://github.com/${REPO}/releases/download/v${version}/${artifact}.sha256`;
   try {
-    const sumsData = await fetch(sumsUrl);
-    const sumsText = sumsData.toString("utf8");
-    const expectedHash = sumsText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => {
-        const parts = line.split(/\s+/);
-        return { hash: parts[0], file: parts[parts.length - 1] };
-      })
-      .find((entry) => entry.file === artifact);
+    const sumData = await fetch(sumUrl);
+    const sumText = sumData.toString("utf8").trim();
+    const expectedHash = sumText.split(/\s+/)[0];
 
-    if (!expectedHash) {
+    if (!expectedHash || !/^[0-9a-f]{64}$/i.test(expectedHash)) {
       console.warn(
-        `Warning: ${artifact} not found in sha256sums.txt, skipping verification`,
+        `Warning: ${artifact}.sha256 malformed, skipping verification`,
       );
       return true;
     }
 
     const actualHash = computeSha256(tarball);
-    if (actualHash !== expectedHash.hash) {
+    if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
       console.error(
         `SHA-256 mismatch for ${artifact}:\n` +
-          `  expected: ${expectedHash.hash}\n` +
+          `  expected: ${expectedHash}\n` +
           `  actual:   ${actualHash}`,
       );
       return false;
@@ -113,7 +111,7 @@ async function verifySha256(tarball, artifact, version) {
     return true;
   } catch (err) {
     console.warn(
-      `Warning: could not fetch sha256sums.txt (${err.message}), skipping verification`,
+      `Warning: could not fetch ${artifact}.sha256 (${err.message}), skipping verification`,
     );
     return true;
   }
@@ -122,7 +120,7 @@ async function verifySha256(tarball, artifact, version) {
 async function install() {
   const target = getTarget();
   const version = getVersion();
-  const artifact = `cm-${target}.tar.gz`;
+  const artifact = `${ARCHIVE_PREFIX}-${target}.tar.gz`;
   const url = `https://github.com/${REPO}/releases/download/v${version}/${artifact}`;
 
   const binDir = path.join(__dirname, "..", "bin");
