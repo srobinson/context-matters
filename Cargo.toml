@@ -65,6 +65,13 @@ codegen-units = 1
 strip = true
 opt-level = 3
 
+# The profile that 'dist' will build with. cargo-dist invokes
+# `cargo build --profile dist`; without this block the build fails
+# with "profile `dist` is not defined".
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
 [workspace.metadata.dist]
 cargo-dist-version = "0.31.0"
 ci = "github"
