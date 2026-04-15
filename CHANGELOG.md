@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/srobinson/context-matters/compare/v0.2.3...v0.2.4) (2026-04-15)
+
+
+### Features
+
+* **release:** swap hand-rolled matrix for cargo-dist ([#35](https://github.com/srobinson/context-matters/issues/35)) ([23adb5d](https://github.com/srobinson/context-matters/commit/23adb5d493b68cd4a4f4eab1d9a7c4098ddb546c))
+
 ## [0.2.3](https://github.com/srobinson/context-matters/compare/v0.2.2...v0.2.3) (2026-04-12)
 
 
