@@ -1,16 +1,25 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use cm_core::{
     BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
 };
 use uuid::Uuid;
 
+use crate::scope::{BrowseScopeMode, ScopeResolution, resolve_browse_scope};
+
 // ── Types ────────────────────────────────────────────────────────
 
 /// Input for a browse operation.
 #[derive(Debug, Clone, Default)]
 pub struct BrowseRequest {
+    /// Preferred scope input. Accepts "auto" for local resolution or an
+    /// explicit `ScopePath` string for exact filtering.
+    pub scope: Option<String>,
+    /// Backward compatible exact scope filter.
     pub scope_path: Option<ScopePath>,
+    pub scope_mode: BrowseScopeMode,
+    pub cwd: Option<PathBuf>,
+    pub include_resolution: bool,
     pub kind: Option<EntryKind>,
     pub tag: Option<String>,
     pub created_by: Option<String>,
@@ -37,6 +46,7 @@ pub struct BrowseResult {
     /// (per the trait contract); the projection layer treats absence as
     /// zero and elides the `rels:` annotation entirely.
     pub relation_counts: HashMap<Uuid, u32>,
+    pub resolution: Option<ScopeResolution>,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -54,9 +64,10 @@ pub async fn browse(
     // so the formatter can surface "sort: <variant>" in the browse header
     // without having to re-derive it from request-side state.
     let sort_used = request.sort;
+    let resolved_scope = resolve_browse_scope(store, &request).await?;
 
     let filter = EntryFilter {
-        scope_path: request.scope_path,
+        scope_path: resolved_scope.scope_path,
         kind: request.kind,
         tag: request.tag,
         created_by: request.created_by,
@@ -84,5 +95,6 @@ pub async fn browse(
         has_more,
         sort_used,
         relation_counts,
+        resolution: resolved_scope.resolution,
     })
 }

@@ -136,6 +136,7 @@ fn browse_fixture() -> (BrowseResult, BrowseRequest) {
         has_more: true,
         sort_used: BrowseSort::Recent,
         relation_counts,
+        resolution: None,
     };
     let request = BrowseRequest {
         limit: 50,

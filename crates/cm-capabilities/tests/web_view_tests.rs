@@ -25,6 +25,9 @@ use cm_capabilities::projection::{
     RecallRow, WebBrowseView, WebRecallView, project_web_browse_at, project_web_recall_at,
 };
 use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
+use cm_capabilities::scope::{
+    BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
+};
 use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 
 /// Pinned reference `now`. Matches the value used in the sibling
@@ -79,6 +82,38 @@ fn make_row(
     }
 }
 
+fn smart_scope_resolution_fixture() -> ScopeResolution {
+    ScopeResolution {
+        requested_scope: "auto".to_owned(),
+        resolved_scope: ScopePath::parse("global/project:helioy/repo:context-matters")
+            .expect("test fixture scope parses"),
+        scope_mode: BrowseScopeMode::Resolved,
+        confidence: ScopeResolutionConfidence::High,
+        candidates: vec![
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:helioy/repo:context-matters")
+                    .expect("test fixture scope parses"),
+                score: 330,
+                matched: vec![
+                    "repo".to_owned(),
+                    "project_parent".to_owned(),
+                    "specificity".to_owned(),
+                ],
+            },
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:helioy")
+                    .expect("test fixture scope parses"),
+                score: 110,
+                matched: vec!["project_parent".to_owned(), "project".to_owned()],
+            },
+        ],
+        signals: vec![
+            "cwd basename matched repo scope segment: context-matters".to_owned(),
+            "cwd parent basename matched project scope segment: helioy".to_owned(),
+        ],
+    }
+}
+
 /// The happy path for scope hoisting: three rows at the same scope
 /// must collapse into a single header label, and every row's own
 /// `scope` field must be `None` afterwards. This is the signal the
@@ -123,10 +158,15 @@ fn web_browse_view_hoists_uniform_scope() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
 
+    assert!(
+        view.resolution.is_none(),
+        "legacy browse projection should omit resolution metadata",
+    );
     assert_eq!(
         view.header.scope.as_deref(),
         Some("global/project:helioy"),
@@ -141,6 +181,63 @@ fn web_browse_view_hoists_uniform_scope() {
             row.scope,
         );
     }
+}
+
+#[test]
+fn web_browse_view_projects_scope_resolution() {
+    let now = fixed_now();
+    let entries = vec![make_entry(
+        "019d79d3-0000-7000-8000-000000000001",
+        EntryKind::Decision,
+        "Smart browse scope",
+        "Browse resolved to the local repo scope.",
+        "global/project:helioy/repo:context-matters",
+        &["smart-browse"],
+        now - Duration::hours(1),
+    )];
+    let result = BrowseResult {
+        entries,
+        total: 1,
+        next_cursor: None,
+        has_more: false,
+        sort_used: BrowseSort::Recent,
+        relation_counts: HashMap::new(),
+        resolution: Some(smart_scope_resolution_fixture()),
+    };
+
+    let view: WebBrowseView = project_web_browse_at(&result, now);
+    let resolution = view
+        .resolution
+        .expect("smart browse projection should include resolution metadata");
+
+    assert_eq!(resolution.requested_scope, "auto");
+    assert_eq!(
+        resolution.resolved_scope,
+        "global/project:helioy/repo:context-matters",
+    );
+    assert_eq!(resolution.scope_mode, "resolved");
+    assert_eq!(resolution.confidence, "high");
+    assert_eq!(resolution.candidates.len(), 2);
+    assert_eq!(
+        resolution.candidates[0].scope,
+        "global/project:helioy/repo:context-matters",
+    );
+    assert_eq!(resolution.candidates[0].score, 330);
+    assert_eq!(
+        resolution.candidates[0].matched,
+        vec![
+            "repo".to_owned(),
+            "project_parent".to_owned(),
+            "specificity".to_owned(),
+        ],
+    );
+    assert_eq!(
+        resolution.signals,
+        vec![
+            "cwd basename matched repo scope segment: context-matters".to_owned(),
+            "cwd parent basename matched project scope segment: helioy".to_owned(),
+        ],
+    );
 }
 
 /// The safety case for scope hoisting: when rows live at different
@@ -177,6 +274,7 @@ fn web_browse_view_mixed_scope() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);

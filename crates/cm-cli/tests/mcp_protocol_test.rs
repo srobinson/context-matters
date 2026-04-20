@@ -155,6 +155,35 @@ fn protocol_tools_list() {
         assert!(tool_names.contains(expected), "missing tool: {expected}");
     }
 
+    let browse_tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "cx_browse")
+        .expect("cx_browse tool is advertised");
+    let browse_props = browse_tool["inputSchema"]["properties"]
+        .as_object()
+        .expect("cx_browse inputSchema properties");
+    for expected in [
+        "scope",
+        "scope_mode",
+        "cwd",
+        "include_resolution",
+        "scope_path",
+    ] {
+        assert!(
+            browse_props.contains_key(expected),
+            "cx_browse inputSchema missing {expected}"
+        );
+    }
+    assert_eq!(
+        browse_props["scope_mode"]["enum"],
+        json!(["resolved"]),
+        "scope_mode should reserve only the implemented first-pass mode"
+    );
+    assert!(
+        browse_tool["outputSchema"]["properties"]["resolution"].is_object(),
+        "cx_browse outputSchema must document optional resolution metadata"
+    );
+
     // Each tool should have name, description, and inputSchema
     for tool in tools {
         assert!(tool["name"].is_string(), "tool missing name");

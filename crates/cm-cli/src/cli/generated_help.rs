@@ -55,7 +55,15 @@ pub const DEPOSIT_CREATED_BY_HELP: &str = "Attribution (format: source_type:iden
 #[rustfmt::skip]
 pub const BROWSE_ABOUT: &str = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content.";
 #[rustfmt::skip]
-pub const BROWSE_SCOPE_PATH_HELP: &str = "Filter to exact scope path (no ancestor walk)";
+pub const BROWSE_SCOPE_HELP: &str = "Preferred scope: auto or explicit scope path";
+#[rustfmt::skip]
+pub const BROWSE_SCOPE_PATH_HELP: &str = "Compatibility exact scope path (no ancestor walk)";
+#[rustfmt::skip]
+pub const BROWSE_SCOPE_MODE_HELP: &str = "Scope resolution mode: resolved";
+#[rustfmt::skip]
+pub const BROWSE_CWD_HELP: &str = "Working directory used for auto scope inference";
+#[rustfmt::skip]
+pub const BROWSE_INCLUDE_RESOLUTION_HELP: &str = "Include scope resolution metadata";
 #[rustfmt::skip]
 pub const BROWSE_KIND_HELP: &str = "Filter by kind: fact, decision, preference, lesson, reference, feedback, pattern, observation";
 #[rustfmt::skip]

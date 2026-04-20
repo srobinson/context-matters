@@ -1,0 +1,42 @@
+{
+  "description": "Partially update an existing entry. Only provided fields are modified. Changing body or kind recomputes content_hash and checks for duplicates. Scope migration is excluded; use cx_store with supersedes to move entries across scopes. At least one field must be provided.",
+  "inputSchema": {
+    "properties": {
+      "body": {
+        "description": "New body content in markdown. Changing body recomputes content_hash and checks for duplicates. Omit to keep existing.",
+        "type": "string"
+      },
+      "id": {
+        "description": "ID of the entry to update.",
+        "type": "string"
+      },
+      "kind": {
+        "description": "New kind classification. Changing kind recomputes content_hash. Omit to keep existing.",
+        "enum": [
+          "fact",
+          "decision",
+          "preference",
+          "lesson",
+          "reference",
+          "feedback",
+          "pattern",
+          "observation"
+        ],
+        "type": "string"
+      },
+      "meta": {
+        "description": "Replace metadata entirely. Provide the complete desired meta object with fields: tags (array), confidence (high/medium/low), source (string), expires_at (ISO 8601), priority (integer). Omit to keep existing metadata.",
+        "type": "object"
+      },
+      "title": {
+        "description": "New title. Omit to keep existing.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "type": "object"
+  },
+  "name": "cx_update"
+}

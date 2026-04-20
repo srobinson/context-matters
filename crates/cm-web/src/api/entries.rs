@@ -14,9 +14,7 @@ use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
-use cm_capabilities::projection::{
-    WebBrowseView, WebRecallView, project_web_browse, project_web_recall,
-};
+use cm_capabilities::projection::{WebBrowseView, WebRecallView, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{
@@ -48,8 +46,8 @@ async fn browse(
     State(state): State<Arc<AppState>>,
     Query(bq): Query<BrowseQuery>,
 ) -> Result<Json<WebBrowseView>, ApiError> {
-    let result = agent::execute_browse(&state.store, bq).await?;
-    Ok(Json(project_web_browse(&result)))
+    let executed = agent::execute_browse(&state.store, bq).await?;
+    Ok(Json(agent::project_executed_browse(&executed)))
 }
 
 // ── Search (legacy FTS alias, routed through recall) ────────────

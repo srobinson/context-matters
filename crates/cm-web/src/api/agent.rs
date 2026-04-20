@@ -20,6 +20,7 @@ use cm_capabilities::projection::{
     WebBrowseView, WebRecallView, project_web_browse, project_web_recall,
 };
 use cm_capabilities::recall::{self, RecallRequest, RecallResult};
+use cm_capabilities::scope::BrowseScopeMode;
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{BrowseSort, EntryKind, ScopePath};
 use cm_store::CmStore;
@@ -158,7 +159,11 @@ async fn recall_handler(
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct BrowseQuery {
+    pub scope: Option<String>,
     pub scope_path: Option<String>,
+    pub scope_mode: Option<String>,
+    pub cwd: Option<String>,
+    pub include_resolution: Option<bool>,
     pub kind: Option<String>,
     pub tag: Option<String>,
     pub created_by: Option<String>,
@@ -166,6 +171,22 @@ pub(crate) struct BrowseQuery {
     pub include_superseded: Option<bool>,
     pub limit: Option<u32>,
     pub cursor: Option<String>,
+}
+
+/// Raw capability browse result plus projection settings derived from
+/// the request. `/api/agent/browse` and `/api/entries` both use this
+/// wrapper so smart browse metadata exposure cannot drift.
+pub(crate) struct ExecutedBrowse {
+    pub result: BrowseResult,
+    pub include_resolution: bool,
+}
+
+pub(crate) fn project_executed_browse(executed: &ExecutedBrowse) -> WebBrowseView {
+    let mut view = project_web_browse(&executed.result);
+    if !executed.include_resolution {
+        view.resolution = None;
+    }
+    view
 }
 
 /// Validate a parsed [`BrowseQuery`], convert it into a
@@ -176,7 +197,7 @@ pub(crate) struct BrowseQuery {
 pub(crate) async fn execute_browse(
     store: &CmStore,
     bq: BrowseQuery,
-) -> Result<BrowseResult, ApiError> {
+) -> Result<ExecutedBrowse, ApiError> {
     if let Some(ref t) = bq.tag {
         check_input_size(t, "tag").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
@@ -184,12 +205,36 @@ pub(crate) async fn execute_browse(
         check_input_size(c, "created_by")
             .map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
+    if let Some(ref s) = bq.scope {
+        check_input_size(s, "scope").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
+    if let Some(ref c) = bq.cwd {
+        check_input_size(c, "cwd").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
 
     let scope_path = bq
         .scope_path
         .map(|s| ScopePath::parse(&s))
         .transpose()
         .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+
+    let scope_is_auto = matches!(bq.scope.as_deref().map(str::trim), Some("auto"));
+    let scope_mode = bq
+        .scope_mode
+        .as_deref()
+        .map(|mode| mode.parse::<BrowseScopeMode>().map_err(ApiError))
+        .transpose()?
+        .unwrap_or_default();
+    let cwd = match bq.cwd {
+        Some(raw) if raw.trim().is_empty() => {
+            return Err(ApiError(cm_core::CmError::Validation(
+                "cwd cannot be empty".to_owned(),
+            )));
+        }
+        Some(raw) => Some(raw.into()),
+        None => None,
+    };
+    let include_resolution = bq.include_resolution.unwrap_or(scope_is_auto);
 
     let kind = bq
         .kind
@@ -207,10 +252,14 @@ pub(crate) async fn execute_browse(
     let include_superseded = bq.include_superseded.unwrap_or(false);
     let limit = clamp_limit(bq.limit);
 
-    browse::browse(
+    let result = browse::browse(
         store,
         BrowseRequest {
+            scope: bq.scope,
             scope_path,
+            scope_mode,
+            cwd,
+            include_resolution,
             kind,
             tag: bq.tag,
             created_by: bq.created_by,
@@ -221,7 +270,12 @@ pub(crate) async fn execute_browse(
         },
     )
     .await
-    .map_err(ApiError)
+    .map_err(ApiError)?;
+
+    Ok(ExecutedBrowse {
+        result,
+        include_resolution,
+    })
 }
 
 fn parse_browse_sort(s: &str) -> Result<BrowseSort, ApiError> {
@@ -238,6 +292,6 @@ async fn browse_handler(
     State(state): State<Arc<AppState>>,
     Query(bq): Query<BrowseQuery>,
 ) -> Result<Json<WebBrowseView>, ApiError> {
-    let result = execute_browse(&state.store, bq).await?;
-    Ok(Json(project_web_browse(&result)))
+    let executed = execute_browse(&state.store, bq).await?;
+    Ok(Json(project_executed_browse(&executed)))
 }

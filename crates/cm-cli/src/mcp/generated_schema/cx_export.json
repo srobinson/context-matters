@@ -1,0 +1,180 @@
+{
+  "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree.",
+  "inputSchema": {
+    "properties": {
+      "format": {
+        "description": "Export format. Currently only 'json' is supported. Default: 'json'.",
+        "enum": [
+          "json"
+        ],
+        "type": "string"
+      },
+      "scope_path": {
+        "description": "Filter export to a specific scope path and its descendants. Omit to export everything.",
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "cx_export",
+  "outputSchema": {
+    "description": "Export response: full entry and scope snapshots plus provenance metadata.",
+    "properties": {
+      "count": {
+        "description": "Length of `entries`.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "entries": {
+        "description": "Active entries in the export scope. Mirrors `cm_core::Entry`.",
+        "items": {
+          "properties": {
+            "body": {
+              "description": "Full markdown body.",
+              "type": "string"
+            },
+            "content_hash": {
+              "description": "BLAKE3 hex digest of the body.",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "created_by": {
+              "description": "Attribution string (e.g. agent:claude-code).",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "decision",
+                "preference",
+                "lesson",
+                "reference",
+                "feedback",
+                "pattern",
+                "observation"
+              ],
+              "type": "string"
+            },
+            "meta": {
+              "additionalProperties": true,
+              "description": "Optional metadata envelope. Omitted when every sub-field is empty.",
+              "properties": {
+                "confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                "expires_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "integer"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "scope_path": {
+              "description": "Canonical scope path.",
+              "type": "string"
+            },
+            "superseded_by": {
+              "description": "Id of the replacement entry when this row is soft-deleted.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "scope_path",
+            "kind",
+            "title",
+            "body",
+            "content_hash",
+            "created_by",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "exported_at": {
+        "description": "Export timestamp in RFC 3339.",
+        "format": "date-time",
+        "type": "string"
+      },
+      "scopes": {
+        "description": "Scopes touched by the export. Mirrors `cm_core::Scope`.",
+        "items": {
+          "properties": {
+            "created_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "kind": {
+              "description": "ScopeKind serialised as a string.",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "meta": {
+              "additionalProperties": true,
+              "description": "Free-form scope metadata. Omitted when unset.",
+              "type": "object"
+            },
+            "parent_path": {
+              "description": "Parent scope path. Omitted for the root scope.",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "kind",
+            "label",
+            "created_at"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "entries",
+      "scopes",
+      "exported_at",
+      "count"
+    ],
+    "type": "object"
+  }
+}

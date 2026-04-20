@@ -1,0 +1,191 @@
+{
+  "description": "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.",
+  "inputSchema": {
+    "properties": {
+      "kinds": {
+        "description": "Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pattern, observation.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "description": "Maximum number of entries to return. Default: 20, max: 200.",
+        "type": "integer"
+      },
+      "max_tokens": {
+        "description": "Maximum token budget for the response. Results are trimmed to fit within this budget, prioritizing higher-relevance entries. Uses ~4 chars/token estimation.",
+        "type": "integer"
+      },
+      "query": {
+        "description": "FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Use OR between synonyms: 'auth OR authentication'. Omit to return all entries at the target scope via ancestor walk.",
+        "type": "string"
+      },
+      "scope": {
+        "description": "Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:helioy/repo:nancyr' also searches 'global/project:helioy' and 'global'. Default: 'global'.",
+        "type": "string"
+      },
+      "tags": {
+        "description": "Filter to entries with any of these tags (OR logic). Pass a JSON array: [\"tag1\", \"tag2\"].",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "type": "object"
+  },
+  "name": "cx_recall",
+  "outputSchema": {
+    "description": "Recall response: query header, ranked rows, and trailing advisories.",
+    "properties": {
+      "advisories": {
+        "description": "Trailer advisory lines (routing, tier, dedup, drill-down) the formatter would emit as YAML comments.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "entries": {
+        "description": "Ranked recall rows. Order is significant.",
+        "items": {
+          "properties": {
+            "age": {
+              "description": "Relative age string (e.g. \"2h\", \"6d\").",
+              "type": "string"
+            },
+            "id": {
+              "description": "Full UUID v7.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "decision",
+                "preference",
+                "lesson",
+                "reference",
+                "feedback",
+                "pattern",
+                "observation"
+              ],
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "score": {
+              "description": "Normalised relevance score in [0, 1] on Search routing. Omitted on non-search routings.",
+              "type": "number"
+            },
+            "snippet": {
+              "description": "Smart snippet of the entry body, with matched query terms bracketed when applicable.",
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "snippet",
+            "age",
+            "scope",
+            "kind",
+            "tags"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "header": {
+        "description": "Per-response query envelope.",
+        "properties": {
+          "candidates": {
+            "description": "Total candidates considered before token-budget trimming.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kinds_histogram": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Per-kind counts across the returned rows.",
+            "type": "object"
+          },
+          "query": {
+            "description": "Free-text query the caller supplied. Omitted when the recall was tag/scope-only.",
+            "type": "string"
+          },
+          "returned": {
+            "description": "Number of rows in `entries` after token-budget trimming.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "routing": {
+            "description": "Routing branch chosen by the recall pipeline (search, browse_fallback, scope_resolve, tag_scope_walk).",
+            "type": "string"
+          },
+          "scope_chain": {
+            "description": "Scope path plus ancestors walked, in order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scope_hits": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Per-scope hit counts in `scope_chain`.",
+            "type": "object"
+          },
+          "tags_histogram": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Per-tag counts across the returned rows.",
+            "type": "object"
+          },
+          "tier": {
+            "description": "Search tier the cascade settled on (none, exact, prefix, split_or). Omitted on non-search routings.",
+            "type": "string"
+          },
+          "tokens": {
+            "description": "Estimated token total of the rendered response.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "routing",
+          "candidates",
+          "returned",
+          "scope_chain",
+          "scope_hits",
+          "kinds_histogram",
+          "tags_histogram",
+          "tokens"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "header",
+      "entries",
+      "advisories"
+    ],
+    "type": "object"
+  }
+}

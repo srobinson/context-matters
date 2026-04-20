@@ -186,6 +186,7 @@ async fn browse_filters_by_scope_path() {
 
     assert_eq!(result.entries.len(), 1);
     assert_eq!(result.entries[0].title, "Project fact");
+    assert!(result.resolution.is_none());
 }
 
 // ── Kind filtering ───────────────────────────────────────────────

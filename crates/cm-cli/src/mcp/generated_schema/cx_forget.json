@@ -1,0 +1,19 @@
+{
+  "description": "Soft-delete entries by marking them as forgotten. Sets superseded_by to the entry's own ID, distinguishing forgotten entries from entries superseded by a replacement. Already-inactive entries are silently skipped. Maximum 100 IDs per request. Partial success is reported.",
+  "inputSchema": {
+    "properties": {
+      "ids": {
+        "description": "Entry IDs to forget. Maximum 100 per request. Each ID is processed independently.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "ids"
+    ],
+    "type": "object"
+  },
+  "name": "cx_forget"
+}

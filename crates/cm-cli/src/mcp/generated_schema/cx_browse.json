@@ -1,0 +1,271 @@
+{
+  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope for MCP sessions when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
+  "inputSchema": {
+    "properties": {
+      "created_by": {
+        "description": "Filter by creator attribution string.",
+        "type": "string"
+      },
+      "cursor": {
+        "description": "Opaque pagination cursor from a previous cx_browse response. Pass next_cursor to fetch the next page.",
+        "type": "string"
+      },
+      "cwd": {
+        "description": "Filesystem working directory used for scope=\"auto\" inference. MCP defaults this from the server process current directory when omitted.",
+        "type": "string"
+      },
+      "include_resolution": {
+        "description": "Include scope resolution metadata in the response. Defaults to true when scope=\"auto\".",
+        "type": "boolean"
+      },
+      "include_superseded": {
+        "description": "Include superseded (inactive) entries in results. Default: false.",
+        "type": "boolean"
+      },
+      "kind": {
+        "description": "Filter by entry kind.",
+        "enum": [
+          "fact",
+          "decision",
+          "preference",
+          "lesson",
+          "reference",
+          "feedback",
+          "pattern",
+          "observation"
+        ],
+        "type": "string"
+      },
+      "limit": {
+        "description": "Maximum entries per page. Default: 20, max: 200.",
+        "type": "integer"
+      },
+      "scope": {
+        "description": "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" for MCP sessions when scope_path is omitted.",
+        "type": "string"
+      },
+      "scope_mode": {
+        "description": "Scope resolution mode. Only \"resolved\" is implemented in this first pass.",
+        "enum": [
+          "resolved"
+        ],
+        "type": "string"
+      },
+      "scope_path": {
+        "description": "Compatibility exact scope filter. When supplied, browse filters to this exact scope path and does not infer a local scope.",
+        "type": "string"
+      },
+      "tag": {
+        "description": "Filter by tag. Entries must have at least one matching tag.",
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "cx_browse",
+  "outputSchema": {
+    "description": "Browse response: filtered inventory header, optional scope resolution metadata, rows, and pagination tail.",
+    "properties": {
+      "entries": {
+        "description": "Browse rows on this page. Order is significant (sort_used governs).",
+        "items": {
+          "properties": {
+            "age": {
+              "description": "Relative age string (e.g. \"2h\", \"6d\").",
+              "type": "string"
+            },
+            "id": {
+              "description": "Full UUID v7.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "description": "Entry kind. Omitted when unset.",
+              "enum": [
+                "fact",
+                "decision",
+                "preference",
+                "lesson",
+                "reference",
+                "feedback",
+                "pattern",
+                "observation"
+              ],
+              "type": "string"
+            },
+            "scope": {
+              "description": "Row scope path. Omitted when the row has no scope.",
+              "type": "string"
+            },
+            "snippet": {
+              "description": "Smart snippet of the entry body.",
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "snippet",
+            "age",
+            "tags"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "has_more": {
+        "description": "True when another page is available via `next_cursor`.",
+        "type": "boolean"
+      },
+      "header": {
+        "description": "Per-response filter + histogram envelope.",
+        "properties": {
+          "created_by": {
+            "description": "Created-by filter the caller supplied. Omitted when unset.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind filter the caller supplied. Omitted when unset.",
+            "type": "string"
+          },
+          "kinds_histogram": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Per-kind counts across the returned rows.",
+            "type": "object"
+          },
+          "returned": {
+            "description": "Number of rows in `entries` on this page.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scope": {
+            "description": "Scope filter the caller supplied. Omitted when unset.",
+            "type": "string"
+          },
+          "sort_used": {
+            "description": "Sort order the browse pipeline applied (e.g. updated_desc).",
+            "type": "string"
+          },
+          "tags_histogram": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "Per-tag counts across the returned rows.",
+            "type": "object"
+          },
+          "total": {
+            "description": "Total matching rows in the store before pagination.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sort_used",
+          "total",
+          "returned",
+          "kinds_histogram",
+          "tags_histogram"
+        ],
+        "type": "object"
+      },
+      "next_cursor": {
+        "description": "Opaque cursor to feed back as `cursor` on the next page. Omitted when `has_more` is false.",
+        "type": "string"
+      },
+      "resolution": {
+        "description": "Scope resolution metadata when smart browse inference was requested.",
+        "properties": {
+          "candidates": {
+            "description": "Candidate scopes considered by the resolver, sorted best first.",
+            "items": {
+              "properties": {
+                "matched": {
+                  "description": "Signals that contributed to this candidate score.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "scope": {
+                  "description": "Candidate scope path.",
+                  "type": "string"
+                },
+                "score": {
+                  "description": "Deterministic resolver score.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "scope",
+                "score",
+                "matched"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "confidence": {
+            "description": "Resolver confidence in the selected scope.",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "very_low"
+            ],
+            "type": "string"
+          },
+          "requested_scope": {
+            "description": "Scope input supplied by the caller, usually auto.",
+            "type": "string"
+          },
+          "resolved_scope": {
+            "description": "Existing exact scope path used for the browse query.",
+            "type": "string"
+          },
+          "scope_mode": {
+            "description": "Scope resolution mode applied.",
+            "enum": [
+              "resolved"
+            ],
+            "type": "string"
+          },
+          "signals": {
+            "description": "Human-readable explanation of the selected scope.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "requested_scope",
+          "resolved_scope",
+          "scope_mode",
+          "confidence",
+          "candidates",
+          "signals"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "header",
+      "entries",
+      "has_more"
+    ],
+    "type": "object"
+  }
+}

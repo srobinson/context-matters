@@ -1,0 +1,118 @@
+{
+  "description": "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists.",
+  "inputSchema": {
+    "properties": {
+      "tag_sort": {
+        "description": "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first.",
+        "enum": [
+          "name",
+          "count"
+        ],
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "name": "cx_stats",
+  "outputSchema": {
+    "description": "Stats response: store totals, per-kind histogram, top tags, and scope tree.",
+    "properties": {
+      "active": {
+        "description": "Number of active (non-superseded) entries.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "db_size_bytes": {
+        "description": "SQLite database file size in bytes.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "kinds": {
+        "additionalProperties": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": "Per-kind entry counts across active entries.",
+        "type": "object"
+      },
+      "relations": {
+        "description": "Total relations in the store.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "scope_tree": {
+        "description": "Scope tree rows in traversal order.",
+        "items": {
+          "properties": {
+            "entry_count": {
+              "description": "Active entries at this scope (non-recursive).",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "description": "ScopeKind serialised as a string (global, project, repo, session).",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label for the scope.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Canonical scope path.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "kind",
+            "label",
+            "entry_count"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "scopes": {
+        "description": "Total scopes in the store.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "superseded": {
+        "description": "Number of superseded (soft-deleted or replaced) entries.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "top_tags": {
+        "description": "Most frequent tags, capped at 10 by `TOP_TAGS_LIMIT`.",
+        "items": {
+          "properties": {
+            "count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tag",
+            "count"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "active",
+      "superseded",
+      "scopes",
+      "relations",
+      "db_size_bytes",
+      "kinds",
+      "top_tags",
+      "scope_tree"
+    ],
+    "type": "object"
+  }
+}

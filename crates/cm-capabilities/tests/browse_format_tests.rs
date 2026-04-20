@@ -16,6 +16,9 @@ use uuid::Uuid;
 
 use cm_capabilities::browse::{BrowseRequest, BrowseResult};
 use cm_capabilities::projection::format_browse_view_at;
+use cm_capabilities::scope::{
+    BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
+};
 use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 
 /// The golden file for the canonical three-row session-log example.
@@ -103,6 +106,7 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
         has_more: true,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
 
     let request = BrowseRequest {
@@ -114,6 +118,38 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
     (result, request, now)
 }
 
+fn smart_scope_resolution_fixture() -> ScopeResolution {
+    ScopeResolution {
+        requested_scope: "auto".to_owned(),
+        resolved_scope: ScopePath::parse("global/project:helioy/repo:context-matters")
+            .expect("test fixture scope parses"),
+        scope_mode: BrowseScopeMode::Resolved,
+        confidence: ScopeResolutionConfidence::High,
+        candidates: vec![
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:helioy/repo:context-matters")
+                    .expect("test fixture scope parses"),
+                score: 330,
+                matched: vec![
+                    "repo".to_owned(),
+                    "project_parent".to_owned(),
+                    "specificity".to_owned(),
+                ],
+            },
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:helioy")
+                    .expect("test fixture scope parses"),
+                score: 110,
+                matched: vec!["project_parent".to_owned(), "project".to_owned()],
+            },
+        ],
+        signals: vec![
+            "cwd basename matched repo scope segment: context-matters".to_owned(),
+            "cwd parent basename matched project scope segment: helioy".to_owned(),
+        ],
+    }
+}
+
 #[test]
 fn format_browse_view_matches_session_log_golden() {
     let (result, request, now) = session_log_fixture();
@@ -121,6 +157,56 @@ fn format_browse_view_matches_session_log_golden() {
     assert_eq!(
         rendered, GOLDEN_SESSION_LOG,
         "rendered browse view does not match golden\n--- rendered ---\n{rendered}\n--- end ---",
+    );
+}
+
+#[test]
+fn format_browse_view_omits_resolution_for_legacy_fixture() {
+    let (result, request, now) = session_log_fixture();
+    let rendered = format_browse_view_at(&result, &request, now);
+
+    assert!(
+        !rendered.contains("resolution:"),
+        "legacy browse output should not grow resolution metadata:\n{rendered}",
+    );
+}
+
+#[test]
+fn format_browse_view_renders_auto_scope_resolution() {
+    let (mut result, mut request, now) = session_log_fixture();
+    result.resolution = Some(smart_scope_resolution_fixture());
+    request.scope = Some("auto".to_owned());
+    request.include_resolution = true;
+
+    let rendered = format_browse_view_at(&result, &request, now);
+
+    assert!(
+        rendered.contains("query: scope=auto tag=session-log\n"),
+        "auto scope should be visible in the query header:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("requested_scope: auto\n"),
+        "requested scope missing from YAML resolution block:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("resolved_scope: global/project:helioy/repo:context-matters\n"),
+        "resolved scope missing from YAML resolution block:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("scope_mode: resolved\n"),
+        "scope mode missing from YAML resolution block:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("confidence: high\n"),
+        "confidence missing from YAML resolution block:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("    - \"cwd basename matched repo scope segment: context-matters\"\n"),
+        "repo signal missing from YAML resolution block:\n{rendered}",
+    );
+    assert!(
+        rendered.contains("    - \"cwd parent basename matched project scope segment: helioy\"\n"),
+        "project signal missing from YAML resolution block:\n{rendered}",
     );
 }
 
@@ -145,6 +231,7 @@ fn format_browse_view_empty_result_renders_clean() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
     let request = BrowseRequest {
         limit: 50,
@@ -262,6 +349,7 @@ fn format_browse_view_single_entry_hoists_all_uniform_fields() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
     let request = BrowseRequest {
         limit: 50,

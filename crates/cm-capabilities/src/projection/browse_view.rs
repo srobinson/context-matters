@@ -83,6 +83,10 @@ fn render_header(
     let _ = writeln!(out, "total: {}", result.total);
     let _ = writeln!(out, "returned: {}", entries.len());
 
+    if request.include_resolution {
+        render_resolution(out, result);
+    }
+
     if entries.is_empty() {
         return;
     }
@@ -105,6 +109,39 @@ fn render_header(
     if let Some(c) = &hoists.created_by {
         let _ = writeln!(out, "created_by: {c}  # uniform");
     }
+}
+
+fn render_resolution(out: &mut String, result: &BrowseResult) {
+    let Some(resolution) = &result.resolution else {
+        return;
+    };
+
+    let _ = writeln!(out, "resolution:");
+    let _ = writeln!(out, "  requested_scope: {}", resolution.requested_scope);
+    let _ = writeln!(
+        out,
+        "  resolved_scope: {}",
+        resolution.resolved_scope.as_str()
+    );
+    let _ = writeln!(out, "  scope_mode: {}", resolution.scope_mode);
+    let _ = writeln!(out, "  confidence: {}", resolution.confidence);
+
+    match resolution.signals.as_slice() {
+        [] => {
+            let _ = writeln!(out, "  signals: []");
+        }
+        signals => {
+            let _ = writeln!(out, "  signals:");
+            for signal in signals {
+                let _ = writeln!(out, "    - {}", yaml_quote(signal));
+            }
+        }
+    }
+}
+
+fn yaml_quote(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 fn render_entries(
@@ -265,7 +302,9 @@ fn render_pagination_hint(out: &mut String, result: &BrowseResult, request: &Bro
 /// formatter omits the `query:` line entirely.
 fn reconstruct_query(req: &BrowseRequest) -> Option<String> {
     let mut parts: Vec<String> = Vec::with_capacity(5);
-    if let Some(sp) = &req.scope_path {
+    if let Some(scope) = &req.scope {
+        parts.push(format!("scope={scope}"));
+    } else if let Some(sp) = &req.scope_path {
         parts.push(format!("scope={sp}"));
     }
     if let Some(k) = &req.kind {

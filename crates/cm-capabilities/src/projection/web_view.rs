@@ -40,6 +40,7 @@ use super::{
 };
 use crate::browse::BrowseResult;
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
+use crate::scope::{ScopeResolution, ScopeResolutionCandidate};
 use crate::stats::StatsResult;
 
 // ── Browse view ──────────────────────────────────────────────────
@@ -101,6 +102,27 @@ pub struct WebBrowseRow {
     pub tags: Vec<String>,
 }
 
+/// Scope inference metadata for a smart browse response.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebScopeResolution {
+    pub requested_scope: String,
+    pub resolved_scope: String,
+    pub scope_mode: String,
+    pub confidence: String,
+    pub candidates: Vec<WebScopeResolutionCandidate>,
+    pub signals: Vec<String>,
+}
+
+/// One candidate considered by smart browse scope resolution.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebScopeResolutionCandidate {
+    pub scope: String,
+    pub score: i32,
+    pub matched: Vec<String>,
+}
+
 /// Full projection of a [`BrowseResult`] for the cm-web HTTP API.
 ///
 /// Structurally parallel to the YAML `format_browse_view` output: same
@@ -110,6 +132,8 @@ pub struct WebBrowseRow {
 #[ts(export)]
 pub struct WebBrowseView {
     pub header: WebBrowseHeader,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<WebScopeResolution>,
     pub entries: Vec<WebBrowseRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
@@ -192,9 +216,35 @@ pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBr
 
     WebBrowseView {
         header,
+        resolution: result.resolution.as_ref().map(project_scope_resolution),
         entries: rows,
         next_cursor: result.next_cursor.clone(),
         has_more: result.has_more,
+    }
+}
+
+fn project_scope_resolution(resolution: &ScopeResolution) -> WebScopeResolution {
+    WebScopeResolution {
+        requested_scope: resolution.requested_scope.clone(),
+        resolved_scope: resolution.resolved_scope.as_str().to_owned(),
+        scope_mode: resolution.scope_mode.as_str().to_owned(),
+        confidence: resolution.confidence.as_str().to_owned(),
+        candidates: resolution
+            .candidates
+            .iter()
+            .map(project_scope_resolution_candidate)
+            .collect(),
+        signals: resolution.signals.clone(),
+    }
+}
+
+fn project_scope_resolution_candidate(
+    candidate: &ScopeResolutionCandidate,
+) -> WebScopeResolutionCandidate {
+    WebScopeResolutionCandidate {
+        scope: candidate.scope.as_str().to_owned(),
+        score: candidate.score,
+        matched: candidate.matched.clone(),
     }
 }
 
