@@ -1,6 +1,6 @@
 {
   "name": "@context-matters/cli",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Structured context store for AI agents - MCP server with SQLite backend",
   "license": "MIT",
   "repository": {
@@ -18,7 +18,7 @@
     "mcp-server"
   ],
   "dependencies": {
-    "context-matters": "0.2.5"
+    "context-matters": "0.2.6"
   },
   "publishConfig": {
     "access": "public"

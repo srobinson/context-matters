@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/srobinson/context-matters/compare/v0.2.5...v0.2.6) (2026-04-20)
+
+
+### Features
+
+* smart browse infer local scope for cx_browse ([77a6820](https://github.com/srobinson/context-matters/commit/77a6820b5b41f08e4a3512e15c2364b8b07e4411))
+
 ## [0.2.5](https://github.com/srobinson/context-matters/compare/v0.2.4...v0.2.5) (2026-04-15)
 
 
