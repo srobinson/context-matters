@@ -128,7 +128,11 @@ export type EntryDetail = Entry & {
 // --- Param types ---
 
 export interface BrowseParams {
+  scope?: string;
   scope_path?: string;
+  scope_mode?: "resolved";
+  cwd?: string;
+  include_resolution?: boolean;
   kind?: EntryKind;
   tag?: string;
   created_by?: string;
@@ -165,7 +169,11 @@ export interface RecallParams {
 }
 
 export interface AgentBrowseParams {
+  scope?: string;
   scope_path?: string;
+  scope_mode?: "resolved";
+  cwd?: string;
+  include_resolution?: boolean;
   kind?: EntryKind;
   tag?: string;
   created_by?: string;
@@ -181,7 +189,11 @@ export const api = {
     browse(params: BrowseParams = {}): Promise<BrowseView> {
       return apiFetch(
         `/entries${toSearchParams({
+          scope: params.scope,
           scope_path: params.scope_path,
+          scope_mode: params.scope_mode,
+          cwd: params.cwd,
+          include_resolution: params.include_resolution,
           kind: params.kind,
           tag: params.tag,
           created_by: params.created_by,
@@ -268,7 +280,11 @@ export const api = {
     browse(params: AgentBrowseParams = {}): Promise<BrowseView> {
       return apiFetch(
         `/agent/browse${toSearchParams({
+          scope: params.scope,
           scope_path: params.scope_path,
+          scope_mode: params.scope_mode,
+          cwd: params.cwd,
+          include_resolution: params.include_resolution,
           kind: params.kind,
           tag: params.tag,
           created_by: params.created_by,
