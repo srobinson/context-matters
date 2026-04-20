@@ -119,11 +119,15 @@ Batch-store conversation exchanges for future context. Each exchange (user/assis
 
 ### `cx_browse`
 
-List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.
+List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope for MCP sessions when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope_path` | string | no | Filter to entries at this exact scope path (no ancestor walk). Omit to browse across all scopes. |
+| `scope` | string | no | Preferred browse scope. Use "auto" to infer the most plausible existing local scope from cwd, or pass an explicit sco... |
+| `scope_path` | string | no | Compatibility exact scope filter. When supplied, browse filters to this exact scope path and does not infer a local s... |
+| `scope_mode` | enum: resolved | no | Scope resolution mode. Only "resolved" is implemented in this first pass. |
+| `cwd` | string | no | Filesystem working directory used for scope="auto" inference. MCP defaults this from the server process current direc... |
+| `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="auto". |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | no | Filter by entry kind. |
 | `tag` | string | no | Filter by tag. Entries must have at least one matching tag. |
 | `created_by` | string | no | Filter by creator attribution string. |

@@ -118,7 +118,7 @@ TOOLS OVERVIEW:
 - cx_recall: Search and retrieve context. Primary retrieval tool. Call after receiving a task.
 - cx_store: Store a single context entry with structured metadata.
 - cx_deposit: Batch-store conversation exchanges for future reference.
-- cx_browse: List entries with filters and pagination. For inventory, not search.
+- cx_browse: List entries with filters and pagination. Defaults to inferred local scope.
 - cx_get: Fetch full content for specific entry IDs (two-phase retrieval).
 - cx_update: Partially update an existing entry.
 - cx_forget: Soft-delete entries that are no longer relevant.

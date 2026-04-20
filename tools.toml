@@ -278,15 +278,16 @@ cli_flag        = "--created-by"
 
 [tools.cx_browse]
 cli_name        = "browse"
-mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
+mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope for MCP sessions when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
 cli_about       = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content."
 # JSON Schema mirrors `WebBrowseView` (crates/cm-capabilities/src/projection/web_view.rs:112).
-# Header `scope`, `kind`, `created_by` are `skip_serializing_if = Option::is_none`; row
-# `scope`, `kind` likewise. `next_cursor` is present only when more pages remain.
+# Header `scope`, `kind`, `created_by`, top-level `resolution`, row `scope`, and
+# row `kind` are `skip_serializing_if = Option::is_none`. `next_cursor` is present
+# only when more pages remain.
 output_schema   = '''
 {
   "type": "object",
-  "description": "Browse response: filtered inventory header, rows, and pagination tail.",
+  "description": "Browse response: filtered inventory header, optional scope resolution metadata, rows, and pagination tail.",
   "required": ["header", "entries", "has_more"],
   "properties": {
     "header": {
@@ -302,6 +303,31 @@ output_schema   = '''
         "created_by": {"type": "string", "description": "Created-by filter the caller supplied. Omitted when unset."},
         "kinds_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-kind counts across the returned rows."},
         "tags_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-tag counts across the returned rows."}
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "description": "Scope resolution metadata when smart browse inference was requested.",
+      "required": ["requested_scope", "resolved_scope", "scope_mode", "confidence", "candidates", "signals"],
+      "properties": {
+        "requested_scope": {"type": "string", "description": "Scope input supplied by the caller, usually auto."},
+        "resolved_scope": {"type": "string", "description": "Existing exact scope path used for the browse query."},
+        "scope_mode": {"type": "string", "enum": ["resolved"], "description": "Scope resolution mode applied."},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low", "very_low"], "description": "Resolver confidence in the selected scope."},
+        "candidates": {
+          "type": "array",
+          "description": "Candidate scopes considered by the resolver, sorted best first.",
+          "items": {
+            "type": "object",
+            "required": ["scope", "score", "matched"],
+            "properties": {
+              "scope": {"type": "string", "description": "Candidate scope path."},
+              "score": {"type": "integer", "description": "Deterministic resolver score."},
+              "matched": {"type": "array", "items": {"type": "string"}, "description": "Signals that contributed to this candidate score."}
+            }
+          }
+        },
+        "signals": {"type": "array", "items": {"type": "string"}, "description": "Human-readable explanation of the selected scope."}
       }
     },
     "entries": {
@@ -328,11 +354,40 @@ output_schema   = '''
 '''
 
 [[tools.cx_browse.params]]
+name            = "scope"
+type            = "string"
+mcp_description = "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" for MCP sessions when scope_path is omitted."
+cli_help        = "Preferred scope: auto or explicit scope path"
+cli_flag        = "--scope"
+
+[[tools.cx_browse.params]]
 name            = "scope_path"
 type            = "string"
-mcp_description = "Filter to entries at this exact scope path (no ancestor walk). Omit to browse across all scopes."
-cli_help        = "Filter to exact scope path (no ancestor walk)"
-cli_flag        = "--scope"
+mcp_description = "Compatibility exact scope filter. When supplied, browse filters to this exact scope path and does not infer a local scope."
+cli_help        = "Compatibility exact scope path (no ancestor walk)"
+cli_flag        = "--scope-path"
+
+[[tools.cx_browse.params]]
+name            = "scope_mode"
+type            = "string"
+enum            = ["resolved"]
+mcp_description = "Scope resolution mode. Only \"resolved\" is implemented in this first pass."
+cli_help        = "Scope resolution mode: resolved"
+cli_flag        = "--scope-mode"
+
+[[tools.cx_browse.params]]
+name            = "cwd"
+type            = "string"
+mcp_description = "Filesystem working directory used for scope=\"auto\" inference. MCP defaults this from the server process current directory when omitted."
+cli_help        = "Working directory used for auto scope inference"
+cli_flag        = "--cwd"
+
+[[tools.cx_browse.params]]
+name            = "include_resolution"
+type            = "boolean"
+mcp_description = "Include scope resolution metadata in the response. Defaults to true when scope=\"auto\"."
+cli_help        = "Include scope resolution metadata"
+cli_flag        = "--include-resolution"
 
 [[tools.cx_browse.params]]
 name            = "kind"
