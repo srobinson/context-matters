@@ -173,6 +173,37 @@ fn browse_with_limit_caps_entry_count() {
     );
 }
 
+#[test]
+fn browse_auto_scope_can_emit_resolution_metadata() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--exchanges",
+            r#"[{"user":"q1","assistant":"a1","title":"auto scope entry"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let assert = cm_with_data_dir(dir.path())
+        .args([
+            "browse",
+            "--scope",
+            "auto",
+            "--cwd",
+            dir.path().to_str().expect("tempdir should be utf-8"),
+            "--include-resolution",
+            "-j",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    let json: Value = serde_json::from_str(&stdout).expect("browse -j must emit valid JSON");
+    assert_eq!(json["resolution"]["requested_scope"], "auto");
+    assert_eq!(json["resolution"]["resolved_scope"], "global");
+    assert_eq!(json["resolution"]["scope_mode"], "resolved");
+}
+
 // ---------------- Export ----------------
 
 #[test]

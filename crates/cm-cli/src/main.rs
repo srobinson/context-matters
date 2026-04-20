@@ -66,7 +66,11 @@ async fn run() -> Result<()> {
             Ok(())
         }
         Some(Commands::Browse {
+            scope,
             scope_path,
+            scope_mode,
+            cwd,
+            include_resolution,
             kind,
             tag,
             created_by,
@@ -78,7 +82,11 @@ async fn run() -> Result<()> {
             let store = cli::open_store().await?;
             cli::browse::run(
                 &store,
+                scope,
                 scope_path,
+                scope_mode,
+                cwd,
+                include_resolution,
                 kind,
                 tag,
                 created_by,

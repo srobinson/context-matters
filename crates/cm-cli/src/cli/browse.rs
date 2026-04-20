@@ -15,6 +15,7 @@
 use anyhow::{Result, anyhow};
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
+use cm_capabilities::scope::BrowseScopeMode;
 use cm_capabilities::validation::clamp_limit;
 use cm_core::{ContextStore, EntryKind, ScopePath};
 
@@ -28,7 +29,11 @@ use crate::cli::scope::resolve_scope_filter;
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     store: &impl ContextStore,
+    scope: Option<String>,
     scope_path: Option<String>,
+    scope_mode: Option<String>,
+    cwd: Option<String>,
+    include_resolution: bool,
     kind: Option<String>,
     tag: Option<String>,
     created_by: Option<String>,
@@ -37,8 +42,30 @@ pub async fn run(
     cursor: Option<String>,
     json: bool,
 ) -> Result<()> {
-    let scope_path = match resolve_scope_filter(scope_path.as_deref()) {
+    let scope = scope.filter(|s| !s.trim().is_empty());
+    let scope_is_auto = matches!(scope.as_deref().map(str::trim), Some("auto"));
+
+    let scope_path = match scope_path.filter(|s| !s.trim().is_empty()) {
         Some(s) => Some(ScopePath::parse(&s).map_err(|e| anyhow!("{e}"))?),
+        None => None,
+    };
+    if scope.is_none() && scope_path.is_none() {
+        let _ = resolve_scope_filter(None);
+    }
+
+    let scope_mode = match scope_mode {
+        Some(mode) => mode
+            .parse::<BrowseScopeMode>()
+            .map_err(|e| anyhow!("{e}"))?,
+        None => BrowseScopeMode::default(),
+    };
+
+    let cwd = match cwd {
+        Some(raw) if raw.trim().is_empty() => {
+            return Err(anyhow!("cwd cannot be empty"));
+        }
+        Some(raw) => Some(raw.into()),
+        None if scope_is_auto => Some(std::env::current_dir()?),
         None => None,
     };
 
@@ -48,7 +75,11 @@ pub async fn run(
     };
 
     let request = BrowseRequest {
+        scope,
         scope_path,
+        scope_mode,
+        cwd,
+        include_resolution: include_resolution || scope_is_auto,
         kind,
         tag,
         created_by,
@@ -63,7 +94,10 @@ pub async fn run(
         .map_err(|e| anyhow!("{e}"))?;
 
     if json {
-        let view = project_web_browse(&result);
+        let mut view = project_web_browse(&result);
+        if !request.include_resolution {
+            view.resolution = None;
+        }
         println!("{}", serde_json::to_string_pretty(&view)?);
     } else {
         // `format_browse_view` already ends with a newline — use `print!`.

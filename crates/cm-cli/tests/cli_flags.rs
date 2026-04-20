@@ -96,7 +96,10 @@ fn browse_help_shows_per_arg_descriptions() {
     cm().args(["browse", "--help"])
         .assert()
         .success()
-        .stdout(contains("Filter to exact scope path"))
+        .stdout(contains("Preferred scope"))
+        .stdout(contains("Compatibility exact scope path"))
+        .stdout(contains("Working directory used for auto scope inference"))
+        .stdout(contains("Include scope resolution metadata"))
         .stdout(contains("Filter by kind"))
         .stdout(contains("Pagination cursor"));
 }

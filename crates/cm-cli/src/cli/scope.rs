@@ -129,10 +129,29 @@ mod tests {
 
     #[test]
     fn advisory_renders_with_enabled_colors_to_ansi_wrapped_text() {
+        let prior_no_color = std::env::var_os("NO_COLOR");
+        let prior_term = std::env::var_os("TERM");
+        // SAFETY: the test snapshots and restores both variables before
+        // asserting. No fallible code runs while the process env is patched.
+        unsafe {
+            std::env::remove_var("NO_COLOR");
+            std::env::set_var("TERM", "xterm-256color");
+        }
         // With colors enabled, the rendered string starts with the dim
         // escape and ends with the body. We assert on byte content to
         // catch any drift in the format string composition.
         let colored = advisory(&Colors::for_tty(true), ADVISORY_BODY_RECALL);
+        // SAFETY: restores the exact environment captured above.
+        unsafe {
+            match prior_no_color {
+                Some(v) => std::env::set_var("NO_COLOR", v),
+                None => std::env::remove_var("NO_COLOR"),
+            }
+            match prior_term {
+                Some(v) => std::env::set_var("TERM", v),
+                None => std::env::remove_var("TERM"),
+            }
+        }
         assert!(colored.starts_with("\x1b[2m"), "expected dim prefix");
         assert!(colored.contains("\x1b[0m"), "expected reset escape");
         assert!(colored.contains(ADVISORY_BODY_RECALL));

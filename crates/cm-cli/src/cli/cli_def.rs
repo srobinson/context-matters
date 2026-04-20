@@ -80,8 +80,16 @@ pub enum Commands {
     /// Browse entries with filtering and pagination.
     #[command(long_about = gh::BROWSE_ABOUT, after_help = ht::BROWSE_AFTER_HELP)]
     Browse {
-        #[arg(long = "scope", help = gh::BROWSE_SCOPE_PATH_HELP)]
+        #[arg(long, help = gh::BROWSE_SCOPE_HELP)]
+        scope: Option<String>,
+        #[arg(long = "scope-path", help = gh::BROWSE_SCOPE_PATH_HELP)]
         scope_path: Option<String>,
+        #[arg(long, help = gh::BROWSE_SCOPE_MODE_HELP)]
+        scope_mode: Option<String>,
+        #[arg(long, help = gh::BROWSE_CWD_HELP)]
+        cwd: Option<String>,
+        #[arg(long, help = gh::BROWSE_INCLUDE_RESOLUTION_HELP)]
+        include_resolution: bool,
         #[arg(long, help = gh::BROWSE_KIND_HELP)]
         kind: Option<String>,
         #[arg(long, help = gh::BROWSE_TAG_HELP)]
