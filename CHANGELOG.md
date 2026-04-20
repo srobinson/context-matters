@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/srobinson/context-matters/compare/v0.2.7...v0.2.8) (2026-04-20)
+
+
+### Bug Fixes
+
+* **npm:** strip leading dir when extracting cargo-dist tarball ([#43](https://github.com/srobinson/context-matters/issues/43)) ([c5a2460](https://github.com/srobinson/context-matters/commit/c5a2460b1fa85042e937cee12c361973ed0a8852))
+
 ## [0.2.7](https://github.com/srobinson/context-matters/compare/v0.2.6...v0.2.7) (2026-04-20)
 
 
