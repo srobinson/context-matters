@@ -178,6 +178,7 @@ export interface AgentBrowseParams {
   tag?: string;
   created_by?: string;
   include_superseded?: boolean;
+  sort?: BrowseSort;
   limit?: number;
   cursor?: string;
 }
@@ -289,6 +290,7 @@ export const api = {
           tag: params.tag,
           created_by: params.created_by,
           include_superseded: params.include_superseded,
+          sort: params.sort,
           limit: params.limit,
           cursor: params.cursor,
         })}`,

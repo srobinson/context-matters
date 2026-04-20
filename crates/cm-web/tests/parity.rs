@@ -301,6 +301,36 @@ async fn browse_with_filters_parity() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn browse_agent_sort_matches_entries_parity() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let expected = capability_browse(
+        &store,
+        BrowseRequest {
+            limit: clamp_limit(None),
+            sort: BrowseSort::TitleAsc,
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let app = test_app(store);
+    let agent = get_json(app.clone(), "/api/agent/browse?sort=title_asc").await;
+    let entries = get_json(app, "/api/entries?sort=title_asc").await;
+
+    assert_eq!(
+        expected, agent,
+        "Agent browse sort must match capability layer"
+    );
+    assert_eq!(
+        agent, entries,
+        "Agent browse sort must match entries endpoint"
+    );
+    assert_eq!(agent["header"]["sort_used"], json!("title asc"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn browse_agent_auto_scope_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
