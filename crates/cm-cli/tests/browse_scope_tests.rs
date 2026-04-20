@@ -73,7 +73,7 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
         &store,
         &json!({
             "scope": "auto",
-            "cwd": "/Users/alphab/Dev/LLM/DEV/helioy/context-matters",
+            "cwd": "/tmp/helioy/context-matters",
             "limit": 20
         }),
     )
