@@ -1,6 +1,8 @@
 default:
     @just --list
 
+CM_LOCAL_BIN := env_var_or_default("CM_LOCAL_BIN", "/Users/alphab/Dev/LLM/DEV/helioy/context-matters/target/release/cm")
+
 build:
     cargo build --workspace
 
@@ -9,6 +11,10 @@ release:
 
 install: release web-install
     cargo install --path crates/cm-cli
+
+install-local:
+    cargo build --release -p cm-cli
+    install -m 755 target/release/cm "{{CM_LOCAL_BIN}}"
 
 test:
     cargo nextest run --workspace
