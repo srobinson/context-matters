@@ -146,7 +146,9 @@ async function install() {
 
     const tmpTar = path.join(binDir, `${BIN_NAME}.tar.gz`);
     fs.writeFileSync(tmpTar, tarball);
-    execSync(`tar xzf "${tmpTar}" -C "${binDir}"`, { stdio: "pipe" });
+    execSync(`tar xzf "${tmpTar}" -C "${binDir}" --strip-components=1`, {
+      stdio: "pipe",
+    });
     fs.unlinkSync(tmpTar);
 
     // Ensure the binary is executable
