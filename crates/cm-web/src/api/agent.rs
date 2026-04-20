@@ -210,7 +210,11 @@ pub(crate) async fn execute_browse(
     browse::browse(
         store,
         BrowseRequest {
+            scope: None,
             scope_path,
+            scope_mode: Default::default(),
+            cwd: None,
+            include_resolution: false,
             kind,
             tag: bq.tag,
             created_by: bq.created_by,

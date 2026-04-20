@@ -103,6 +103,7 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
         has_more: true,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
 
     let request = BrowseRequest {
@@ -145,6 +146,7 @@ fn format_browse_view_empty_result_renders_clean() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
     let request = BrowseRequest {
         limit: 50,
@@ -262,6 +264,7 @@ fn format_browse_view_single_entry_hoists_all_uniform_fields() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
     let request = BrowseRequest {
         limit: 50,

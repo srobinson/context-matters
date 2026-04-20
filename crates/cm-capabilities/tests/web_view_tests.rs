@@ -123,6 +123,7 @@ fn web_browse_view_hoists_uniform_scope() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -177,6 +178,7 @@ fn web_browse_view_mixed_scope() {
         has_more: false,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
+        resolution: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
