@@ -18,8 +18,9 @@
 //! golden under `tests/snapshots/write_ack_*.txt` alongside the source
 //! change.
 
+use cm_capabilities::forget::ForgetError;
 use cm_capabilities::projection::{
-    ForgetError, format_deposit_ack, format_forget_ack, format_store_ack, format_update_ack,
+    format_deposit_ack, format_forget_ack, format_store_ack, format_update_ack,
 };
 
 const GOLDEN_STORE: &str = include_str!("snapshots/write_ack_store.txt");

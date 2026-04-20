@@ -1,6 +1,9 @@
 pub mod browse;
 pub mod constants;
+pub mod deposit;
 pub mod error;
+pub mod export;
+pub mod forget;
 pub mod projection;
 pub mod recall;
 pub mod scope;
