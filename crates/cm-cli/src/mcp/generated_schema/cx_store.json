@@ -1,0 +1,76 @@
+{
+  "description": "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash.",
+  "inputSchema": {
+    "properties": {
+      "body": {
+        "description": "Full content body in markdown.",
+        "type": "string"
+      },
+      "confidence": {
+        "description": "Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level.",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ],
+        "type": "string"
+      },
+      "created_by": {
+        "description": "Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolidation'. Default: 'agent:claude-code'.",
+        "type": "string"
+      },
+      "expires_at": {
+        "description": "ISO 8601 expiry timestamp. After this time the entry is considered stale. Stored but not enforced by the storage layer.",
+        "type": "string"
+      },
+      "kind": {
+        "description": "Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rationale. preference: user/project preference. lesson: learned from experience. reference: pointer to external material. feedback: user correction (highest priority). pattern: recurring code/process pattern. observation: general-purpose note.",
+        "enum": [
+          "fact",
+          "decision",
+          "preference",
+          "lesson",
+          "reference",
+          "feedback",
+          "pattern",
+          "observation"
+        ],
+        "type": "string"
+      },
+      "priority": {
+        "description": "Numeric priority for manual ordering. Higher values surface first in recall results.",
+        "type": "integer"
+      },
+      "scope_path": {
+        "description": "Target scope path. Auto-created with ancestor chain if it does not exist. Default: 'global'. Format: 'global', 'global/project:<id>', 'global/project:<id>/repo:<id>', 'global/project:<id>/repo:<id>/session:<id>'.",
+        "type": "string"
+      },
+      "source": {
+        "description": "Source URL or file path for reference entries.",
+        "type": "string"
+      },
+      "supersedes": {
+        "description": "ID of an existing entry that this new entry replaces. The old entry is soft-deleted and linked via a 'supersedes' relation.",
+        "type": "string"
+      },
+      "tags": {
+        "description": "Freeform tags for categorization and filtering. Pass a JSON array: [\"tag1\", \"tag2\"].",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": {
+        "description": "Short summary of the entry. Displayed in search results and browse listings.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "body",
+      "kind"
+    ],
+    "type": "object"
+  },
+  "name": "cx_store"
+}

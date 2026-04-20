@@ -1,0 +1,113 @@
+{
+  "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts full hyphenated UUIDv7 strings only. IDs that do not exist are silently omitted. Maximum 100 IDs per request.",
+  "inputSchema": {
+    "properties": {
+      "ids": {
+        "description": "Entry IDs: full hyphenated UUIDv7 strings. Max 100 per request.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "ids"
+    ],
+    "type": "object"
+  },
+  "name": "cx_get",
+  "outputSchema": {
+    "description": "Get response: request/found counts, missing ids, and full entries.",
+    "properties": {
+      "entries": {
+        "description": "Resolved entries with full body. Omitted when empty. Order mirrors the caller's request.",
+        "items": {
+          "properties": {
+            "age": {
+              "description": "Relative age string (e.g. \"2h\", \"6d\").",
+              "type": "string"
+            },
+            "body": {
+              "description": "Full markdown body.",
+              "type": "string"
+            },
+            "confidence": {
+              "description": "Entry confidence level. Omitted when `meta.confidence` is unset.",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "description": "Full UUID v7.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "decision",
+                "preference",
+                "lesson",
+                "reference",
+                "feedback",
+                "pattern",
+                "observation"
+              ],
+              "type": "string"
+            },
+            "scope": {
+              "description": "Canonical scope path.",
+              "type": "string"
+            },
+            "tags": {
+              "description": "Entry tags. Omitted when `meta.tags` is empty.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "scope",
+            "kind",
+            "age",
+            "body"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "found": {
+        "description": "Number of entries successfully resolved from the store.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "missing": {
+        "description": "Ids the caller supplied that did not resolve. Omitted when empty.",
+        "items": {
+          "description": "Verbatim id the caller passed; not guaranteed to be a valid UUID.",
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "requested": {
+        "description": "Number of ids the caller supplied.",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "requested",
+      "found"
+    ],
+    "type": "object"
+  }
+}
