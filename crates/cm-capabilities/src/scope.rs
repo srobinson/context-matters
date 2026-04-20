@@ -190,10 +190,9 @@ fn resolve_auto_scope(
         }
 
         let segments = scope_segments(&scope.path);
-        let project_matches_cwd = segments
-            .project
-            .as_ref()
-            .is_some_and(|project| cwd.ancestors.contains(project));
+        let project_matches_cwd = segments.project.as_ref().is_some_and(|project| {
+            cwd.basename.as_ref() == Some(project) || cwd.parent_basename.as_ref() == Some(project)
+        });
         let project_is_repo_parent = matching_repo_parents.contains(scope.path.as_str());
 
         if project_matches_cwd || project_is_repo_parent {
@@ -239,7 +238,6 @@ struct CwdParts {
     has_cwd: bool,
     basename: Option<String>,
     parent_basename: Option<String>,
-    ancestors: HashSet<String>,
 }
 
 impl CwdParts {
@@ -260,7 +258,6 @@ impl CwdParts {
             has_cwd: true,
             basename: names.last().cloned(),
             parent_basename: names.iter().rev().nth(1).cloned(),
-            ancestors: names.into_iter().collect(),
         }
     }
 }
@@ -305,16 +302,12 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
             matched.push("repo".to_owned());
         }
 
-        if segments.project.as_deref() == cwd.parent_basename.as_deref() {
+        if segments.project.as_deref() == cwd.basename.as_deref() {
+            score += 100;
+            matched.push("project_cwd".to_owned());
+        } else if segments.project.as_deref() == cwd.parent_basename.as_deref() {
             score += 100;
             matched.push("project_parent".to_owned());
-        } else if segments
-            .project
-            .as_ref()
-            .is_some_and(|project| cwd.ancestors.contains(project))
-        {
-            score += 60;
-            matched.push("project_ancestor".to_owned());
         }
     }
 
@@ -391,6 +384,32 @@ fn resolution_signals(cwd: &CwdParts, candidates: &[ScopeResolutionCandidate]) -
         signals.push(format!(
             "cwd parent basename matched project scope segment: {project}"
         ));
+    }
+
+    if let Some(project) = &cwd.basename
+        && candidates.iter().any(|candidate| {
+            candidate
+                .matched
+                .iter()
+                .any(|matched| matched == "project_cwd")
+        })
+    {
+        signals.push(format!(
+            "cwd basename matched project scope segment: {project}"
+        ));
+    }
+
+    if let Some(top) = candidates.first() {
+        let tied_top_count = candidates
+            .iter()
+            .filter(|candidate| candidate.score == top.score)
+            .count();
+        if tied_top_count > 1 {
+            signals.push(format!(
+                "ambiguous scope resolution; {tied_top_count} candidates share top score {}",
+                top.score
+            ));
+        }
     }
 
     if candidates
