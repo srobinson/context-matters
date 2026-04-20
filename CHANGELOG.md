@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/srobinson/context-matters/compare/v0.2.6...v0.2.7) (2026-04-20)
+
+
+### Features
+
+* **cli:** world-class CLI parity with MCP via cm-capabilities ([#41](https://github.com/srobinson/context-matters/issues/41)) ([0c09fb6](https://github.com/srobinson/context-matters/commit/0c09fb688df5c21d46160ff72883fc270e91082e))
+
 ## [0.2.6](https://github.com/srobinson/context-matters/compare/v0.2.5...v0.2.6) (2026-04-20)
 
 
