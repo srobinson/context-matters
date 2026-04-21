@@ -1,9 +1,9 @@
 //! `cm` binary entry point.
 //!
-//! Thin parse-and-dispatch shell. The clap surface lives in
+//! Thin argument parser and command dispatcher. The clap surface lives in
 //! [`cm_cli::cli::cli_def`]; admin handlers live in [`cm_cli::cli::admin`];
-//! per-command handlers ship in the Read/Write phase sub-issues
-//! (ALP-1774..ALP-1782) and are stubbed with `todo!()` until then.
+//! other command handlers live in their command modules under [`cm_cli::cli`]
+//! and are invoked from the dispatch match below.
 
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};

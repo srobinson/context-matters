@@ -129,13 +129,7 @@ pub async fn recall(
     // Sort by scope depth descending (most specific first).
     // Stable sort preserves the store's native ordering (relevance or recency) within each scope level.
     let mut rows: Vec<RecallRow> = rows;
-    rows.sort_by(|a, b| {
-        b.entry
-            .scope_path
-            .as_str()
-            .len()
-            .cmp(&a.entry.scope_path.as_str().len())
-    });
+    rows.sort_by_key(|row| std::cmp::Reverse(row.entry.scope_path.depth()));
 
     // Apply limit after post-filtering and sorting
     let rows: Vec<RecallRow> = rows.into_iter().take(request.limit as usize).collect();
@@ -434,9 +428,8 @@ async fn recall_candidates_without_query(
     let scoped_paths: Vec<Option<ScopePath>> = match scope_path {
         Some(scope_path) => scope_path
             .ancestors()
-            .map(|path| ScopePath::parse(path).expect("validated ancestor path"))
-            .map(Some)
-            .collect(),
+            .map(|path| ScopePath::parse(path).map(Some))
+            .collect::<Result<_, _>>()?,
         None => vec![None],
     };
 

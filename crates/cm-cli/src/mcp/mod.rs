@@ -8,7 +8,6 @@ mod panic_guard;
 mod schema;
 pub mod tools;
 
-use std::io::{self, BufRead, Write};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
@@ -16,6 +15,7 @@ use cm_core::ContextStore;
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::io::{self, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
 pub use panic_guard::install_panic_hook;
 
@@ -54,23 +54,46 @@ pub const MAX_MCP_RESPONSE_BYTES: usize = 16 * 1024;
 const TRUNCATE_ADVISORY: &str = "\n[Truncated: response exceeded 16 KB cap. \
 Use cx_get(id=...) for full bodies or narrow your query.]";
 
+/// Reserved bytes for JSON-RPC wrapper fields around tool error envelopes.
+const TOOL_ERROR_RPC_OVERHEAD_RESERVE_BYTES: usize = 512;
+
+/// Maximum bytes spent on the hidden duplicate error message in `_meta`.
+const TOOL_ERROR_META_MESSAGE_BYTES: usize = 512;
+
+/// Upstream Claude Code issue that forces MCP tool errors to stay in a
+/// success envelope for now.
+const TOOL_ERROR_WORKAROUND_UPSTREAM: &str = "anthropics/claude-code#22264";
+
+/// TODO(ALP-1964): restore top-level `isError: true` once Claude Code
+/// handles parallel MCP tools with Promise.allSettled semantics.
+const TOOL_ERROR_WORKAROUND_CLEANUP: &str = "Restore top-level isError:true when Claude Code handles parallel MCP tools with Promise.allSettled.";
+
 // ── Response Helpers ──────────────────────────────────────────────
 
 /// Clip `text` to `max_bytes`, preferring a newline boundary.
 ///
 /// Algorithm:
 /// * If `text.len() <= max_bytes`, return unchanged.
-/// * Otherwise walk back from `max_bytes` to the nearest UTF-8 char boundary.
+/// * Otherwise reserve room for [`TRUNCATE_ADVISORY`] inside `max_bytes`.
+/// * Walk back from the body budget to the nearest UTF-8 char boundary.
 /// * Cut just after the last `\n` at or before that boundary so the body ends
 ///   at a clean line break. If no newline exists in range, hard-cap at the
 ///   char boundary.
-/// * Append [`TRUNCATE_ADVISORY`] so the caller (LLM) recognises truncation.
+/// * Append [`TRUNCATE_ADVISORY`] while keeping the final string within
+///   `max_bytes`.
 pub fn cap_response(text: String, max_bytes: usize) -> String {
     if text.len() <= max_bytes {
         return text;
     }
-    // Walk back from max_bytes to a valid UTF-8 boundary so slicing cannot panic.
-    let mut safe_end = max_bytes;
+    let advisory = if TRUNCATE_ADVISORY.len() > max_bytes {
+        &TRUNCATE_ADVISORY[..max_bytes]
+    } else {
+        TRUNCATE_ADVISORY
+    };
+    let body_budget = max_bytes.saturating_sub(advisory.len());
+
+    // Walk back from the body budget to a valid UTF-8 boundary so slicing cannot panic.
+    let mut safe_end = body_budget;
     while safe_end > 0 && !text.is_char_boundary(safe_end) {
         safe_end -= 1;
     }
@@ -81,7 +104,7 @@ pub fn cap_response(text: String, max_bytes: usize) -> String {
         None => safe_end,
     };
     let mut result = text[..cut].to_owned();
-    result.push_str(TRUNCATE_ADVISORY);
+    result.push_str(advisory);
     result
 }
 
@@ -192,11 +215,9 @@ impl<S: ContextStore> McpServer<S> {
 
     /// Run the JSON-RPC stdio loop.
     ///
-    /// Uses blocking `stdin.lock().lines()` inside an async fn.
-    /// Safe for v1 because: (1) `run()` is called directly from main(),
-    /// not via `tokio::spawn()`, so `Send` is not required; (2) the MCP
-    /// stdio protocol is single-client sequential request/response;
-    /// (3) there is no concurrent work to preempt.
+    /// Reads newline-delimited JSON-RPC requests from Tokio stdin and
+    /// writes responses through Tokio stdout. The MCP stdio protocol is
+    /// single-client sequential request/response.
     ///
     /// Error isolation. Every handler invocation is wrapped in
     /// [`futures::FutureExt::catch_unwind`] so a panic in any tool
@@ -211,11 +232,11 @@ impl<S: ContextStore> McpServer<S> {
     /// log-and-continue on any other I/O error. The invariant is
     /// simple: one bad request must never take the server down.
     pub async fn run(&self) -> anyhow::Result<()> {
-        let stdin = io::stdin();
+        let stdin = BufReader::new(io::stdin());
+        let mut lines = stdin.lines();
         let mut stdout = io::stdout();
 
-        for line in stdin.lock().lines() {
-            let line = line?;
+        while let Some(line) = lines.next_line().await? {
             if line.is_empty() {
                 continue;
             }
@@ -233,7 +254,10 @@ impl<S: ContextStore> McpServer<S> {
                             data: None,
                         }),
                     };
-                    if write_response(&mut stdout, &error_response).is_broken_pipe() {
+                    if write_response(&mut stdout, &error_response)
+                        .await
+                        .is_broken_pipe()
+                    {
                         return Ok(());
                     }
                     continue;
@@ -261,7 +285,7 @@ impl<S: ContextStore> McpServer<S> {
             };
 
             if let Some(resp) = response
-                && write_response(&mut stdout, &resp).is_broken_pipe()
+                && write_response(&mut stdout, &resp).await.is_broken_pipe()
             {
                 return Ok(());
             }
@@ -349,14 +373,7 @@ impl<S: ContextStore> McpServer<S> {
 
         match result {
             Ok(tool_result) => Ok(build_envelope(tool_name, tool_result)),
-            // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
-            // any tool returns isError:true (Promise.all fail-fast, tracked at
-            // anthropics/claude-code#22264). Drop the flag; prefix with ERROR: so the
-            // LLM recognises failure from content alone. Revert when #22264 ships
-            // Promise.allSettled for MCP tools.
-            Err(e) => Ok(json!({
-                "content": [{"type": "text", "text": format!("ERROR: {e}")}]
-            })),
+            Err(e) => Ok(build_tool_error_envelope(e)),
         }
     }
 }
@@ -387,7 +404,10 @@ impl WriteOutcome {
 ///   loop can exit cleanly.
 /// * Any other I/O error is logged via `tracing::error!` and swallowed;
 ///   the run loop continues on the next iteration.
-fn write_response<W: Write>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutcome {
+async fn write_response<W>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutcome
+where
+    W: AsyncWrite + Unpin,
+{
     let serialized = match serde_json::to_string(resp) {
         Ok(s) => s,
         Err(e) => {
@@ -409,7 +429,14 @@ fn write_response<W: Write>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutc
         }
     };
 
-    match writeln!(stdout, "{serialized}").and_then(|()| stdout.flush()) {
+    let write_result = async {
+        stdout.write_all(serialized.as_bytes()).await?;
+        stdout.write_all(b"\n").await?;
+        stdout.flush().await
+    }
+    .await;
+
+    match write_result {
         Ok(()) => WriteOutcome::Ok,
         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => WriteOutcome::BrokenPipe,
         Err(e) => {
@@ -486,4 +513,53 @@ fn build_envelope(tool_name: &str, tool_result: ToolResult) -> Value {
         envelope.insert("structuredContent".to_owned(), structured);
     }
     Value::Object(envelope)
+}
+
+/// Build the temporary success envelope used for tool-handler failures.
+///
+/// WORKAROUND: Claude Code cancels sibling parallel MCP tool calls when
+/// any result carries top-level `isError: true` because its MCP client
+/// currently uses Promise.all fail-fast behavior. Until
+/// [`TOOL_ERROR_WORKAROUND_UPSTREAM`] is fixed, keep the response as a
+/// successful JSON-RPC `tools/call` result and make the failure visible in
+/// two ways:
+/// - `content[0].text` starts with `ERROR:` for the LLM-facing channel.
+/// - `_meta.cm_tool_error` exposes the failure programmatically without
+///   triggering Claude Code's top-level `isError` handling.
+fn build_tool_error_envelope(message: String) -> Value {
+    let (text_budget, meta_budget) = tool_error_field_budgets();
+    let text = cap_response(format!("ERROR: {message}"), text_budget);
+    let meta_message = cap_response(message, meta_budget);
+
+    build_tool_error_envelope_parts(text, meta_message)
+}
+
+fn tool_error_field_budgets() -> (usize, usize) {
+    let fixed_result_bytes = serde_json::to_string(&build_tool_error_envelope_parts(
+        String::new(),
+        String::new(),
+    ))
+    .map(|s| s.len())
+    .unwrap_or(TOOL_ERROR_RPC_OVERHEAD_RESERVE_BYTES);
+    let field_budget = MAX_MCP_RESPONSE_BYTES
+        .saturating_sub(fixed_result_bytes + TOOL_ERROR_RPC_OVERHEAD_RESERVE_BYTES);
+    let meta_budget = field_budget.min(TOOL_ERROR_META_MESSAGE_BYTES);
+    let text_budget = field_budget.saturating_sub(meta_budget);
+
+    (text_budget, meta_budget)
+}
+
+fn build_tool_error_envelope_parts(text: String, message: String) -> Value {
+    json!({
+        "content": [{"type": "text", "text": text}],
+        "_meta": {
+            "cm_tool_error": {
+                "is_error": true,
+                "message": message,
+                "suppressed_top_level_is_error": true,
+                "upstream_issue": TOOL_ERROR_WORKAROUND_UPSTREAM,
+                "cleanup": TOOL_ERROR_WORKAROUND_CLEANUP
+            }
+        }
+    })
 }

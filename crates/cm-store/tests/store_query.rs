@@ -2,8 +2,10 @@
 
 mod common;
 
-use cm_core::{BrowseSort, EntryFilter, EntryKind, NewScope, Pagination};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use cm_core::{BrowseSort, EntryFilter, EntryKind, EntryMeta, NewScope, Pagination};
 use common::*;
+use serde_json::json;
 
 // ── Scope-based query ───────────────────────────────────────────
 
@@ -555,6 +557,55 @@ async fn browse_pagination_with_cursor() {
     assert_eq!(all_ids.len(), unique.len(), "Pages should not overlap");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_tag_filter_matches_exact_json_array_element() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let mut exact = new_entry(
+        "global",
+        EntryKind::Fact,
+        "Exact wildcard tag",
+        "Body with literal wildcard tag",
+    );
+    exact.meta = Some(EntryMeta {
+        tags: vec!["rust_%".to_owned()],
+        ..Default::default()
+    });
+    store.create_entry(exact, &test_ctx()).await.unwrap();
+
+    let mut wildcard_match = new_entry(
+        "global",
+        EntryKind::Fact,
+        "LIKE wildcard false positive",
+        "Body with tag that LIKE would match",
+    );
+    wildcard_match.meta = Some(EntryMeta {
+        tags: vec!["rust_async".to_owned()],
+        ..Default::default()
+    });
+    store
+        .create_entry(wildcard_match, &test_ctx())
+        .await
+        .unwrap();
+
+    let result = store
+        .browse(EntryFilter {
+            tag: Some("rust_%".to_owned()),
+            pagination: Pagination {
+                limit: 10,
+                cursor: None,
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.total, 1);
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].title, "Exact wildcard tag");
+}
+
 // ── Sort mode tests ────────────────────────────────────────────
 
 /// Helper: create entries with distinct titles, kinds, and scopes for sort testing.
@@ -860,6 +911,37 @@ async fn browse_sort_cursor_mismatch_rejected() {
         .await;
 
     assert!(result.is_err(), "Cursor sort mismatch should be rejected");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_text_sort_cursor_missing_primary_value_rejected() {
+    let (store, _dir) = test_store().await;
+    create_sortable_entries(&store).await;
+
+    let malformed_cursor = URL_SAFE_NO_PAD.encode(
+        json!({
+            "sort": "title_asc",
+            "ts": "2026-01-01T00:00:00.000Z",
+            "id": "00000000-0000-0000-0000-000000000000"
+        })
+        .to_string(),
+    );
+
+    let result = store
+        .browse(EntryFilter {
+            sort: BrowseSort::TitleAsc,
+            pagination: Pagination {
+                limit: 2,
+                cursor: Some(malformed_cursor),
+            },
+            ..Default::default()
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Text sort cursor missing primary value should be rejected"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
