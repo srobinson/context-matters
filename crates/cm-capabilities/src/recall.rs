@@ -428,9 +428,8 @@ async fn recall_candidates_without_query(
     let scoped_paths: Vec<Option<ScopePath>> = match scope_path {
         Some(scope_path) => scope_path
             .ancestors()
-            .map(|path| ScopePath::parse(path).expect("validated ancestor path"))
-            .map(Some)
-            .collect(),
+            .map(|path| ScopePath::parse(path).map(Some))
+            .collect::<Result<_, _>>()?,
         None => vec![None],
     };
 
