@@ -2,6 +2,7 @@
 
 mod common;
 
+use cm_cli::mcp::MAX_MCP_RESPONSE_BYTES;
 use common::{send_request, shutdown, spawn_server};
 use serde_json::{Value, json};
 
@@ -72,6 +73,64 @@ fn protocol_tools_call_unknown_tool_uses_error_workaround() {
 
     assert_eq!(resp["id"], 100);
     assert_tool_error_workaround(&resp, "Unknown tool: cx_nope");
+
+    shutdown(child, stdin);
+}
+
+#[test]
+fn protocol_tools_call_unknown_tool_caps_error_envelope() {
+    let dir = tempfile::tempdir().unwrap();
+    let (child, mut stdin, mut stdout) = spawn_server(&dir);
+
+    send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+
+    let tool_name = format!("cx_{}", "x".repeat(20_000));
+    let resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 102,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {}
+            }
+        }),
+    );
+
+    assert_eq!(resp["id"], 102);
+    let serialized = serde_json::to_string(&resp).expect("serialize response");
+    assert!(
+        serialized.len() <= MAX_MCP_RESPONSE_BYTES,
+        "full error envelope should fit inside the byte cap"
+    );
+
+    let result = &resp["result"];
+    let text = result["content"][0]["text"].as_str().expect("text content");
+    assert!(
+        text.starts_with("ERROR: Unknown tool: cx_"),
+        "LLM-facing error content must preserve the error prefix"
+    );
+    assert!(
+        text.len() <= MAX_MCP_RESPONSE_BYTES,
+        "LLM-facing error content must fit inside the byte cap"
+    );
+    assert!(
+        text.contains("[Truncated"),
+        "capped error content should carry the truncation advisory"
+    );
+    let meta_error = &result["_meta"]["cm_tool_error"];
+    assert_eq!(meta_error["is_error"], true);
+    let meta_message = meta_error["message"].as_str().expect("meta message");
+    assert!(
+        meta_message.contains("[Truncated"),
+        "duplicated meta error message should also be capped"
+    );
 
     shutdown(child, stdin);
 }

@@ -54,6 +54,12 @@ pub const MAX_MCP_RESPONSE_BYTES: usize = 16 * 1024;
 const TRUNCATE_ADVISORY: &str = "\n[Truncated: response exceeded 16 KB cap. \
 Use cx_get(id=...) for full bodies or narrow your query.]";
 
+/// Reserved bytes for JSON-RPC wrapper fields around tool error envelopes.
+const TOOL_ERROR_RPC_OVERHEAD_RESERVE_BYTES: usize = 512;
+
+/// Maximum bytes spent on the hidden duplicate error message in `_meta`.
+const TOOL_ERROR_META_MESSAGE_BYTES: usize = 512;
+
 /// Upstream Claude Code issue that forces MCP tool errors to stay in a
 /// success envelope for now.
 const TOOL_ERROR_WORKAROUND_UPSTREAM: &str = "anthropics/claude-code#22264";
@@ -521,8 +527,31 @@ fn build_envelope(tool_name: &str, tool_result: ToolResult) -> Value {
 /// - `_meta.cm_tool_error` exposes the failure programmatically without
 ///   triggering Claude Code's top-level `isError` handling.
 fn build_tool_error_envelope(message: String) -> Value {
+    let (text_budget, meta_budget) = tool_error_field_budgets();
+    let text = cap_response(format!("ERROR: {message}"), text_budget);
+    let meta_message = cap_response(message, meta_budget);
+
+    build_tool_error_envelope_parts(text, meta_message)
+}
+
+fn tool_error_field_budgets() -> (usize, usize) {
+    let fixed_result_bytes = serde_json::to_string(&build_tool_error_envelope_parts(
+        String::new(),
+        String::new(),
+    ))
+    .map(|s| s.len())
+    .unwrap_or(TOOL_ERROR_RPC_OVERHEAD_RESERVE_BYTES);
+    let field_budget = MAX_MCP_RESPONSE_BYTES
+        .saturating_sub(fixed_result_bytes + TOOL_ERROR_RPC_OVERHEAD_RESERVE_BYTES);
+    let meta_budget = field_budget.min(TOOL_ERROR_META_MESSAGE_BYTES);
+    let text_budget = field_budget.saturating_sub(meta_budget);
+
+    (text_budget, meta_budget)
+}
+
+fn build_tool_error_envelope_parts(text: String, message: String) -> Value {
     json!({
-        "content": [{"type": "text", "text": format!("ERROR: {message}")}],
+        "content": [{"type": "text", "text": text}],
         "_meta": {
             "cm_tool_error": {
                 "is_error": true,
