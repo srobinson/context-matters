@@ -1,11 +1,55 @@
 //! Read-only query operations: resolve_context, search, browse.
 
 use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath, ScoredEntry};
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row, Sqlite};
 
 use super::CmStore;
-use super::cursor::{append_cursor_conditions, decode_cursor, encode_cursor, order_by_clause};
+use super::cursor::{decode_cursor, encode_cursor, order_by_clause, push_cursor_condition};
 use super::parse::{map_db_err, parse_entry};
+
+fn push_where_prefix(query: &mut QueryBuilder<'_, Sqlite>, has_where: &mut bool) {
+    if *has_where {
+        query.push(" AND ");
+    } else {
+        query.push(" WHERE ");
+        *has_where = true;
+    }
+}
+
+fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilter) -> bool {
+    let mut has_where = false;
+
+    if !filter.include_superseded {
+        push_where_prefix(query, &mut has_where);
+        query.push("superseded_by IS NULL");
+    }
+
+    if let Some(ref sp) = filter.scope_path {
+        push_where_prefix(query, &mut has_where);
+        query.push("scope_path = ");
+        query.push_bind(sp.as_str().to_owned());
+    }
+
+    if let Some(ref kind) = filter.kind {
+        push_where_prefix(query, &mut has_where);
+        query.push("kind = ");
+        query.push_bind(kind.as_str().to_owned());
+    }
+
+    if let Some(ref created_by) = filter.created_by {
+        push_where_prefix(query, &mut has_where);
+        query.push("created_by = ");
+        query.push_bind(created_by.clone());
+    }
+
+    if let Some(ref tag) = filter.tag {
+        push_where_prefix(query, &mut has_where);
+        query.push("json_extract(meta, '$.tags') LIKE ");
+        query.push_bind(format!("%\"{tag}\"%"));
+    }
+
+    has_where
+}
 
 impl CmStore {
     pub(crate) async fn do_resolve_context(
@@ -40,23 +84,22 @@ impl CmStore {
                 .await
                 .map_err(map_db_err)?
             } else {
-                let kind_placeholders: Vec<&str> = kinds.iter().map(|_| "?").collect();
-                let sql = format!(
+                let mut q = QueryBuilder::<Sqlite>::new(
                     "SELECT * FROM entries \
-                     WHERE scope_path = ? AND superseded_by IS NULL \
-                     AND kind IN ({}) \
-                     ORDER BY updated_at DESC \
-                     LIMIT ?",
-                    kind_placeholders.join(", ")
+                     WHERE scope_path = ",
                 );
-                let mut q = sqlx::query(&sql).bind(*ancestor);
-                for k in kinds {
-                    q = q.bind(k.as_str());
+                q.push_bind(*ancestor);
+                q.push(" AND superseded_by IS NULL AND kind IN (");
+                {
+                    let mut separated = q.separated(", ");
+                    for k in kinds {
+                        separated.push_bind(k.as_str());
+                    }
                 }
-                q.bind(remaining as i64)
-                    .fetch_all(pool)
-                    .await
-                    .map_err(map_db_err)?
+                q.push(") ORDER BY updated_at DESC LIMIT ");
+                q.push_bind(remaining as i64);
+
+                q.build().fetch_all(pool).await.map_err(map_db_err)?
             };
 
             for row in &rows {
@@ -87,25 +130,27 @@ impl CmStore {
         // FTS5 `rank` is a negative float (lower = more relevant).
         let rows = if let Some(sp) = scope_path {
             let ancestors: Vec<&str> = sp.ancestors().collect();
-            let placeholders: Vec<&str> = ancestors.iter().map(|_| "?").collect();
-            let sql = format!(
+            let mut q = QueryBuilder::<Sqlite>::new(
                 "SELECT e.*, f.rank AS fts_rank FROM entries e \
                  JOIN entries_fts f ON e.rowid = f.rowid \
-                 WHERE f.entries_fts MATCH ? \
-                 AND e.superseded_by IS NULL \
-                 AND e.scope_path IN ({}) \
-                 ORDER BY f.rank \
-                 LIMIT ?",
-                placeholders.join(", ")
+                 WHERE f.entries_fts MATCH ",
             );
-            let mut q = sqlx::query(&sql).bind(&fts_str);
-            for a in &ancestors {
-                q = q.bind(*a);
+            q.push_bind(fts_str.clone());
+            q.push(
+                " \
+                 AND e.superseded_by IS NULL \
+                 AND e.scope_path IN (",
+            );
+            {
+                let mut separated = q.separated(", ");
+                for a in &ancestors {
+                    separated.push_bind(*a);
+                }
             }
-            q.bind(limit as i64)
-                .fetch_all(pool)
-                .await
-                .map_err(map_db_err)?
+            q.push(") ORDER BY f.rank LIMIT ");
+            q.push_bind(limit as i64);
+
+            q.build().fetch_all(pool).await.map_err(map_db_err)?
         } else {
             sqlx::query(
                 "SELECT e.*, f.rank AS fts_rank FROM entries e \
@@ -140,95 +185,37 @@ impl CmStore {
     ) -> Result<PagedResult<Entry>, CmError> {
         let pool = &self.read_pool;
         let sort = filter.sort;
-
-        let mut conditions = Vec::new();
-        let mut bind_values: Vec<String> = Vec::new();
-
-        if !filter.include_superseded {
-            conditions.push("superseded_by IS NULL".to_owned());
-        }
-
-        if let Some(ref sp) = filter.scope_path {
-            conditions.push("scope_path = ?".to_owned());
-            bind_values.push(sp.as_str().to_owned());
-        }
-
-        if let Some(ref kind) = filter.kind {
-            conditions.push("kind = ?".to_owned());
-            bind_values.push(kind.as_str().to_owned());
-        }
-
-        if let Some(ref created_by) = filter.created_by {
-            conditions.push("created_by = ?".to_owned());
-            bind_values.push(created_by.clone());
-        }
-
-        if let Some(ref tag) = filter.tag {
-            // JSON contains check for tags array
-            conditions.push("json_extract(meta, '$.tags') LIKE ?".to_owned());
-            bind_values.push(format!("%\"{tag}\"%"));
-        }
-
-        // Cursor-based keyset pagination
-        if let Some(ref cursor_str) = filter.pagination.cursor {
-            let cursor = decode_cursor(cursor_str, sort)?;
-            append_cursor_conditions(&cursor, sort, &mut conditions, &mut bind_values);
-        }
-
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
+        let cursor = filter
+            .pagination
+            .cursor
+            .as_deref()
+            .map(|cursor_str| decode_cursor(cursor_str, sort))
+            .transpose()?;
 
         // Build a separate count without cursor
-        let mut count_conditions = Vec::new();
-        let mut count_binds: Vec<String> = Vec::new();
-
-        if !filter.include_superseded {
-            count_conditions.push("superseded_by IS NULL".to_owned());
-        }
-        if let Some(ref sp) = filter.scope_path {
-            count_conditions.push("scope_path = ?".to_owned());
-            count_binds.push(sp.as_str().to_owned());
-        }
-        if let Some(ref kind) = filter.kind {
-            count_conditions.push("kind = ?".to_owned());
-            count_binds.push(kind.as_str().to_owned());
-        }
-        if let Some(ref created_by) = filter.created_by {
-            count_conditions.push("created_by = ?".to_owned());
-            count_binds.push(created_by.clone());
-        }
-        if let Some(ref tag) = filter.tag {
-            count_conditions.push("json_extract(meta, '$.tags') LIKE ?".to_owned());
-            count_binds.push(format!("%\"{tag}\"%"));
-        }
-
-        let count_where = if count_conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", count_conditions.join(" AND "))
-        };
-
-        let count_sql = format!("SELECT COUNT(*) as cnt FROM entries {count_where}");
-        let mut count_q = sqlx::query_as::<sqlx::Sqlite, (i64,)>(&count_sql);
-        for v in &count_binds {
-            count_q = count_q.bind(v);
-        }
-        let (total,): (i64,) = count_q.fetch_one(pool).await.map_err(map_db_err)?;
+        let mut count_q = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) as cnt FROM entries");
+        push_browse_filters(&mut count_q, &filter);
+        let (total,): (i64,) = count_q
+            .build_query_as()
+            .fetch_one(pool)
+            .await
+            .map_err(map_db_err)?;
 
         // Fetch query with limit + 1 to detect next page
         let fetch_limit = filter.pagination.limit as i64 + 1;
         let order = order_by_clause(sort);
-        let data_sql = format!("SELECT * FROM entries {where_clause} {order} LIMIT ?");
-        let mut data_q = sqlx::query(&data_sql);
-        for v in &bind_values {
-            data_q = data_q.bind(v);
+        let mut data_q = QueryBuilder::<Sqlite>::new("SELECT * FROM entries");
+        let mut has_where = push_browse_filters(&mut data_q, &filter);
+        if let Some(ref cursor) = cursor {
+            push_where_prefix(&mut data_q, &mut has_where);
+            push_cursor_condition(&mut data_q, cursor, sort);
         }
-        data_q = data_q.bind(fetch_limit);
+        data_q.push(" ");
+        data_q.push(order);
+        data_q.push(" LIMIT ");
+        data_q.push_bind(fetch_limit);
 
-        let rows = data_q.fetch_all(pool).await.map_err(map_db_err)?;
+        let rows = data_q.build().fetch_all(pool).await.map_err(map_db_err)?;
 
         let has_more = rows.len() > filter.pagination.limit as usize;
         let take_count = if has_more {

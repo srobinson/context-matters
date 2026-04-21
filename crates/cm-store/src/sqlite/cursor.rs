@@ -8,6 +8,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use cm_core::{BrowseSort, CmError, Entry};
 use serde::{Deserialize, Serialize};
+use sqlx::{QueryBuilder, Sqlite};
 
 /// Internal cursor payload. Encodes the sort mode and keyset values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,101 +95,88 @@ pub(crate) fn order_by_clause(sort: BrowseSort) -> &'static str {
     }
 }
 
-/// Append keyset pagination WHERE conditions and bind values for the cursor.
+/// Append keyset pagination conditions and binds for the cursor.
 ///
-/// The conditions mirror the ORDER BY clause to produce correct keyset pagination.
-pub(crate) fn append_cursor_conditions(
+/// The condition mirrors the ORDER BY clause to produce correct keyset pagination.
+pub(crate) fn push_cursor_condition(
+    query: &mut QueryBuilder<'_, Sqlite>,
     cursor: &DecodedCursor,
     sort: BrowseSort,
-    conditions: &mut Vec<String>,
-    bind_values: &mut Vec<String>,
 ) {
     match sort {
         BrowseSort::Recent => {
             // ORDER BY updated_at DESC, id DESC
-            conditions.push("(updated_at < ? OR (updated_at = ? AND id < ?))".into());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_time_cursor_condition(query, cursor, "<", "<");
         }
         BrowseSort::Oldest => {
             // ORDER BY updated_at ASC, id ASC
-            conditions.push("(updated_at > ? OR (updated_at = ? AND id > ?))".into());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_time_cursor_condition(query, cursor, ">", ">");
         }
         BrowseSort::TitleAsc => {
             // ORDER BY title ASC, updated_at DESC, id DESC
-            let val = cursor.val.as_deref().unwrap_or("");
-            conditions.push(
-                "(title > ? OR (title = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))"
-                    .into(),
-            );
-            bind_values.push(val.to_owned());
-            bind_values.push(val.to_owned());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_text_cursor_condition(query, "title", ">", cursor);
         }
         BrowseSort::TitleDesc => {
             // ORDER BY title DESC, updated_at DESC, id DESC
-            let val = cursor.val.as_deref().unwrap_or("");
-            conditions.push(
-                "(title < ? OR (title = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))"
-                    .into(),
-            );
-            bind_values.push(val.to_owned());
-            bind_values.push(val.to_owned());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_text_cursor_condition(query, "title", "<", cursor);
         }
         BrowseSort::ScopeAsc => {
-            let val = cursor.val.as_deref().unwrap_or("");
-            conditions.push(
-                "(scope_path > ? OR (scope_path = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))".into(),
-            );
-            bind_values.push(val.to_owned());
-            bind_values.push(val.to_owned());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_text_cursor_condition(query, "scope_path", ">", cursor);
         }
         BrowseSort::ScopeDesc => {
-            let val = cursor.val.as_deref().unwrap_or("");
-            conditions.push(
-                "(scope_path < ? OR (scope_path = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))".into(),
-            );
-            bind_values.push(val.to_owned());
-            bind_values.push(val.to_owned());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_text_cursor_condition(query, "scope_path", "<", cursor);
         }
         BrowseSort::KindAsc => {
-            let val = cursor.val.as_deref().unwrap_or("");
-            conditions.push(
-                "(kind > ? OR (kind = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))"
-                    .into(),
-            );
-            bind_values.push(val.to_owned());
-            bind_values.push(val.to_owned());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_text_cursor_condition(query, "kind", ">", cursor);
         }
         BrowseSort::KindDesc => {
-            let val = cursor.val.as_deref().unwrap_or("");
-            conditions.push(
-                "(kind < ? OR (kind = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))))"
-                    .into(),
-            );
-            bind_values.push(val.to_owned());
-            bind_values.push(val.to_owned());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.ts.clone());
-            bind_values.push(cursor.id.clone());
+            push_text_cursor_condition(query, "kind", "<", cursor);
         }
     }
+}
+
+fn push_time_cursor_condition(
+    query: &mut QueryBuilder<'_, Sqlite>,
+    cursor: &DecodedCursor,
+    time_op: &'static str,
+    id_op: &'static str,
+) {
+    query.push("(updated_at ");
+    query.push(time_op);
+    query.push(" ");
+    query.push_bind(cursor.ts.clone());
+    query.push(" OR (updated_at = ");
+    query.push_bind(cursor.ts.clone());
+    query.push(" AND id ");
+    query.push(id_op);
+    query.push(" ");
+    query.push_bind(cursor.id.clone());
+    query.push("))");
+}
+
+fn push_text_cursor_condition(
+    query: &mut QueryBuilder<'_, Sqlite>,
+    column: &'static str,
+    text_op: &'static str,
+    cursor: &DecodedCursor,
+) {
+    let val = cursor.val.as_deref().unwrap_or("");
+
+    query.push("(");
+    query.push(column);
+    query.push(" ");
+    query.push(text_op);
+    query.push(" ");
+    query.push_bind(val.to_owned());
+    query.push(" OR (");
+    query.push(column);
+    query.push(" = ");
+    query.push_bind(val.to_owned());
+    query.push(" AND (updated_at < ");
+    query.push_bind(cursor.ts.clone());
+    query.push(" OR (updated_at = ");
+    query.push_bind(cursor.ts.clone());
+    query.push(" AND id < ");
+    query.push_bind(cursor.id.clone());
+    query.push("))))");
 }
