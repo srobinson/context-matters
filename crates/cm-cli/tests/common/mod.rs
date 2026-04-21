@@ -11,6 +11,58 @@
 use cm_core::{ContextStore, MutationSource, NewScope, ScopePath, WriteContext};
 use cm_store::{CmStore, schema};
 use serde_json::Value;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
+
+/// Path to the compiled `cm` binary under the target directory.
+fn cm_bin() -> std::path::PathBuf {
+    assert_cmd::cargo::cargo_bin("cm")
+}
+
+/// Spawn `cm serve` with an isolated data directory.
+pub fn spawn_server(
+    dir: &tempfile::TempDir,
+) -> (
+    std::process::Child,
+    std::process::ChildStdin,
+    BufReader<std::process::ChildStdout>,
+) {
+    let mut child = Command::new(cm_bin())
+        .arg("serve")
+        .env("CM_DATA_DIR", dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn cm serve");
+
+    let stdin = child.stdin.take().expect("no stdin");
+    let stdout = BufReader::new(child.stdout.take().expect("no stdout"));
+    (child, stdin, stdout)
+}
+
+/// Send a JSON-RPC request and read one response line.
+pub fn send_request(
+    stdin: &mut std::process::ChildStdin,
+    stdout: &mut BufReader<std::process::ChildStdout>,
+    request: &Value,
+) -> Value {
+    let line = serde_json::to_string(request).unwrap();
+    writeln!(stdin, "{line}").expect("write to stdin");
+    stdin.flush().expect("flush stdin");
+
+    let mut response_line = String::new();
+    stdout
+        .read_line(&mut response_line)
+        .expect("read from stdout");
+    serde_json::from_str(&response_line).expect("parse JSON response")
+}
+
+/// Gracefully close the server by dropping stdin and waiting.
+pub fn shutdown(mut child: std::process::Child, stdin: std::process::ChildStdin) {
+    drop(stdin);
+    let _ = child.wait();
+}
 
 /// Create an isolated store backed by a temp-file SQLite database.
 ///

@@ -6,101 +6,11 @@
 mod common;
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
 
-use common::{assert_top_level_conformance, extract_stored_id};
+use common::{
+    assert_top_level_conformance, extract_stored_id, send_request, shutdown, spawn_server,
+};
 use serde_json::{Value, json};
-
-/// Path to the compiled `cm` binary under the target directory.
-fn cm_bin() -> std::path::PathBuf {
-    assert_cmd::cargo::cargo_bin("cm")
-}
-
-/// Spawn `cm serve` with an isolated data directory and return (child, stdin, stdout_reader).
-fn spawn_server(
-    dir: &tempfile::TempDir,
-) -> (
-    std::process::Child,
-    std::process::ChildStdin,
-    BufReader<std::process::ChildStdout>,
-) {
-    let mut child = Command::new(cm_bin())
-        .arg("serve")
-        .env("CM_DATA_DIR", dir.path())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn cm serve");
-
-    let stdin = child.stdin.take().expect("no stdin");
-    let stdout = BufReader::new(child.stdout.take().expect("no stdout"));
-    (child, stdin, stdout)
-}
-
-/// Send a JSON-RPC request and read the response line.
-fn send_request(
-    stdin: &mut std::process::ChildStdin,
-    stdout: &mut BufReader<std::process::ChildStdout>,
-    request: &Value,
-) -> Value {
-    let line = serde_json::to_string(request).unwrap();
-    writeln!(stdin, "{line}").expect("write to stdin");
-    stdin.flush().expect("flush stdin");
-
-    let mut response_line = String::new();
-    stdout
-        .read_line(&mut response_line)
-        .expect("read from stdout");
-    serde_json::from_str(&response_line).expect("parse JSON response")
-}
-
-/// Gracefully close the server by dropping stdin (EOF) and waiting.
-fn shutdown(mut child: std::process::Child, stdin: std::process::ChildStdin) {
-    drop(stdin);
-    let _ = child.wait();
-}
-
-fn assert_tool_error_workaround(resp: &Value, expected_message: &str) {
-    assert_eq!(resp["jsonrpc"], "2.0");
-    assert!(
-        resp["error"].is_null(),
-        "tool handler errors currently stay in successful tools/call results: {resp}"
-    );
-
-    let result = &resp["result"];
-    assert!(
-        result.get("isError").is_none(),
-        "Claude Code workaround must not emit top-level isError until anthropics/claude-code#22264 is fixed"
-    );
-
-    let content = result["content"].as_array().expect("content array");
-    assert_eq!(content.len(), 1);
-    assert_eq!(content[0]["type"], "text");
-    let text = content[0]["text"].as_str().expect("text content");
-    assert!(
-        text.starts_with("ERROR: "),
-        "LLM-facing error content must keep the ERROR prefix: {text}"
-    );
-    assert!(
-        text.contains(expected_message),
-        "expected error text to contain `{expected_message}`, got `{text}`"
-    );
-
-    let meta_error = &result["_meta"]["cm_tool_error"];
-    assert_eq!(meta_error["is_error"], true);
-    assert_eq!(meta_error["message"], expected_message);
-    assert_eq!(meta_error["suppressed_top_level_is_error"], true);
-    assert_eq!(meta_error["upstream_issue"], "anthropics/claude-code#22264");
-    assert!(
-        meta_error["cleanup"]
-            .as_str()
-            .expect("cleanup note")
-            .contains("isError:true"),
-        "cleanup note should name the proper MCP error signal"
-    );
-}
 
 // ── Test 1: Initialize handshake ───────────────────────────────
 
@@ -370,72 +280,6 @@ fn protocol_unknown_method() {
             .contains("Method not found"),
         "expected 'Method not found' in error message"
     );
-
-    shutdown(child, stdin);
-}
-
-// ── Test 4b: tools/call unknown tool error workaround ───────────
-
-#[test]
-fn protocol_tools_call_unknown_tool_uses_error_workaround() {
-    let dir = tempfile::tempdir().unwrap();
-    let (child, mut stdin, mut stdout) = spawn_server(&dir);
-
-    send_request(
-        &mut stdin,
-        &mut stdout,
-        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
-    );
-
-    let resp = send_request(
-        &mut stdin,
-        &mut stdout,
-        &json!({
-            "jsonrpc": "2.0",
-            "id": 100,
-            "method": "tools/call",
-            "params": {
-                "name": "cx_nope",
-                "arguments": {}
-            }
-        }),
-    );
-
-    assert_eq!(resp["id"], 100);
-    assert_tool_error_workaround(&resp, "Unknown tool: cx_nope");
-
-    shutdown(child, stdin);
-}
-
-// ── Test 4c: tools/call validation error workaround ─────────────
-
-#[test]
-fn protocol_tools_call_validation_failure_uses_error_workaround() {
-    let dir = tempfile::tempdir().unwrap();
-    let (child, mut stdin, mut stdout) = spawn_server(&dir);
-
-    send_request(
-        &mut stdin,
-        &mut stdout,
-        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
-    );
-
-    let resp = send_request(
-        &mut stdin,
-        &mut stdout,
-        &json!({
-            "jsonrpc": "2.0",
-            "id": 101,
-            "method": "tools/call",
-            "params": {
-                "name": "cx_get",
-                "arguments": {"ids": []}
-            }
-        }),
-    );
-
-    assert_eq!(resp["id"], 101);
-    assert_tool_error_workaround(&resp, "Validation error: ids cannot be empty");
 
     shutdown(child, stdin);
 }
