@@ -44,8 +44,9 @@ fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilte
 
     if let Some(ref tag) = filter.tag {
         push_where_prefix(query, &mut has_where);
-        query.push("json_extract(meta, '$.tags') LIKE ");
-        query.push_bind(format!("%\"{tag}\"%"));
+        query.push("EXISTS (SELECT 1 FROM json_each(entries.meta, '$.tags') WHERE value = ");
+        query.push_bind(tag.clone());
+        query.push(")");
     }
 
     has_where

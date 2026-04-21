@@ -2,7 +2,7 @@
 
 mod common;
 
-use cm_core::{BrowseSort, EntryFilter, EntryKind, NewScope, Pagination};
+use cm_core::{BrowseSort, EntryFilter, EntryKind, EntryMeta, NewScope, Pagination};
 use common::*;
 
 // ── Scope-based query ───────────────────────────────────────────
@@ -553,6 +553,55 @@ async fn browse_pagination_with_cursor() {
         .collect();
     let unique: std::collections::HashSet<_> = all_ids.iter().collect();
     assert_eq!(all_ids.len(), unique.len(), "Pages should not overlap");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_tag_filter_matches_exact_json_array_element() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let mut exact = new_entry(
+        "global",
+        EntryKind::Fact,
+        "Exact wildcard tag",
+        "Body with literal wildcard tag",
+    );
+    exact.meta = Some(EntryMeta {
+        tags: vec!["rust_%".to_owned()],
+        ..Default::default()
+    });
+    store.create_entry(exact, &test_ctx()).await.unwrap();
+
+    let mut wildcard_match = new_entry(
+        "global",
+        EntryKind::Fact,
+        "LIKE wildcard false positive",
+        "Body with tag that LIKE would match",
+    );
+    wildcard_match.meta = Some(EntryMeta {
+        tags: vec!["rust_async".to_owned()],
+        ..Default::default()
+    });
+    store
+        .create_entry(wildcard_match, &test_ctx())
+        .await
+        .unwrap();
+
+    let result = store
+        .browse(EntryFilter {
+            tag: Some("rust_%".to_owned()),
+            pagination: Pagination {
+                limit: 10,
+                cursor: None,
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.total, 1);
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].title, "Exact wildcard tag");
 }
 
 // ── Sort mode tests ────────────────────────────────────────────
