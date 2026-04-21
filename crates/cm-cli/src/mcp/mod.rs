@@ -54,6 +54,14 @@ pub const MAX_MCP_RESPONSE_BYTES: usize = 16 * 1024;
 const TRUNCATE_ADVISORY: &str = "\n[Truncated: response exceeded 16 KB cap. \
 Use cx_get(id=...) for full bodies or narrow your query.]";
 
+/// Upstream Claude Code issue that forces MCP tool errors to stay in a
+/// success envelope for now.
+const TOOL_ERROR_WORKAROUND_UPSTREAM: &str = "anthropics/claude-code#22264";
+
+/// TODO(ALP-1964): restore top-level `isError: true` once Claude Code
+/// handles parallel MCP tools with Promise.allSettled semantics.
+const TOOL_ERROR_WORKAROUND_CLEANUP: &str = "Restore top-level isError:true when Claude Code handles parallel MCP tools with Promise.allSettled.";
+
 // ── Response Helpers ──────────────────────────────────────────────
 
 /// Clip `text` to `max_bytes`, preferring a newline boundary.
@@ -350,14 +358,7 @@ impl<S: ContextStore> McpServer<S> {
 
         match result {
             Ok(tool_result) => Ok(build_envelope(tool_name, tool_result)),
-            // WORKAROUND: Claude Code cancels all sibling parallel MCP tool calls when
-            // any tool returns isError:true (Promise.all fail-fast, tracked at
-            // anthropics/claude-code#22264). Drop the flag; prefix with ERROR: so the
-            // LLM recognises failure from content alone. Revert when #22264 ships
-            // Promise.allSettled for MCP tools.
-            Err(e) => Ok(json!({
-                "content": [{"type": "text", "text": format!("ERROR: {e}")}]
-            })),
+            Err(e) => Ok(build_tool_error_envelope(e)),
         }
     }
 }
@@ -497,4 +498,30 @@ fn build_envelope(tool_name: &str, tool_result: ToolResult) -> Value {
         envelope.insert("structuredContent".to_owned(), structured);
     }
     Value::Object(envelope)
+}
+
+/// Build the temporary success envelope used for tool-handler failures.
+///
+/// WORKAROUND: Claude Code cancels sibling parallel MCP tool calls when
+/// any result carries top-level `isError: true` because its MCP client
+/// currently uses Promise.all fail-fast behavior. Until
+/// [`TOOL_ERROR_WORKAROUND_UPSTREAM`] is fixed, keep the response as a
+/// successful JSON-RPC `tools/call` result and make the failure visible in
+/// two ways:
+/// - `content[0].text` starts with `ERROR:` for the LLM-facing channel.
+/// - `_meta.cm_tool_error` exposes the failure programmatically without
+///   triggering Claude Code's top-level `isError` handling.
+fn build_tool_error_envelope(message: String) -> Value {
+    json!({
+        "content": [{"type": "text", "text": format!("ERROR: {message}")}],
+        "_meta": {
+            "cm_tool_error": {
+                "is_error": true,
+                "message": message,
+                "suppressed_top_level_is_error": true,
+                "upstream_issue": TOOL_ERROR_WORKAROUND_UPSTREAM,
+                "cleanup": TOOL_ERROR_WORKAROUND_CLEANUP
+            }
+        }
+    })
 }
