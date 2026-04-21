@@ -68,17 +68,26 @@ const TOOL_ERROR_WORKAROUND_CLEANUP: &str = "Restore top-level isError:true when
 ///
 /// Algorithm:
 /// * If `text.len() <= max_bytes`, return unchanged.
-/// * Otherwise walk back from `max_bytes` to the nearest UTF-8 char boundary.
+/// * Otherwise reserve room for [`TRUNCATE_ADVISORY`] inside `max_bytes`.
+/// * Walk back from the body budget to the nearest UTF-8 char boundary.
 /// * Cut just after the last `\n` at or before that boundary so the body ends
 ///   at a clean line break. If no newline exists in range, hard-cap at the
 ///   char boundary.
-/// * Append [`TRUNCATE_ADVISORY`] so the caller (LLM) recognises truncation.
+/// * Append [`TRUNCATE_ADVISORY`] while keeping the final string within
+///   `max_bytes`.
 pub fn cap_response(text: String, max_bytes: usize) -> String {
     if text.len() <= max_bytes {
         return text;
     }
-    // Walk back from max_bytes to a valid UTF-8 boundary so slicing cannot panic.
-    let mut safe_end = max_bytes;
+    let advisory = if TRUNCATE_ADVISORY.len() > max_bytes {
+        &TRUNCATE_ADVISORY[..max_bytes]
+    } else {
+        TRUNCATE_ADVISORY
+    };
+    let body_budget = max_bytes.saturating_sub(advisory.len());
+
+    // Walk back from the body budget to a valid UTF-8 boundary so slicing cannot panic.
+    let mut safe_end = body_budget;
     while safe_end > 0 && !text.is_char_boundary(safe_end) {
         safe_end -= 1;
     }
@@ -89,7 +98,7 @@ pub fn cap_response(text: String, max_bytes: usize) -> String {
         None => safe_end,
     };
     let mut result = text[..cut].to_owned();
-    result.push_str(TRUNCATE_ADVISORY);
+    result.push_str(advisory);
     result
 }
 

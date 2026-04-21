@@ -52,8 +52,10 @@ fn cap_response_over_cap_clips_at_newline_boundary() {
         body.ends_with('\n'),
         "clipped body should end at a newline boundary"
     );
-    // Body must fit inside the byte cap.
-    assert!(body.len() <= MAX_MCP_RESPONSE_BYTES);
+    assert!(
+        capped.len() <= MAX_MCP_RESPONSE_BYTES,
+        "capped response must include advisory within the byte cap"
+    );
 }
 
 #[test]
@@ -63,12 +65,14 @@ fn cap_response_over_cap_no_newline_hard_clips() {
 
     let capped = cap_response(text, MAX_MCP_RESPONSE_BYTES);
 
-    // Advisory is appended, and the hard cut lands exactly at the byte cap
-    // because no newline is available earlier in the buffer.
-    let advisory_start = capped
-        .find("\n[Truncated")
-        .expect("truncation advisory present");
-    assert_eq!(advisory_start, MAX_MCP_RESPONSE_BYTES);
+    assert!(
+        capped.len() <= MAX_MCP_RESPONSE_BYTES,
+        "capped response must include advisory within the byte cap"
+    );
+    assert!(
+        capped.contains("[Truncated"),
+        "capped response should carry the truncation advisory"
+    );
 }
 
 #[test]
@@ -81,6 +85,10 @@ fn cap_response_appends_truncation_advisory() {
 
     // Advisory mentions the 16 KB cap, cx_get, and clip reason so the LLM
     // recognises why output was shortened.
+    assert!(
+        capped.len() <= MAX_MCP_RESPONSE_BYTES,
+        "capped response must include advisory within the byte cap"
+    );
     assert!(capped.contains("[Truncated"));
     assert!(capped.contains("16 KB cap"));
     assert!(capped.contains("cx_get"));
@@ -105,6 +113,10 @@ fn cap_response_export_bypass() {
     for tool in ["cx_recall", "cx_browse", "cx_get", "cx_stats", "cx_store"] {
         let out = apply_cap_for_tool(tool, big.clone());
         assert!(out.len() < big.len(), "{tool} output should be capped");
+        assert!(
+            out.len() <= MAX_MCP_RESPONSE_BYTES,
+            "{tool} output should fit inside the byte cap"
+        );
         assert!(
             out.contains("[Truncated"),
             "{tool} output should carry the truncation advisory"
