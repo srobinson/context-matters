@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/srobinson/context-matters/compare/v0.2.8...v0.2.9) (2026-04-21)
+
+
+### Bug Fixes
+
+* harden MCP and store behavior ([6f4c9c4](https://github.com/srobinson/context-matters/commit/6f4c9c4845152c21966055db43f02aab38e7ec03))
+
 ## [0.2.8](https://github.com/srobinson/context-matters/compare/v0.2.7...v0.2.8) (2026-04-20)
 
 
