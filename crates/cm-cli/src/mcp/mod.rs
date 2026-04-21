@@ -8,7 +8,6 @@ mod panic_guard;
 mod schema;
 pub mod tools;
 
-use std::io::{self, BufRead, Write};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
@@ -16,6 +15,7 @@ use cm_core::ContextStore;
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::io::{self, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
 pub use panic_guard::install_panic_hook;
 
@@ -192,11 +192,9 @@ impl<S: ContextStore> McpServer<S> {
 
     /// Run the JSON-RPC stdio loop.
     ///
-    /// Uses blocking `stdin.lock().lines()` inside an async fn.
-    /// Safe for v1 because: (1) `run()` is called directly from main(),
-    /// not via `tokio::spawn()`, so `Send` is not required; (2) the MCP
-    /// stdio protocol is single-client sequential request/response;
-    /// (3) there is no concurrent work to preempt.
+    /// Reads newline-delimited JSON-RPC requests from Tokio stdin and
+    /// writes responses through Tokio stdout. The MCP stdio protocol is
+    /// single-client sequential request/response.
     ///
     /// Error isolation. Every handler invocation is wrapped in
     /// [`futures::FutureExt::catch_unwind`] so a panic in any tool
@@ -211,11 +209,11 @@ impl<S: ContextStore> McpServer<S> {
     /// log-and-continue on any other I/O error. The invariant is
     /// simple: one bad request must never take the server down.
     pub async fn run(&self) -> anyhow::Result<()> {
-        let stdin = io::stdin();
+        let stdin = BufReader::new(io::stdin());
+        let mut lines = stdin.lines();
         let mut stdout = io::stdout();
 
-        for line in stdin.lock().lines() {
-            let line = line?;
+        while let Some(line) = lines.next_line().await? {
             if line.is_empty() {
                 continue;
             }
@@ -233,7 +231,10 @@ impl<S: ContextStore> McpServer<S> {
                             data: None,
                         }),
                     };
-                    if write_response(&mut stdout, &error_response).is_broken_pipe() {
+                    if write_response(&mut stdout, &error_response)
+                        .await
+                        .is_broken_pipe()
+                    {
                         return Ok(());
                     }
                     continue;
@@ -261,7 +262,7 @@ impl<S: ContextStore> McpServer<S> {
             };
 
             if let Some(resp) = response
-                && write_response(&mut stdout, &resp).is_broken_pipe()
+                && write_response(&mut stdout, &resp).await.is_broken_pipe()
             {
                 return Ok(());
             }
@@ -387,7 +388,10 @@ impl WriteOutcome {
 ///   loop can exit cleanly.
 /// * Any other I/O error is logged via `tracing::error!` and swallowed;
 ///   the run loop continues on the next iteration.
-fn write_response<W: Write>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutcome {
+async fn write_response<W>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutcome
+where
+    W: AsyncWrite + Unpin,
+{
     let serialized = match serde_json::to_string(resp) {
         Ok(s) => s,
         Err(e) => {
@@ -409,7 +413,14 @@ fn write_response<W: Write>(stdout: &mut W, resp: &JsonRpcResponse) -> WriteOutc
         }
     };
 
-    match writeln!(stdout, "{serialized}").and_then(|()| stdout.flush()) {
+    let write_result = async {
+        stdout.write_all(serialized.as_bytes()).await?;
+        stdout.write_all(b"\n").await?;
+        stdout.flush().await
+    }
+    .await;
+
+    match write_result {
         Ok(()) => WriteOutcome::Ok,
         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => WriteOutcome::BrokenPipe,
         Err(e) => {

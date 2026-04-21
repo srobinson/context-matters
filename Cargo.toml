@@ -24,7 +24,7 @@ cm-store = { path = "crates/cm-store" }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
 
 # Async runtime
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "signal", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "signal", "time"] }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 
 # CLI
