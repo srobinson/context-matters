@@ -74,6 +74,19 @@ pub(crate) fn decode_cursor(
         )));
     }
 
+    if matches!(
+        payload.sort,
+        BrowseSort::TitleAsc
+            | BrowseSort::TitleDesc
+            | BrowseSort::ScopeAsc
+            | BrowseSort::ScopeDesc
+            | BrowseSort::KindAsc
+            | BrowseSort::KindDesc
+    ) && payload.val.as_deref().is_none_or(str::is_empty)
+    {
+        return Err(CmError::Validation("Invalid cursor format".into()));
+    }
+
     Ok(DecodedCursor {
         val: payload.val,
         ts: payload.ts.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
@@ -160,7 +173,10 @@ fn push_text_cursor_condition(
     text_op: &'static str,
     cursor: &DecodedCursor,
 ) {
-    let val = cursor.val.as_deref().unwrap_or("");
+    let val = cursor
+        .val
+        .as_deref()
+        .expect("text cursor value validated during decode");
 
     query.push("(");
     query.push(column);

@@ -2,8 +2,10 @@
 
 mod common;
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cm_core::{BrowseSort, EntryFilter, EntryKind, EntryMeta, NewScope, Pagination};
 use common::*;
+use serde_json::json;
 
 // ── Scope-based query ───────────────────────────────────────────
 
@@ -909,6 +911,37 @@ async fn browse_sort_cursor_mismatch_rejected() {
         .await;
 
     assert!(result.is_err(), "Cursor sort mismatch should be rejected");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_text_sort_cursor_missing_primary_value_rejected() {
+    let (store, _dir) = test_store().await;
+    create_sortable_entries(&store).await;
+
+    let malformed_cursor = URL_SAFE_NO_PAD.encode(
+        json!({
+            "sort": "title_asc",
+            "ts": "2026-01-01T00:00:00.000Z",
+            "id": "00000000-0000-0000-0000-000000000000"
+        })
+        .to_string(),
+    );
+
+    let result = store
+        .browse(EntryFilter {
+            sort: BrowseSort::TitleAsc,
+            pagination: Pagination {
+                limit: 2,
+                cursor: Some(malformed_cursor),
+            },
+            ..Default::default()
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Text sort cursor missing primary value should be rejected"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
