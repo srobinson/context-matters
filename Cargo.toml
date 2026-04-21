@@ -96,7 +96,7 @@ unix-archive = ".tar.gz"
 windows-archive = ".zip"
 include = ["LICENSE", "README.md"]
 auto-includes = false
-pr-run-mode = "plan"
+pr-run-mode = "skip"
 # release.yml appends a publish-npm job that cargo-dist does not know about;
 # allow dist generate --check to tolerate that drift.
 allow-dirty = ["ci"]

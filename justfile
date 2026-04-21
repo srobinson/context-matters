@@ -14,7 +14,17 @@ install: release web-install
 
 install-local:
     cargo build --release -p cm-cli
-    install -m 755 target/release/cm "{{CM_LOCAL_BIN}}"
+    @set -eu; \
+    src="$(pwd)/target/release/cm"; \
+    dest="{{CM_LOCAL_BIN}}"; \
+    case "$dest" in /*) ;; *) dest="$(pwd)/$dest";; esac; \
+    if [ "$src" = "$dest" ]; then \
+        echo "Built $src"; \
+    else \
+        mkdir -p "$(dirname "$dest")"; \
+        install -m 755 "$src" "$dest"; \
+        echo "Installed $dest"; \
+    fi
 
 test:
     cargo nextest run --workspace
