@@ -129,13 +129,7 @@ pub async fn recall(
     // Sort by scope depth descending (most specific first).
     // Stable sort preserves the store's native ordering (relevance or recency) within each scope level.
     let mut rows: Vec<RecallRow> = rows;
-    rows.sort_by(|a, b| {
-        b.entry
-            .scope_path
-            .as_str()
-            .len()
-            .cmp(&a.entry.scope_path.as_str().len())
-    });
+    rows.sort_by_key(|row| std::cmp::Reverse(row.entry.scope_path.depth()));
 
     // Apply limit after post-filtering and sorting
     let rows: Vec<RecallRow> = rows.into_iter().take(request.limit as usize).collect();

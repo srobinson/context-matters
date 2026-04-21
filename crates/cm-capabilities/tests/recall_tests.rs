@@ -222,6 +222,44 @@ async fn routing_search_with_scope_filters_to_ancestors() {
     assert!(result.entries.len() >= 2);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_rows_sort_by_scope_depth_not_path_length() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry_with_scope(
+        &store,
+        "Long shallow scope",
+        "Depth ordering regression needle.",
+        EntryKind::Fact,
+        "global/project:very-long-project-name",
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Short deeper scope",
+        "Depth ordering regression needle.",
+        EntryKind::Fact,
+        "global/project:a/repo:b",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("needle".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert_eq!(result.entries.len(), 2);
+    assert_eq!(result.entries[0].entry.title, "Short deeper scope");
+    assert_eq!(result.entries[1].entry.title, "Long shallow scope");
+}
+
 // ── Routing: TagScopeWalk ────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
