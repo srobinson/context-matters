@@ -1,8 +1,8 @@
 //! `--scope` resolution helpers shared by every read/write subcommand.
 //!
-//! The helper exposed here is for recall-style commands where omission means
-//! "default to `global` and walk the ancestor chain". Browse defaults live in
-//! `cm-capabilities::browse` and are returned as capability advisories.
+//! The helper exposed here is for deposit-style commands that still default to
+//! `global`. Browse and recall defaults live in `cm-capabilities` and are
+//! returned as capability advisories.
 //!
 //! Scope advisories always print a one-line stderr message pointing users at
 //! `cm stats` for scope discovery, never gated on TTY, so users who pipe
@@ -11,10 +11,7 @@
 //! Tests assert on the substring `"no --scope specified"`; keep it stable.
 
 use crate::cli::colors::Colors;
-
-/// Recall-flavor advisory body. Tests grep for `"no --scope specified"`.
-const ADVISORY_BODY_RECALL: &str =
-    "no --scope specified, searching 'global'. run `cm stats` to list all scopes.";
+use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 
 /// Build a colorized advisory line. Pure: takes a `Colors` set + body string
 /// and returns the rendered line. Split out so unit tests can inspect the
@@ -27,7 +24,7 @@ pub fn print_advisory(body: &str) {
     eprintln!("{}", advisory(&Colors::stderr(), body));
 }
 
-/// Resolve `--scope` for recall-style commands (defaults to `"global"`).
+/// Resolve `--scope` for legacy CLI commands that still default locally.
 ///
 /// * `Some("foo")` → returns `"foo"`, no I/O.
 /// * `Some("")` → treated as omitted (defaults to `"global"` with advisory).
@@ -36,7 +33,7 @@ pub fn resolve_scope(explicit: Option<&str>) -> String {
     match explicit {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => {
-            print_advisory(ADVISORY_BODY_RECALL);
+            print_advisory(RECALL_SCOPE_DEFAULT_ADVISORY);
             "global".to_string()
         }
     }
@@ -73,16 +70,16 @@ mod tests {
         // Stable wording assertions. If either substring changes, the
         // tests in `tests/cli_integration.rs` (ALP-1784) that grep stderr
         // need to change in the same commit.
-        assert!(ADVISORY_BODY_RECALL.contains("no --scope specified"));
-        assert!(ADVISORY_BODY_RECALL.contains("cm stats"));
+        assert!(RECALL_SCOPE_DEFAULT_ADVISORY.contains("no --scope specified"));
+        assert!(RECALL_SCOPE_DEFAULT_ADVISORY.contains("cm stats"));
     }
 
     #[test]
     fn advisory_renders_with_disabled_colors_to_plain_text() {
         // When colors are disabled (NO_COLOR / non-tty / TERM=dumb),
         // the rendered advisory is plain ASCII with no escape bytes.
-        let plain = advisory(&Colors::for_tty(false), ADVISORY_BODY_RECALL);
-        assert_eq!(format!("note: {ADVISORY_BODY_RECALL}"), plain);
+        let plain = advisory(&Colors::for_tty(false), RECALL_SCOPE_DEFAULT_ADVISORY);
+        assert_eq!(format!("note: {RECALL_SCOPE_DEFAULT_ADVISORY}"), plain);
     }
 
     #[test]
@@ -98,7 +95,7 @@ mod tests {
         // With colors enabled, the rendered string starts with the dim
         // escape and ends with the body. We assert on byte content to
         // catch any drift in the format string composition.
-        let colored = advisory(&Colors::for_tty(true), ADVISORY_BODY_RECALL);
+        let colored = advisory(&Colors::for_tty(true), RECALL_SCOPE_DEFAULT_ADVISORY);
         // SAFETY: restores the exact environment captured above.
         unsafe {
             match prior_no_color {
@@ -112,6 +109,6 @@ mod tests {
         }
         assert!(colored.starts_with("\x1b[2m"), "expected dim prefix");
         assert!(colored.contains("\x1b[0m"), "expected reset escape");
-        assert!(colored.contains(ADVISORY_BODY_RECALL));
+        assert!(colored.contains(RECALL_SCOPE_DEFAULT_ADVISORY));
     }
 }

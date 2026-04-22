@@ -37,10 +37,10 @@
   },
   "name": "cx_recall",
   "outputSchema": {
-    "description": "Recall response: query header, ranked rows, and trailing advisories.",
+    "description": "Recall response: query header, ranked rows, and capability advisories.",
     "properties": {
       "advisories": {
-        "description": "Trailer advisory lines (routing, tier, dedup, drill-down) the formatter would emit as YAML comments.",
+        "description": "Capability advisory messages returned with the recall result.",
         "items": {
           "type": "string"
         },

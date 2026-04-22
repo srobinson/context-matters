@@ -6,6 +6,7 @@
 
 mod common;
 
+use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 use cm_capabilities::validation::{parse_kind, parse_tag_sort};
 use cm_cli::mcp::tools;
 use common::{
@@ -45,6 +46,31 @@ async fn recall_with_query_searches_fts() {
     assert!(result.contains("SQLx migration guide"));
     assert!(count_row_lines(&result) >= 1);
     assert!(!result.contains("\n    body:"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_without_scope_surfaces_structured_advisory() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    tools::cx_store(
+        &store,
+        &json!({"title": "Global fact", "body": "Fact.", "kind": "fact"}),
+    )
+    .await
+    .unwrap();
+
+    let result = tools::cx_recall(&store, &json!({})).await.unwrap();
+    let structured = result
+        .structured
+        .as_ref()
+        .expect("cx_recall emits structured content");
+
+    assert_eq!(
+        structured["advisories"],
+        json!([RECALL_SCOPE_DEFAULT_ADVISORY])
+    );
+    assert_eq!(structured["header"]["scope_chain"], json!(["global"]));
 }
 
 #[tokio::test(flavor = "multi_thread")]

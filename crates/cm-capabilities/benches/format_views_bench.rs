@@ -185,6 +185,7 @@ fn recall_fixture() -> (RecallResult, RecallRequest) {
         candidates_before_filter: 62,
         fetch_limit_used: 50,
         relation_counts,
+        advisories: Vec::new(),
     };
     let request = RecallRequest {
         query: Some("snippet strategy".to_owned()),

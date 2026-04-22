@@ -1,6 +1,8 @@
-//! Regression tests for recall scope ordering.
+//! Regression tests for recall scope defaulting and ordering.
 
-use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
+use cm_capabilities::recall::{
+    RECALL_SCOPE_DEFAULT_ADVISORY, RecallAdvisory, RecallRequest, RecallRouting, recall,
+};
 use cm_core::{
     ContextStore, EntryKind, MutationSource, NewEntry, NewScope, ScopePath, WriteContext,
 };
@@ -66,22 +68,22 @@ async fn seed_entry_with_scope(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn recall_rows_sort_by_scope_depth_not_path_length() {
+async fn recall_rows_sort_by_scope_depth_with_explicit_scope() {
     let (store, _dir) = test_store().await;
     seed_entry_with_scope(
         &store,
-        "Long shallow scope",
+        "Broad global scope",
         "Depth ordering regression needle.",
         EntryKind::Fact,
-        "global/project:very-long-project-name",
+        "global",
     )
     .await;
     seed_entry_with_scope(
         &store,
-        "Short deeper scope",
+        "Narrow project scope",
         "Depth ordering regression needle.",
         EntryKind::Fact,
-        "global/project:a/repo:b",
+        "global/project:very-long-project-name",
     )
     .await;
 
@@ -89,6 +91,7 @@ async fn recall_rows_sort_by_scope_depth_not_path_length() {
         &store,
         RecallRequest {
             query: Some("needle".to_owned()),
+            scope: Some(ScopePath::parse("global/project:very-long-project-name").unwrap()),
             limit: 20,
             ..Default::default()
         },
@@ -98,6 +101,53 @@ async fn recall_rows_sort_by_scope_depth_not_path_length() {
 
     assert_eq!(result.routing, RecallRouting::Search);
     assert_eq!(result.entries.len(), 2);
-    assert_eq!(result.entries[0].entry.title, "Short deeper scope");
-    assert_eq!(result.entries[1].entry.title, "Long shallow scope");
+    assert_eq!(result.entries[0].entry.title, "Narrow project scope");
+    assert_eq!(result.entries[1].entry.title, "Broad global scope");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn omitted_scope_defaults_to_global_with_advisory() {
+    let (store, _dir) = test_store().await;
+    seed_entry_with_scope(
+        &store,
+        "Global note",
+        "Visible globally.",
+        EntryKind::Fact,
+        "global",
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Project note",
+        "Project-only context.",
+        EntryKind::Fact,
+        "global/project:helioy",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
+    assert_eq!(result.scope_chain, vec!["global"]);
+    assert_eq!(
+        result.advisories,
+        vec![RecallAdvisory::ScopeDefaulted {
+            applied: "global".to_owned()
+        }]
+    );
+    assert_eq!(result.advisories[0].body(), RECALL_SCOPE_DEFAULT_ADVISORY);
+    assert!(
+        result
+            .entries
+            .iter()
+            .all(|row| row.entry.scope_path.as_str() == "global")
+    );
 }

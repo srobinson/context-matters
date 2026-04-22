@@ -13,7 +13,7 @@ use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 
-use crate::cli::scope::resolve_scope;
+use crate::cli::scope::print_advisory;
 
 /// `cm recall` handler. Read-only: no `WriteContext` constructed.
 ///
@@ -35,8 +35,10 @@ pub async fn run(
         check_input_size(q, "query").map_err(|e| anyhow!("{e}"))?;
     }
 
-    let scope_str = resolve_scope(scope.as_deref());
-    let scope = Some(ScopePath::parse(&scope_str).map_err(|e| anyhow!("{e}"))?);
+    let scope = match scope.as_deref() {
+        Some(s) if !s.is_empty() => Some(ScopePath::parse(s).map_err(|e| anyhow!("{e}"))?),
+        _ => None,
+    };
 
     let kinds: Vec<EntryKind> = kinds
         .iter()
@@ -56,6 +58,10 @@ pub async fn run(
     let result = recall::recall(store, request.clone())
         .await
         .map_err(|e| anyhow!("{e}"))?;
+
+    for advisory in &result.advisories {
+        print_advisory(advisory.body());
+    }
 
     if json {
         let view = project_web_recall(&result, &request);

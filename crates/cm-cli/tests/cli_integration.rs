@@ -14,6 +14,7 @@
 use std::path::Path;
 
 use assert_cmd::Command;
+use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 use cm_capabilities::validation::{parse_kind, parse_tag_sort};
 use predicates::str::contains;
 use serde_json::Value;
@@ -381,6 +382,25 @@ fn recall_query_finds_seeded_entry_by_keyword() {
         .assert()
         .success()
         .stdout(contains("keyword test"));
+}
+
+#[test]
+fn recall_without_scope_reports_default_advisory_on_stderr() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--exchanges",
+            r#"[{"user":"default scope body","assistant":"reply","title":"default scope test"}]"#,
+        ])
+        .assert()
+        .success();
+    cm_with_data_dir(dir.path())
+        .args(["recall"])
+        .assert()
+        .success()
+        .stdout(contains("default scope test"))
+        .stderr(contains(RECALL_SCOPE_DEFAULT_ADVISORY));
 }
 
 // ---------------- Stats counters ----------------

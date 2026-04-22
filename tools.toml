@@ -63,7 +63,7 @@ cli_about       = "Search and retrieve context entries from the store.\n\nCombin
 output_schema   = '''
 {
   "type": "object",
-  "description": "Recall response: query header, ranked rows, and trailing advisories.",
+  "description": "Recall response: query header, ranked rows, and capability advisories.",
   "required": ["header", "entries", "advisories"],
   "properties": {
     "header": {
@@ -103,7 +103,7 @@ output_schema   = '''
     },
     "advisories": {
       "type": "array",
-      "description": "Trailer advisory lines (routing, tier, dedup, drill-down) the formatter would emit as YAML comments.",
+      "description": "Capability advisory messages returned with the recall result.",
       "items": {"type": "string"}
     }
   }

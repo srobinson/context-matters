@@ -25,7 +25,10 @@ use cm_capabilities::projection::{
     RecallRow, WebBrowseView, WebRecallView, project_web_browse_at, project_web_recall_at,
     project_web_update,
 };
-use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
+use cm_capabilities::recall::{
+    RECALL_SCOPE_DEFAULT_ADVISORY, RecallAdvisory, RecallRequest, RecallResult, RecallRouting,
+    SearchTier,
+};
 use cm_capabilities::scope::{
     BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
 };
@@ -347,6 +350,7 @@ fn web_recall_view_brackets_snippets_on_search() {
         candidates_before_filter: 1,
         fetch_limit_used: 50,
         relation_counts: HashMap::new(),
+        advisories: Vec::new(),
     };
     let request = RecallRequest {
         query: Some("snippet".to_owned()),
@@ -418,6 +422,7 @@ fn web_recall_view_histograms_populated() {
         candidates_before_filter: 3,
         fetch_limit_used: 50,
         relation_counts: HashMap::new(),
+        advisories: Vec::new(),
     };
     let request = RecallRequest {
         query: None,
@@ -435,4 +440,31 @@ fn web_recall_view_histograms_populated() {
     assert_eq!(view.header.tags_histogram.get("beta"), Some(&1));
     assert_eq!(view.header.tags_histogram.get("gamma"), Some(&1));
     assert_eq!(view.header.tags_histogram.len(), 3);
+}
+
+#[test]
+fn web_recall_view_projects_capability_advisories() {
+    let now = fixed_now();
+    let result = RecallResult {
+        entries: Vec::new(),
+        scope_chain: vec!["global".to_owned()],
+        scope_hits: Vec::new(),
+        token_estimate: 0,
+        routing: RecallRouting::ScopeResolve,
+        tier: None,
+        candidates_before_filter: 0,
+        fetch_limit_used: 20,
+        relation_counts: HashMap::new(),
+        advisories: vec![RecallAdvisory::ScopeDefaulted {
+            applied: "global".to_owned(),
+        }],
+    };
+    let request = RecallRequest {
+        limit: 20,
+        ..Default::default()
+    };
+
+    let view: WebRecallView = project_web_recall_at(&result, &request, now);
+
+    assert_eq!(view.advisories, vec![RECALL_SCOPE_DEFAULT_ADVISORY]);
 }

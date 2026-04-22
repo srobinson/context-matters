@@ -12,10 +12,15 @@ use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
 
 // ── Types ────────────────────────────────────────────────────────
 
+pub const DEFAULT_RECALL_SCOPE: &str = "global";
+pub const RECALL_SCOPE_DEFAULT_ADVISORY: &str =
+    "no --scope specified, searching 'global'. run `cm stats` to list all scopes.";
+
 /// Input for a recall operation.
 #[derive(Debug, Clone, Default)]
 pub struct RecallRequest {
     pub query: Option<String>,
+    /// Omitted scope defaults to [`DEFAULT_RECALL_SCOPE`] inside the capability.
     pub scope: Option<ScopePath>,
     pub kinds: Vec<EntryKind>,
     pub tags: Vec<String>,
@@ -52,6 +57,19 @@ pub enum SearchTier {
     None,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecallAdvisory {
+    ScopeDefaulted { applied: String },
+}
+
+impl RecallAdvisory {
+    pub fn body(&self) -> &'static str {
+        match self {
+            Self::ScopeDefaulted { .. } => RECALL_SCOPE_DEFAULT_ADVISORY,
+        }
+    }
+}
+
 /// Result of a recall operation.
 #[derive(Debug, Clone)]
 pub struct RecallResult {
@@ -60,9 +78,8 @@ pub struct RecallResult {
     /// other branch leaves `score` as `None`.
     pub entries: Vec<RecallRow>,
     pub scope_chain: Vec<String>,
-    /// Per-scope hit counts. When scope is provided, ordered from most specific
-    /// ancestor to broadest. When scope is omitted, derived from returned entries
-    /// (most specific first).
+    /// Per-scope hit counts for the requested or defaulted scope, ordered from
+    /// most specific ancestor to broadest.
     pub scope_hits: Vec<(String, usize)>,
     /// Total estimated tokens across all returned entries (full body, not snippets).
     pub token_estimate: u32,
@@ -78,6 +95,7 @@ pub struct RecallResult {
     /// (per the trait contract); the projection layer treats absence as
     /// zero and elides the `rels:` annotation entirely.
     pub relation_counts: HashMap<Uuid, u32>,
+    pub advisories: Vec<RecallAdvisory>,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -88,8 +106,13 @@ pub struct RecallResult {
 /// applies post-filtering, token budget tracking, and scope chain extraction.
 pub async fn recall(
     store: &impl ContextStore,
-    request: RecallRequest,
+    mut request: RecallRequest,
 ) -> Result<RecallResult, CmError> {
+    let scope_defaulted = request.scope.is_none();
+    if scope_defaulted {
+        request.scope = Some(ScopePath::global());
+    }
+
     let has_post_filter = !request.kinds.is_empty() || !request.tags.is_empty();
     let fetch_limit = if has_post_filter {
         request.limit.saturating_mul(3).min(MAX_LIMIT)
@@ -213,6 +236,12 @@ pub async fn recall(
         candidates_before_filter,
         fetch_limit_used: actual_fetch_limit,
         relation_counts,
+        advisories: scope_defaulted
+            .then(|| RecallAdvisory::ScopeDefaulted {
+                applied: DEFAULT_RECALL_SCOPE.to_owned(),
+            })
+            .into_iter()
+            .collect(),
     })
 }
 

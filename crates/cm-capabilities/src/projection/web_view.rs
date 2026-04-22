@@ -309,8 +309,7 @@ pub struct WebRecallRow {
 /// Full projection of a [`RecallResult`] for the cm-web HTTP API.
 ///
 /// Structurally parallel to the YAML `format_recall_view` output.
-/// `advisories` is a forward-compatible slot for the dominance /
-/// drill-down hints landing in ALP-1758; this issue leaves it empty.
+/// `advisories` carries capability messages such as omitted-scope defaults.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct WebRecallView {
@@ -434,11 +433,11 @@ pub fn project_web_recall_at(
     WebRecallView {
         header,
         entries,
-        // Reserved for faceted drill-down / dominance hints in ALP-1758.
-        // Emitting an empty Vec rather than Option keeps the shape
-        // stable for the ts-rs export in ALP-1753 and lets the frontend
-        // render a deterministic (possibly empty) list.
-        advisories: Vec::new(),
+        advisories: result
+            .advisories
+            .iter()
+            .map(|advisory| advisory.body().to_owned())
+            .collect(),
     }
 }
 

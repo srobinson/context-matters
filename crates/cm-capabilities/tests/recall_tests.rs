@@ -329,10 +329,10 @@ async fn routing_scope_resolve_when_scope_no_query_no_tags() {
     assert!(result.entries.len() >= 2);
 }
 
-// ── Routing: BrowseFallback ──────────────────────────────────────
+// ── Routing: default scope resolution ────────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
-async fn routing_browse_fallback_when_no_query_no_scope_no_tags() {
+async fn routing_scope_resolve_when_no_query_no_scope_no_tags() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "Fact one", "Body one.", EntryKind::Fact).await;
@@ -348,12 +348,12 @@ async fn routing_browse_fallback_when_no_query_no_scope_no_tags() {
     .await
     .unwrap();
 
-    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
     assert_eq!(result.entries.len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn routing_browse_fallback_passes_single_kind_to_filter() {
+async fn default_scope_resolution_passes_single_kind_to_filter() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "A fact", "Fact body.", EntryKind::Fact).await;
@@ -370,7 +370,7 @@ async fn routing_browse_fallback_passes_single_kind_to_filter() {
     .await
     .unwrap();
 
-    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
     assert_eq!(result.entries.len(), 1);
     assert_eq!(result.entries[0].entry.kind, EntryKind::Fact);
 }
@@ -424,7 +424,7 @@ async fn recall_row_score_is_some_on_search_routing() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn recall_row_score_is_none_on_browse_fallback() {
+async fn recall_row_score_is_none_on_default_scope_resolution() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "Fact one", "Body one.", EntryKind::Fact).await;
@@ -439,10 +439,10 @@ async fn recall_row_score_is_none_on_browse_fallback() {
     .await
     .unwrap();
 
-    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
     assert!(!result.entries.is_empty());
     for row in &result.entries {
-        assert!(row.score.is_none(), "BrowseFallback must leave score None");
+        assert!(row.score.is_none(), "ScopeResolve must leave score None");
     }
 }
 
@@ -779,7 +779,7 @@ async fn scope_chain_extracted_from_scope_path() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn scope_chain_derived_from_entries_when_no_scope() {
+async fn scope_chain_uses_default_scope_when_no_scope() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "Fact", "Body.", EntryKind::Fact).await;
@@ -794,7 +794,7 @@ async fn scope_chain_derived_from_entries_when_no_scope() {
     .await
     .unwrap();
 
-    // When scope is omitted, scope_chain is derived from returned entries
+    // When scope is omitted, recall defaults to global before building hits.
     assert_eq!(result.scope_chain, vec!["global"]);
     assert_eq!(result.scope_hits, vec![("global".to_owned(), 1)]);
 }
@@ -933,7 +933,7 @@ async fn scope_resolve_trace_metadata_populated() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_fallback_trace_metadata_populated() {
+async fn default_scope_resolution_trace_metadata_populated() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "Fact one", "Body one.", EntryKind::Fact).await;
@@ -949,15 +949,15 @@ async fn browse_fallback_trace_metadata_populated() {
     .await
     .unwrap();
 
-    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
     assert_eq!(result.fetch_limit_used, 20);
     assert!(result.candidates_before_filter >= 2);
 }
 
-// ── BrowseFallback multi-kind filtering ─────────────────────────
+// ── Default scope multi-kind filtering ───────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_fallback_filters_multiple_kinds() {
+async fn default_scope_resolution_filters_multiple_kinds() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "A fact", "Body A.", EntryKind::Fact).await;
@@ -965,7 +965,7 @@ async fn browse_fallback_filters_multiple_kinds() {
     seed_entry(&store, "A lesson", "Body C.", EntryKind::Lesson).await;
     seed_entry(&store, "A pattern", "Body D.", EntryKind::Pattern).await;
 
-    // No query, no scope, no tags -> BrowseFallback, with multi-kind filter
+    // No query, no scope, no tags -> default ScopeResolve with multi-kind filter.
     let result = recall(
         &store,
         RecallRequest {
@@ -977,7 +977,7 @@ async fn browse_fallback_filters_multiple_kinds() {
     .await
     .unwrap();
 
-    assert_eq!(result.routing, RecallRouting::BrowseFallback);
+    assert_eq!(result.routing, RecallRouting::ScopeResolve);
     assert_eq!(result.entries.len(), 2);
     for row in &result.entries {
         assert!(
