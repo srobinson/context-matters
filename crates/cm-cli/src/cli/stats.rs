@@ -13,6 +13,8 @@ use cm_capabilities::stats::{self, StatsRequest};
 use cm_capabilities::validation::parse_tag_sort;
 use cm_core::ContextStore;
 
+use crate::cli::errors::capability_error;
+
 /// `cm stats` handler. Read-only: no `WriteContext` constructed.
 ///
 /// Field list mirrors the inline `Commands::Stats` clap variant in
@@ -24,7 +26,7 @@ pub async fn run(store: &impl ContextStore, tag_sort: Option<String>, json: bool
 
     let result = stats::stats(store, StatsRequest { tag_sort })
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     if json {
         let view = project_web_stats(&result);

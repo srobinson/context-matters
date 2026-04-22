@@ -5,10 +5,12 @@
 //! `cm_capabilities::get`; this adapter only constructs the request and
 //! renders the shared projection.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use cm_capabilities::get::{self, GetRequest};
 use cm_capabilities::projection::{format_get_view, project_web_get};
 use cm_core::ContextStore;
+
+use crate::cli::errors::capability_error;
 
 /// `cm get` handler. Read-only: no `WriteContext` constructed.
 ///
@@ -17,7 +19,7 @@ use cm_core::ContextStore;
 pub async fn run(store: &impl ContextStore, ids: Vec<String>, json: bool) -> Result<()> {
     let result = get::get(store, GetRequest { ids })
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     if json {
         let view = project_web_get(&result.entries, &result.requested_ids);

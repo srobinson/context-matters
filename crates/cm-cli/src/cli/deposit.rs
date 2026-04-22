@@ -10,12 +10,13 @@
 
 use std::io::Read;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use cm_capabilities::deposit::{self, DepositRequest, Exchange};
 use cm_capabilities::projection::format_deposit_ack;
 use cm_core::{ContextStore, MutationSource, WriteContext};
 use uuid::Uuid;
 
+use crate::cli::errors::capability_error;
 use crate::cli::scope::resolve_scope;
 
 /// Default attribution stamped on CLI-created entries when `--created-by`
@@ -69,7 +70,7 @@ pub async fn run(
 
     let result = deposit::deposit(store, request, &ctx)
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     if json {
         // No `project_web_deposit` exists — no sibling handler emits a

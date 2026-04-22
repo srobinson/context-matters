@@ -18,6 +18,7 @@ use cm_capabilities::scope::BrowseScopeMode;
 use cm_capabilities::validation::parse_kind;
 use cm_core::{ContextStore, ScopePath};
 
+use crate::cli::errors::capability_error;
 use crate::cli::scope::print_advisory;
 
 /// `cm browse` handler. Read-only: no `WriteContext` constructed.
@@ -41,21 +42,19 @@ pub async fn run(
     cursor: Option<String>,
     json: bool,
 ) -> Result<()> {
-    let scope_path = match scope_path.filter(|s| !s.trim().is_empty()) {
-        Some(s) => Some(ScopePath::parse(&s).map_err(|e| anyhow!("{e}"))?),
+    let scope_path = match scope_path {
+        Some(s) => Some(ScopePath::parse(&s).map_err(capability_error)?),
         None => None,
     };
 
     let scope_mode = match scope_mode {
-        Some(mode) => mode
-            .parse::<BrowseScopeMode>()
-            .map_err(|e| anyhow!("{e}"))?,
+        Some(mode) => mode.parse::<BrowseScopeMode>().map_err(capability_error)?,
         None => BrowseScopeMode::default(),
     };
 
     let cwd = match cwd {
         Some(raw) if raw.trim().is_empty() => {
-            return Err(anyhow!("cwd cannot be empty"));
+            return Err(anyhow!("Invalid parameters: cwd cannot be empty"));
         }
         Some(raw) => Some(raw.into()),
         None => None,
@@ -83,7 +82,7 @@ pub async fn run(
 
     let result = browse::browse(store, request.clone())
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     if let Some(advisory) = result.advisory.as_deref() {
         print_advisory(advisory);

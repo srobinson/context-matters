@@ -6,12 +6,13 @@
 
 use std::io::Read;
 
-use anyhow::{Context, Result, anyhow};
-use cm_capabilities::error::cm_err_to_string;
+use anyhow::{Context, Result};
 use cm_capabilities::projection::{format_update_ack, project_web_update};
 use cm_capabilities::update::{self, UpdateRequest};
 use cm_capabilities::validation::MetaInput;
 use cm_core::{ContextStore, MutationSource, WriteContext};
+
+use crate::cli::errors::capability_error;
 
 /// `cm update` handler. Write path: constructs a [`WriteContext`] with
 /// [`MutationSource::Cli`] provenance before calling the shared capability.
@@ -65,7 +66,7 @@ pub async fn run(
 
     let result = update::update(store, request, &ctx)
         .await
-        .map_err(|e| anyhow!("{}", cm_err_to_string(e)))?;
+        .map_err(capability_error)?;
 
     if json {
         let view = project_web_update(&result);

@@ -13,6 +13,7 @@ use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 
+use crate::cli::errors::capability_error;
 use crate::cli::scope::print_advisory;
 
 /// `cm recall` handler. Read-only: no `WriteContext` constructed.
@@ -36,8 +37,8 @@ pub async fn run(
     }
 
     let scope = match scope.as_deref() {
-        Some(s) if !s.is_empty() => Some(ScopePath::parse(s).map_err(|e| anyhow!("{e}"))?),
-        _ => None,
+        Some(s) => Some(ScopePath::parse(s).map_err(capability_error)?),
+        None => None,
     };
 
     let kinds: Vec<EntryKind> = kinds
@@ -57,7 +58,7 @@ pub async fn run(
     // Clone so the projection calls below can still borrow `&request`.
     let result = recall::recall(store, request.clone())
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     for advisory in &result.advisories {
         print_advisory(advisory.body());

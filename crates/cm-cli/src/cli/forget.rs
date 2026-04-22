@@ -7,10 +7,12 @@
 //! in `crates/cm-cli/src/mcp/tools/forget.rs` so the two channels stay
 //! byte-identical for the same batch.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use cm_capabilities::forget::{self, ForgetRequest};
 use cm_capabilities::projection::format_forget_ack;
 use cm_core::{ContextStore, MutationSource, WriteContext};
+
+use crate::cli::errors::capability_error;
 
 /// `cm forget` handler. Write path: constructs a [`WriteContext`] with
 /// [`MutationSource::Cli`] provenance before delegating to the capability.
@@ -23,7 +25,7 @@ pub async fn run(store: &impl ContextStore, ids: Vec<String>) -> Result<()> {
 
     let result = forget::forget(store, ForgetRequest { ids }, &ctx)
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     // `format_forget_ack` already ends with a newline — use `print!`.
     print!(

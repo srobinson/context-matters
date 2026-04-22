@@ -17,9 +17,11 @@
 //! `crates/cm-cli/src/mcp/tools/export.rs` so the two channels emit
 //! byte-identical snapshots for the same request.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use cm_capabilities::export::{ExportRequest, export};
 use cm_core::ContextStore;
+
+use crate::cli::errors::capability_error;
 
 /// `cm export` handler. Read path: no [`WriteContext`] needed.
 ///
@@ -39,7 +41,7 @@ pub async fn run(
         },
     )
     .await
-    .map_err(|e| anyhow!("{e}"))?;
+    .map_err(capability_error)?;
 
     let json =
         serde_json::to_string_pretty(&view).context("serializing export snapshot to JSON")?;
