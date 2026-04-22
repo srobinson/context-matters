@@ -6,6 +6,13 @@
 
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.10](https://github.com/srobinson/context-matters/compare/v0.2.9...v0.2.10) (2026-04-22)
+
+
+### Bug Fixes
+
+* Clean cm adapters: push CLI and MCP logic down into cm-capabilities ([#48](https://github.com/srobinson/context-matters/issues/48)) ([6a8c760](https://github.com/srobinson/context-matters/commit/6a8c7600501e44fb967c4f0687895bc982d2ac59))
+
 ## [0.2.9](https://github.com/srobinson/context-matters/compare/v0.2.8...v0.2.9) (2026-04-21)
 
 
