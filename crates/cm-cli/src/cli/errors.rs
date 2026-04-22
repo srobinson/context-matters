@@ -15,7 +15,16 @@ use cm_core::CmError;
 /// canonical capability message. Keep CLI handlers on this path for byte parity
 /// with `cx_*` tool errors.
 pub fn capability_error(err: impl Into<CmError>) -> anyhow::Error {
-    anyhow::anyhow!("{}", cm_err_to_string(err.into()))
+    string_error(cm_err_to_string(err.into()))
+}
+
+/// Wrap adapter-local string errors without changing their rendered text.
+///
+/// Use this for helpers that already return the same `String` message as the
+/// MCP adapter. Use [`capability_error`] for `CmError` and types converting
+/// into `CmError`.
+pub fn string_error(message: impl Into<String>) -> anyhow::Error {
+    anyhow::anyhow!("{}", message.into())
 }
 
 /// Print an error chain to stderr with colored prefixes and contextual hints.

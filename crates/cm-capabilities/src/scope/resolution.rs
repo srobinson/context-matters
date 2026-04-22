@@ -10,11 +10,15 @@ use super::{
     ScopeResolutionCandidate, ScopeResolutionConfidence,
 };
 
-const AUTO_SCOPE_REPO_MATCH_SCORE: i32 = 200;
-const AUTO_SCOPE_PROJECT_MATCH_SCORE: i32 = 100;
-const AUTO_SCOPE_REPO_SPECIFICITY_SCORE: i32 = 30;
-const AUTO_SCOPE_PROJECT_FALLBACK_SCORE: i32 = 10;
+const AUTO_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
+const AUTO_SCOPE_STRONG_SIGNAL_SCORE: i32 = 100;
+const AUTO_SCOPE_WEAK_SIGNAL_SCORE: i32 = 30;
+const AUTO_SCOPE_FALLBACK_FLOOR_SCORE: i32 = 10;
 const AUTO_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
+
+const AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_EXACT_MATCH_SCORE;
+const AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_STRONG_SIGNAL_SCORE;
+const AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_NO_SIGNAL_SCORE + 1;
 
 pub async fn resolve_browse_scope(
     store: &impl ContextStore,
@@ -148,7 +152,7 @@ fn filter_candidates(scopes: &[Scope], cwd: &CwdParts) -> Vec<ScopeResolutionCan
         .map(|scope| score_candidate(scope, cwd))
         .filter(|candidate| {
             candidate.scope.leaf_kind() == ScopeKind::Global
-                || candidate.score >= AUTO_SCOPE_PROJECT_FALLBACK_SCORE
+                || candidate.score >= AUTO_SCOPE_FALLBACK_FLOOR_SCORE
         })
         .collect();
 
@@ -227,26 +231,26 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
 
     if cwd.has_cwd {
         if segments.repo.as_deref() == cwd.basename.as_deref() {
-            score += AUTO_SCOPE_REPO_MATCH_SCORE;
+            score += AUTO_SCOPE_EXACT_MATCH_SCORE;
             matched.push("repo".to_owned());
         }
 
         if segments.project.as_deref() == cwd.basename.as_deref() {
-            score += AUTO_SCOPE_PROJECT_MATCH_SCORE;
+            score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
             matched.push("project_cwd".to_owned());
         } else if segments.project.as_deref() == cwd.parent_basename.as_deref() {
-            score += AUTO_SCOPE_PROJECT_MATCH_SCORE;
+            score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
             matched.push("project_parent".to_owned());
         }
     }
 
     match scope.leaf_kind() {
         ScopeKind::Repo => {
-            score += AUTO_SCOPE_REPO_SPECIFICITY_SCORE;
+            score += AUTO_SCOPE_WEAK_SIGNAL_SCORE;
             matched.push("specificity".to_owned());
         }
         ScopeKind::Project => {
-            score += AUTO_SCOPE_PROJECT_FALLBACK_SCORE;
+            score += AUTO_SCOPE_FALLBACK_FLOOR_SCORE;
             matched.push("project".to_owned());
         }
         ScopeKind::Global => {
@@ -267,7 +271,7 @@ fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
         return AUTO_SCOPE_NO_SIGNAL_SCORE;
     };
 
-    if top.score >= AUTO_SCOPE_REPO_MATCH_SCORE {
+    if top.score >= AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
         let repo_ties = candidates
             .iter()
             .filter(|candidate| {
@@ -275,7 +279,7 @@ fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
             })
             .count();
         if repo_ties > 1 {
-            return AUTO_SCOPE_PROJECT_MATCH_SCORE;
+            return AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE;
         }
     }
 
@@ -283,11 +287,11 @@ fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
 }
 
 fn rate_confidence(score: i32) -> ScopeResolutionConfidence {
-    if score >= AUTO_SCOPE_REPO_MATCH_SCORE {
+    if score >= AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
         ScopeResolutionConfidence::High
-    } else if score >= AUTO_SCOPE_PROJECT_MATCH_SCORE {
+    } else if score >= AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE {
         ScopeResolutionConfidence::Medium
-    } else if score > AUTO_SCOPE_NO_SIGNAL_SCORE {
+    } else if score >= AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE {
         ScopeResolutionConfidence::Low
     } else {
         ScopeResolutionConfidence::VeryLow
@@ -374,7 +378,7 @@ mod tests {
 
         assert_eq!(
             candidate.score,
-            AUTO_SCOPE_REPO_MATCH_SCORE + AUTO_SCOPE_REPO_SPECIFICITY_SCORE
+            AUTO_SCOPE_EXACT_MATCH_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE
         );
         assert_eq!(candidate.matched, vec!["repo", "specificity"]);
     }
@@ -382,20 +386,49 @@ mod tests {
     #[test]
     fn rate_confidence_maps_score_bands() {
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_REPO_MATCH_SCORE),
+            rate_confidence(AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE),
             ScopeResolutionConfidence::High
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_PROJECT_MATCH_SCORE),
+            rate_confidence(AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE - 1),
             ScopeResolutionConfidence::Medium
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_REPO_SPECIFICITY_SCORE),
+            rate_confidence(AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE),
+            ScopeResolutionConfidence::Medium
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE - 1),
+            ScopeResolutionConfidence::Low
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE),
             ScopeResolutionConfidence::Low
         );
         assert_eq!(
             rate_confidence(AUTO_SCOPE_NO_SIGNAL_SCORE),
             ScopeResolutionConfidence::VeryLow
+        );
+    }
+
+    #[test]
+    fn confidence_score_demotes_tied_repo_matches_to_medium_boundary() {
+        let candidates = vec![
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:alpha/repo:context").unwrap(),
+                score: AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE,
+                matched: vec![],
+            },
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:beta/repo:context").unwrap(),
+                score: AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE,
+                matched: vec![],
+            },
+        ];
+
+        assert_eq!(
+            confidence_score(&candidates),
+            AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE
         );
     }
 }

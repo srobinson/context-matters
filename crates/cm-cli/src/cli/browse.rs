@@ -11,14 +11,14 @@
 //! capability applies a default, this adapter only renders the returned
 //! advisory to stderr.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
 use cm_capabilities::scope::BrowseScopeMode;
 use cm_capabilities::validation::parse_kind;
 use cm_core::{ContextStore, ScopePath};
 
-use crate::cli::errors::capability_error;
+use crate::cli::errors::{capability_error, string_error};
 use crate::cli::scope::print_advisory;
 
 /// `cm browse` handler. Read-only: no `WriteContext` constructed.
@@ -54,14 +54,14 @@ pub async fn run(
 
     let cwd = match cwd {
         Some(raw) if raw.trim().is_empty() => {
-            return Err(anyhow!("Invalid parameters: cwd cannot be empty"));
+            return Err(string_error("Invalid parameters: cwd cannot be empty"));
         }
         Some(raw) => Some(raw.into()),
         None => None,
     };
 
     let kind = match kind {
-        Some(k) => Some(parse_kind(&k).map_err(|e| anyhow!("{e}"))?),
+        Some(k) => Some(parse_kind(&k).map_err(string_error)?),
         None => None,
     };
 

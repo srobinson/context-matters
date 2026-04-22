@@ -7,13 +7,13 @@
 //! `crates/cm-cli/src/mcp/tools/recall.rs` so the two channels stay
 //! byte-identical for the same query.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 
-use crate::cli::errors::capability_error;
+use crate::cli::errors::{capability_error, string_error};
 use crate::cli::scope::print_advisory;
 
 /// `cm recall` handler. Read-only: no `WriteContext` constructed.
@@ -33,7 +33,7 @@ pub async fn run(
     json: bool,
 ) -> Result<()> {
     if let Some(ref q) = query {
-        check_input_size(q, "query").map_err(|e| anyhow!("{e}"))?;
+        check_input_size(q, "query").map_err(string_error)?;
     }
 
     let scope = match scope.as_deref() {
@@ -43,7 +43,7 @@ pub async fn run(
 
     let kinds: Vec<EntryKind> = kinds
         .iter()
-        .map(|k| parse_kind(k).map_err(|e| anyhow!("{e}")))
+        .map(|k| parse_kind(k).map_err(string_error))
         .collect::<Result<Vec<_>, _>>()?;
 
     let request = RecallRequest {
