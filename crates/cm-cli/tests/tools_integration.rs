@@ -14,6 +14,36 @@ use common::{count_row_lines, create_global, extract_stored_id, test_store};
 
 // ── cx_store tests ──────────────────────────────────────────────
 
+async fn store_metadata_error(metadata: Value) -> String {
+    let Some(metadata) = metadata.as_object() else {
+        panic!("metadata payload must be an object");
+    };
+    let mut payload = serde_json::Map::from_iter([
+        ("title".to_owned(), json!("Bad metadata")),
+        ("body".to_owned(), json!("Body.")),
+        ("kind".to_owned(), json!("fact")),
+    ]);
+    payload.extend(metadata.clone());
+
+    let (store, _dir) = test_store().await;
+    tools::cx_store(&store, &Value::Object(payload))
+        .await
+        .unwrap_err()
+}
+
+async fn update_metadata_error(metadata: Value) -> String {
+    let (store, _dir) = test_store().await;
+    tools::cx_update(
+        &store,
+        &json!({
+            "id": "01950000-0000-7000-8000-000000000000",
+            "meta": metadata
+        }),
+    )
+    .await
+    .unwrap_err()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn store_creates_entry_at_global_scope() {
     let (store, _dir) = test_store().await;
@@ -131,6 +161,22 @@ async fn store_rejects_invalid_kind() {
     .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid kind"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn store_and_update_share_invalid_metadata_errors() {
+    let cases = [
+        json!({ "confidence": "maybe" }),
+        json!({ "expires_at": "not-a-date" }),
+        json!({ "tags": ["valid", 42] }),
+    ];
+
+    for metadata in cases {
+        let store_error = store_metadata_error(metadata.clone()).await;
+        let update_error = update_metadata_error(metadata).await;
+
+        assert_eq!(store_error, update_error);
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
