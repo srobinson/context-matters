@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use cm_core::{Confidence, EntryMeta};
 use serde::Deserialize;
+use uuid::Uuid;
 
-use crate::constants::{DEFAULT_LIMIT, MAX_INPUT_BYTES, MAX_LIMIT};
+use crate::constants::{DEFAULT_LIMIT, MAX_BATCH_IDS, MAX_INPUT_BYTES, MAX_LIMIT};
 
 /// Reject input exceeding the per-field byte limit.
 pub fn check_input_size(value: &str, field: &str) -> Result<(), String> {
@@ -28,6 +29,47 @@ pub fn parse_confidence(s: &str) -> Result<Confidence, String> {
             "Invalid confidence '{other}'. Valid values: high, medium, low."
         )),
     }
+}
+
+/// Parsed form of a caller-provided UUID batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedUuidBatch {
+    /// UUIDs in caller order, ready for store calls.
+    pub uuids: Vec<Uuid>,
+    /// Canonical lowercase hyphenated string form for projection diffs.
+    pub canonical_ids: Vec<String>,
+}
+
+/// Parse one user-provided UUID into canonical typed form.
+pub fn parse_uuid(raw: &str) -> Result<Uuid, String> {
+    Uuid::parse_str(raw).map_err(|e| format!("invalid UUID '{raw}': {e}"))
+}
+
+/// Validate and parse an entry-id batch.
+///
+/// The projection layer compares requested IDs to `Entry::id.to_string()`
+/// when computing missing rows, so this helper returns both typed UUIDs
+/// and canonical strings in the same order.
+pub fn parse_uuid_batch(ids: &[String]) -> Result<ParsedUuidBatch, String> {
+    if ids.is_empty() {
+        return Err("ids cannot be empty".to_owned());
+    }
+    if ids.len() > MAX_BATCH_IDS {
+        return Err(format!("maximum {MAX_BATCH_IDS} ids per request"));
+    }
+
+    let mut uuids = Vec::with_capacity(ids.len());
+    let mut canonical_ids = Vec::with_capacity(ids.len());
+    for raw in ids {
+        let id = parse_uuid(raw)?;
+        uuids.push(id);
+        canonical_ids.push(id.to_string());
+    }
+
+    Ok(ParsedUuidBatch {
+        uuids,
+        canonical_ids,
+    })
 }
 
 /// JSON-deserialisable input shape for the `meta` blob on `cx_update` and
@@ -130,6 +172,36 @@ mod tests {
     #[test]
     fn parse_confidence_invalid() {
         assert!(parse_confidence("unknown").is_err());
+    }
+
+    #[test]
+    fn parse_uuid_batch_rejects_empty_ids() {
+        let err = parse_uuid_batch(&[]).unwrap_err();
+        assert_eq!(err, "ids cannot be empty");
+    }
+
+    #[test]
+    fn parse_uuid_batch_rejects_too_many_ids() {
+        let ids = vec!["019d8a01-0000-7000-8000-000000000001".to_owned(); MAX_BATCH_IDS + 1];
+        let err = parse_uuid_batch(&ids).unwrap_err();
+        assert_eq!(err, format!("maximum {MAX_BATCH_IDS} ids per request"));
+    }
+
+    #[test]
+    fn parse_uuid_batch_rejects_invalid_uuid() {
+        let err = parse_uuid_batch(&["not-a-uuid".to_owned()]).unwrap_err();
+        assert!(err.contains("invalid UUID 'not-a-uuid'"));
+    }
+
+    #[test]
+    fn parse_uuid_batch_returns_canonical_ids() {
+        let ids = vec!["019D8A01000070008000000000000001".to_owned()];
+        let parsed = parse_uuid_batch(&ids).unwrap();
+        assert_eq!(parsed.uuids.len(), 1);
+        assert_eq!(
+            parsed.canonical_ids,
+            vec!["019d8a01-0000-7000-8000-000000000001".to_owned()]
+        );
     }
 
     /// Guard: `MetaInput` round-trips an empty JSON object into an
