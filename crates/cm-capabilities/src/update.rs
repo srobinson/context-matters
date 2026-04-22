@@ -42,7 +42,7 @@ pub async fn update(
         && request.meta.is_none()
     {
         return Err(CmError::Validation(
-            "at least one field must be provided (--title, --body, --kind, --meta)".to_owned(),
+            "at least one field must be provided: title, body, kind, or meta".to_owned(),
         ));
     }
 

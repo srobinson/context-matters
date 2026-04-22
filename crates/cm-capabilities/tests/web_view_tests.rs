@@ -23,11 +23,13 @@ use uuid::Uuid;
 use cm_capabilities::browse::BrowseResult;
 use cm_capabilities::projection::{
     RecallRow, WebBrowseView, WebRecallView, project_web_browse_at, project_web_recall_at,
+    project_web_update,
 };
 use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
 use cm_capabilities::scope::{
     BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
 };
+use cm_capabilities::update::UpdateResult;
 use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 
 /// Pinned reference `now`. Matches the value used in the sibling
@@ -35,6 +37,19 @@ use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 /// interpretable against a single instant.
 fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
+}
+
+#[test]
+fn web_update_view_projects_ack_fields() {
+    let result = UpdateResult {
+        updated_id: "019d79d3-0000-7000-8000-000000000099".to_owned(),
+        content_hash: "a".repeat(64),
+    };
+
+    let view = project_web_update(&result);
+
+    assert_eq!(view.updated, result.updated_id);
+    assert_eq!(view.content_hash, result.content_hash);
 }
 
 #[allow(clippy::too_many_arguments)]

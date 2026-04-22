@@ -144,7 +144,7 @@ async fn update_rejects_no_fields() {
 
     assert_validation(
         err,
-        "at least one field must be provided (--title, --body, --kind, --meta)",
+        "at least one field must be provided: title, body, kind, or meta",
     );
 }
 
