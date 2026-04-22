@@ -60,8 +60,10 @@ fn main() {
     // tools.toml lives at workspace root, two levels up from cm-cli
     println!("cargo:rerun-if-changed=../../tools.toml");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=CONTEXT_MATTERS_GIT_SHA");
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    emit_version();
     let tools_toml_path = Path::new(&manifest_dir).join("../../tools.toml");
 
     let content = fs::read_to_string(&tools_toml_path)
@@ -101,6 +103,15 @@ fn main() {
         .unwrap_or_else(|e| panic!("Failed to create templates/: {e}"));
 
     write_if_changed(&templates_dir.join("SKILL.md"), &skill_md);
+}
+
+fn emit_version() {
+    let package_version = std::env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION not set");
+    let version = match std::env::var("CONTEXT_MATTERS_GIT_SHA") {
+        Ok(sha) if !sha.trim().is_empty() => format!("{package_version}+{}", sha.trim()),
+        _ => package_version,
+    };
+    println!("cargo:rustc-env=CONTEXT_MATTERS_VERSION={version}");
 }
 
 /// Only write if the content has changed to avoid spurious rebuilds.

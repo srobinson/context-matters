@@ -1,19 +1,21 @@
 default:
     @just --list
 
-CM_LOCAL_BIN := env_var_or_default("CM_LOCAL_BIN", "/Users/alphab/Dev/LLM/DEV/helioy/context-matters/target/release/cm")
+CM_LOCAL_BIN := env_var_or_default("CM_LOCAL_BIN", "/Users/alphab/.cargo/bin/cm")
 
 build:
     cargo build --workspace
+
+build-local:
+    CONTEXT_MATTERS_GIT_SHA="$(git rev-parse --short=7 HEAD)" cargo build --release -p cm-cli
 
 release:
     cargo build --workspace --release
 
 install: release web-install
-    cargo install --path crates/cm-cli
+    cargo install --path crates/cm-cli --force
 
-install-local:
-    cargo build --release -p cm-cli
+install-local: build-local
     @set -eu; \
     src="$(pwd)/target/release/cm"; \
     dest="{{CM_LOCAL_BIN}}"; \

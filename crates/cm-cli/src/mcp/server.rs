@@ -148,7 +148,7 @@ impl<S: ContextStore> McpServer<S> {
             },
             "serverInfo": {
                 "name": "cm",
-                "version": env!("CARGO_PKG_VERSION")
+                "version": crate::VERSION
             },
             "instructions": SERVER_INSTRUCTIONS
         }))

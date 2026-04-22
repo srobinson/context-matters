@@ -80,6 +80,14 @@ fn no_args_prints_long_help_and_exits_zero() {
         .stdout(contains("ADMIN Commands"));
 }
 
+#[test]
+fn version_prints_crate_version() {
+    cm().arg("--version")
+        .assert()
+        .success()
+        .stdout(contains(format!("cm {}", env!("CARGO_PKG_VERSION"))));
+}
+
 // ---------------- Per-subcommand help surface ----------------
 
 #[test]

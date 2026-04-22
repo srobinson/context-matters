@@ -6,3 +6,6 @@ pub mod mcp;
 pub(crate) mod shared;
 
 pub use shared::yaml_response;
+
+/// Crate version exposed for diagnostics and version banners.
+pub const VERSION: &str = env!("CONTEXT_MATTERS_VERSION");

@@ -58,7 +58,7 @@ pub async fn cmd_serve() -> Result<()> {
     // panic_guard.rs for the capture mechanism.
     mcp::install_panic_hook();
 
-    tracing::info!("context-matters v{}", env!("CARGO_PKG_VERSION"));
+    tracing::info!("context-matters v{}", crate::VERSION);
 
     let store = open_store().await?;
     let server = mcp::McpServer::new(store);

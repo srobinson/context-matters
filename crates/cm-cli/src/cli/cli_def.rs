@@ -24,7 +24,7 @@ use super::help_text as ht;
     before_help = ht::SHORT_HELP,
     before_long_help = ht::LONG_HELP,
     help_template = ht::HELP_TEMPLATE,
-    version,
+    version = crate::VERSION,
     color = ColorChoice::Auto,
     subcommand_required = false,
     disable_help_subcommand = true,
