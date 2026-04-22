@@ -42,6 +42,7 @@ use crate::browse::BrowseResult;
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 use crate::scope::{ScopeResolution, ScopeResolutionCandidate};
 use crate::stats::StatsResult;
+use crate::update::UpdateResult;
 
 // ── Browse view ──────────────────────────────────────────────────
 
@@ -543,6 +544,23 @@ pub fn project_web_get_at(found: &[Entry], requested: &[String], now: DateTime<U
         found: found.len(),
         missing,
         entries,
+    }
+}
+
+// ── Update view ──────────────────────────────────────────────────
+
+/// Shared JSON projection for `cm update --json`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WebUpdateView {
+    pub updated: String,
+    pub content_hash: String,
+}
+
+pub fn project_web_update(result: &UpdateResult) -> WebUpdateView {
+    WebUpdateView {
+        updated: result.updated_id.clone(),
+        content_hash: result.content_hash.clone(),
     }
 }
 
