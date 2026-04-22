@@ -10,6 +10,12 @@ use crate::error::cm_err_to_string;
 
 // ── Browse scope resolution ──────────────────────────────────────
 
+const AUTO_SCOPE_REPO_MATCH_SCORE: i32 = 200;
+const AUTO_SCOPE_PROJECT_MATCH_SCORE: i32 = 100;
+const AUTO_SCOPE_REPO_SPECIFICITY_SCORE: i32 = 30;
+const AUTO_SCOPE_PROJECT_FALLBACK_SCORE: i32 = 10;
+const AUTO_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BrowseScopeInput {
     Auto,
@@ -158,12 +164,35 @@ fn resolve_auto_scope(
     scope_mode: BrowseScopeMode,
 ) -> Result<ScopeResolution, CmError> {
     let cwd = CwdParts::from_path(cwd);
+    let candidates = filter_candidates(scopes, &cwd);
+
+    let Some(top) = candidates.first() else {
+        return Err(CmError::Validation(
+            "no candidate scope could be resolved for scope='auto'".to_owned(),
+        ));
+    };
+
+    let resolved_scope = top.scope.clone();
+    let confidence = rate_confidence(confidence_score(&candidates));
+    let signals = resolution_signals(&cwd, &candidates);
+
+    Ok(ScopeResolution {
+        requested_scope: "auto".to_owned(),
+        resolved_scope,
+        scope_mode,
+        confidence,
+        candidates,
+        signals,
+    })
+}
+
+fn filter_candidates(scopes: &[Scope], cwd: &CwdParts) -> Vec<ScopeResolutionCandidate> {
+    let mut candidate_paths = HashSet::new();
+    let mut matching_repo_parents = HashSet::new();
     let scopes_by_path: BTreeMap<String, ScopePath> = scopes
         .iter()
         .map(|scope| (scope.path.as_str().to_owned(), scope.path.clone()))
         .collect();
-    let mut candidate_paths = HashSet::new();
-    let mut matching_repo_parents = HashSet::new();
 
     for scope in scopes {
         if scope.path.as_str() == "global" {
@@ -203,7 +232,11 @@ fn resolve_auto_scope(
     let mut candidates: Vec<ScopeResolutionCandidate> = candidate_paths
         .into_iter()
         .filter_map(|path| scopes_by_path.get(&path).cloned())
-        .map(|scope| score_candidate(scope, &cwd))
+        .map(|scope| score_candidate(scope, cwd))
+        .filter(|candidate| {
+            candidate.scope.leaf_kind() == ScopeKind::Global
+                || candidate.score >= AUTO_SCOPE_PROJECT_FALLBACK_SCORE
+        })
         .collect();
 
     candidates.sort_by(|a, b| {
@@ -213,24 +246,7 @@ fn resolve_auto_scope(
             .then_with(|| a.scope.as_str().cmp(b.scope.as_str()))
     });
 
-    let Some(top) = candidates.first() else {
-        return Err(CmError::Validation(
-            "no candidate scope could be resolved for scope='auto'".to_owned(),
-        ));
-    };
-
-    let resolved_scope = top.scope.clone();
-    let confidence = confidence_for(&candidates);
-    let signals = resolution_signals(&cwd, &candidates);
-
-    Ok(ScopeResolution {
-        requested_scope: "auto".to_owned(),
-        resolved_scope,
-        scope_mode,
-        confidence,
-        candidates,
-        signals,
-    })
+    candidates
 }
 
 #[derive(Debug, Default)]
@@ -298,26 +314,26 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
 
     if cwd.has_cwd {
         if segments.repo.as_deref() == cwd.basename.as_deref() {
-            score += 200;
+            score += AUTO_SCOPE_REPO_MATCH_SCORE;
             matched.push("repo".to_owned());
         }
 
         if segments.project.as_deref() == cwd.basename.as_deref() {
-            score += 100;
+            score += AUTO_SCOPE_PROJECT_MATCH_SCORE;
             matched.push("project_cwd".to_owned());
         } else if segments.project.as_deref() == cwd.parent_basename.as_deref() {
-            score += 100;
+            score += AUTO_SCOPE_PROJECT_MATCH_SCORE;
             matched.push("project_parent".to_owned());
         }
     }
 
     match scope.leaf_kind() {
         ScopeKind::Repo => {
-            score += 30;
+            score += AUTO_SCOPE_REPO_SPECIFICITY_SCORE;
             matched.push("specificity".to_owned());
         }
         ScopeKind::Project => {
-            score += 10;
+            score += AUTO_SCOPE_PROJECT_FALLBACK_SCORE;
             matched.push("project".to_owned());
         }
         ScopeKind::Global => {
@@ -333,26 +349,32 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
     }
 }
 
-fn confidence_for(candidates: &[ScopeResolutionCandidate]) -> ScopeResolutionConfidence {
+fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
     let Some(top) = candidates.first() else {
-        return ScopeResolutionConfidence::VeryLow;
+        return AUTO_SCOPE_NO_SIGNAL_SCORE;
     };
 
-    if top.score >= 200 {
+    if top.score >= AUTO_SCOPE_REPO_MATCH_SCORE {
         let repo_ties = candidates
             .iter()
             .filter(|candidate| {
                 candidate.score == top.score && candidate.scope.leaf_kind() == ScopeKind::Repo
             })
             .count();
-        if repo_ties <= 1 {
-            return ScopeResolutionConfidence::High;
+        if repo_ties > 1 {
+            return AUTO_SCOPE_PROJECT_MATCH_SCORE;
         }
     }
 
-    if top.score >= 100 {
+    top.score
+}
+
+fn rate_confidence(score: i32) -> ScopeResolutionConfidence {
+    if score >= AUTO_SCOPE_REPO_MATCH_SCORE {
+        ScopeResolutionConfidence::High
+    } else if score >= AUTO_SCOPE_PROJECT_MATCH_SCORE {
         ScopeResolutionConfidence::Medium
-    } else if top.score > 0 {
+    } else if score > AUTO_SCOPE_NO_SIGNAL_SCORE {
         ScopeResolutionConfidence::Low
     } else {
         ScopeResolutionConfidence::VeryLow
@@ -473,4 +495,45 @@ pub async fn ensure_scope_chain_with_status(
         }
     }
     Ok(created)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn score_candidate_combines_repo_match_and_specificity() {
+        let cwd = CwdParts::from_path(Some(Path::new("/tmp/worktrees/context-matters")));
+        let scope = ScopePath::parse("global/project:alpha/repo:context-matters").unwrap();
+
+        let candidate = score_candidate(scope, &cwd);
+
+        assert_eq!(
+            candidate.score,
+            AUTO_SCOPE_REPO_MATCH_SCORE + AUTO_SCOPE_REPO_SPECIFICITY_SCORE
+        );
+        assert_eq!(candidate.matched, vec!["repo", "specificity"]);
+    }
+
+    #[test]
+    fn rate_confidence_maps_score_bands() {
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_REPO_MATCH_SCORE),
+            ScopeResolutionConfidence::High
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_PROJECT_MATCH_SCORE),
+            ScopeResolutionConfidence::Medium
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_REPO_SPECIFICITY_SCORE),
+            ScopeResolutionConfidence::Low
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_NO_SIGNAL_SCORE),
+            ScopeResolutionConfidence::VeryLow
+        );
+    }
 }
