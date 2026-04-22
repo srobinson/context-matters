@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use cm_core::{Confidence, EntryMeta};
+use cm_core::{Confidence, EntryKind, EntryMeta};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::constants::{DEFAULT_LIMIT, MAX_BATCH_IDS, MAX_INPUT_BYTES, MAX_LIMIT};
+use crate::stats::TagSort;
 
 /// Reject input exceeding the per-field byte limit.
 pub fn check_input_size(value: &str, field: &str) -> Result<(), String> {
@@ -27,6 +28,23 @@ pub fn parse_confidence(s: &str) -> Result<Confidence, String> {
         "low" => Ok(Confidence::Low),
         other => Err(format!(
             "Invalid confidence '{other}'. Valid values: high, medium, low."
+        )),
+    }
+}
+
+/// Parse an entry kind string to the EntryKind enum.
+pub fn parse_kind(s: &str) -> Result<EntryKind, String> {
+    s.parse::<EntryKind>()
+        .map_err(crate::error::cm_err_to_string)
+}
+
+/// Parse a stats tag-sort string to the TagSort enum.
+pub fn parse_tag_sort(s: &str) -> Result<TagSort, String> {
+    match s {
+        "name" => Ok(TagSort::Name),
+        "count" => Ok(TagSort::Count),
+        other => Err(format!(
+            "Invalid tag_sort '{other}'. Valid values: name, count."
         )),
     }
 }
@@ -172,6 +190,39 @@ mod tests {
     #[test]
     fn parse_confidence_invalid() {
         assert!(parse_confidence("unknown").is_err());
+    }
+
+    #[test]
+    fn parse_kind_valid() {
+        assert_eq!(parse_kind("fact").unwrap(), EntryKind::Fact);
+        assert_eq!(parse_kind("decision").unwrap(), EntryKind::Decision);
+        assert_eq!(parse_kind("preference").unwrap(), EntryKind::Preference);
+        assert_eq!(parse_kind("lesson").unwrap(), EntryKind::Lesson);
+        assert_eq!(parse_kind("reference").unwrap(), EntryKind::Reference);
+        assert_eq!(parse_kind("feedback").unwrap(), EntryKind::Feedback);
+        assert_eq!(parse_kind("pattern").unwrap(), EntryKind::Pattern);
+        assert_eq!(parse_kind("observation").unwrap(), EntryKind::Observation);
+    }
+
+    #[test]
+    fn parse_kind_invalid_has_canonical_values() {
+        let err = parse_kind("memo").unwrap_err();
+        assert_eq!(
+            err,
+            "Invalid kind 'memo'. Valid values: fact, decision, preference, lesson, reference, feedback, pattern, observation."
+        );
+    }
+
+    #[test]
+    fn parse_tag_sort_valid() {
+        assert_eq!(parse_tag_sort("name").unwrap(), TagSort::Name);
+        assert_eq!(parse_tag_sort("count").unwrap(), TagSort::Count);
+    }
+
+    #[test]
+    fn parse_tag_sort_invalid_has_canonical_values() {
+        let err = parse_tag_sort("recent").unwrap_err();
+        assert_eq!(err, "Invalid tag_sort 'recent'. Valid values: name, count.");
     }
 
     #[test]

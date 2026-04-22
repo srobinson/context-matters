@@ -10,7 +10,7 @@
 use anyhow::{Result, anyhow};
 use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
-use cm_capabilities::validation::{check_input_size, clamp_limit};
+use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 
 use crate::cli::scope::resolve_scope;
@@ -40,7 +40,7 @@ pub async fn run(
 
     let kinds: Vec<EntryKind> = kinds
         .iter()
-        .map(|k| k.parse::<EntryKind>().map_err(|e| anyhow!("{e}")))
+        .map(|k| parse_kind(k).map_err(|e| anyhow!("{e}")))
         .collect::<Result<Vec<_>, _>>()?;
 
     let request = RecallRequest {

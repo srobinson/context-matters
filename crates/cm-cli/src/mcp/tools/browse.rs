@@ -3,8 +3,8 @@
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
 use cm_capabilities::scope::BrowseScopeMode;
-use cm_capabilities::validation::clamp_limit;
-use cm_core::{ContextStore, EntryKind, ScopePath};
+use cm_capabilities::validation::{clamp_limit, parse_kind};
+use cm_core::{ContextStore, ScopePath};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -93,7 +93,7 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolRe
     };
 
     let kind = match &params.kind {
-        Some(k) => Some(k.parse::<EntryKind>().map_err(cm_err_to_string)?),
+        Some(k) => Some(parse_kind(k)?),
         None => None,
     };
 

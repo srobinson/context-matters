@@ -16,8 +16,8 @@ use anyhow::{Result, anyhow};
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
 use cm_capabilities::scope::BrowseScopeMode;
-use cm_capabilities::validation::clamp_limit;
-use cm_core::{ContextStore, EntryKind, ScopePath};
+use cm_capabilities::validation::{clamp_limit, parse_kind};
+use cm_core::{ContextStore, ScopePath};
 
 use crate::cli::scope::resolve_scope_filter;
 
@@ -70,7 +70,7 @@ pub async fn run(
     };
 
     let kind = match kind {
-        Some(k) => Some(k.parse::<EntryKind>().map_err(|e| anyhow!("{e}"))?),
+        Some(k) => Some(parse_kind(&k).map_err(|e| anyhow!("{e}"))?),
         None => None,
     };
 

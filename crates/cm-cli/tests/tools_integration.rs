@@ -9,6 +9,7 @@ mod common;
 use cm_core::{ContextStore, ScopePath};
 use serde_json::{Value, json};
 
+use cm_capabilities::validation::{parse_kind, parse_tag_sort};
 use cm_cli::mcp::tools;
 use common::{
     count_row_lines, create_global, extract_browse_cursor, extract_stored_id, test_store,
@@ -449,6 +450,15 @@ async fn browse_filters_by_kind() {
     assert!(!result.contains("A fact"));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_rejects_invalid_kind_with_capability_error() {
+    let (store, _dir) = test_store().await;
+    let err = tools::cx_browse(&store, &json!({"kind": "memo"}))
+        .await
+        .unwrap_err();
+    assert_eq!(err, parse_kind("memo").unwrap_err());
+}
+
 // ── cx_update tests ─────────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
@@ -667,6 +677,15 @@ async fn stats_returns_correct_counts() {
     // (rendered by the test fixture label "Global").
     assert!(result.contains("scope_tree:"));
     assert!(result.contains("Global"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stats_rejects_invalid_tag_sort_with_capability_error() {
+    let (store, _dir) = test_store().await;
+    let err = tools::cx_stats(&store, &json!({"tag_sort": "recent"}))
+        .await
+        .unwrap_err();
+    assert_eq!(err, parse_tag_sort("recent").unwrap_err());
 }
 
 // ── cx_export tests ─────────────────────────────────────────────

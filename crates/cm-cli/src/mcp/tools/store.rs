@@ -1,9 +1,8 @@
 //! Handler for the `cx_store` tool.
 
 use cm_capabilities::projection::format_store_ack;
-use cm_core::{
-    ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, ScopePath, WriteContext,
-};
+use cm_capabilities::validation::parse_kind;
+use cm_core::{ContextStore, EntryMeta, MutationSource, NewEntry, ScopePath, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -70,7 +69,7 @@ pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<ToolRes
     // Parse scope path and entry kind
     let scope_path =
         ScopePath::parse(&params.scope_path).map_err(|e| cm_err_to_string(e.into()))?;
-    let kind: EntryKind = params.kind.parse().map_err(cm_err_to_string)?;
+    let kind = parse_kind(&params.kind)?;
 
     // Parse confidence if provided
     let confidence = match &params.confidence {

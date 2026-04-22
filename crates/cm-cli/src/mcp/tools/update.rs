@@ -1,8 +1,8 @@
 //! Handler for the `cx_update` tool.
 
 use cm_capabilities::projection::format_update_ack;
-use cm_capabilities::validation::MetaInput;
-use cm_core::{ContextStore, EntryKind, MutationSource, UpdateEntry, WriteContext};
+use cm_capabilities::validation::{MetaInput, parse_kind};
+use cm_core::{ContextStore, MutationSource, UpdateEntry, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -55,7 +55,7 @@ pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolRe
 
     // Parse kind if provided
     let kind = match &params.kind {
-        Some(k) => Some(k.parse::<EntryKind>().map_err(cm_err_to_string)?),
+        Some(k) => Some(parse_kind(k)?),
         None => None,
     };
 

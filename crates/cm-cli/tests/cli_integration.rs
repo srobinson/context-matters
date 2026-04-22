@@ -14,6 +14,7 @@
 use std::path::Path;
 
 use assert_cmd::Command;
+use cm_capabilities::validation::{parse_kind, parse_tag_sort};
 use predicates::str::contains;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -204,6 +205,17 @@ fn browse_auto_scope_can_emit_resolution_metadata() {
     assert_eq!(json["resolution"]["scope_mode"], "resolved");
 }
 
+#[test]
+fn browse_invalid_kind_uses_capability_error() {
+    let dir = tempdir().unwrap();
+    let expected = parse_kind("memo").unwrap_err();
+    cm_with_data_dir(dir.path())
+        .args(["browse", "--kind", "memo"])
+        .assert()
+        .failure()
+        .stderr(contains(expected));
+}
+
 // ---------------- Export ----------------
 
 #[test]
@@ -349,4 +361,15 @@ fn stats_reports_active_counter_after_deposit() {
         .stdout(contains("active:"))
         .stdout(contains("scopes:"))
         .stdout(contains("relations:"));
+}
+
+#[test]
+fn stats_invalid_tag_sort_uses_capability_error() {
+    let dir = tempdir().unwrap();
+    let expected = parse_tag_sort("recent").unwrap_err();
+    cm_with_data_dir(dir.path())
+        .args(["stats", "--tag-sort", "recent"])
+        .assert()
+        .failure()
+        .stderr(contains(expected));
 }

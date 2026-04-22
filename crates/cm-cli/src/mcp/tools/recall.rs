@@ -2,7 +2,7 @@
 
 use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
-use cm_capabilities::validation::{check_input_size, clamp_limit};
+use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 use serde::Deserialize;
 use serde_json::Value;
@@ -49,7 +49,7 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<ToolRe
     let kinds: Vec<EntryKind> = params
         .kinds
         .iter()
-        .map(|k| k.parse::<EntryKind>().map_err(cm_err_to_string))
+        .map(|k| parse_kind(k))
         .collect::<Result<Vec<_>, _>>()?;
 
     let limit = clamp_limit(params.limit);

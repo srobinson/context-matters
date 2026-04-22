@@ -3,7 +3,7 @@ use cm_core::{CmError, ContextStore, StoreStats};
 // ── Types ────────────────────────────────────────────────────────
 
 /// How to sort the `entries_by_tag` list in the result.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TagSort {
     /// Alphabetical by tag name.
     #[default]

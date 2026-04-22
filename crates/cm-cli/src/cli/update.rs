@@ -17,8 +17,8 @@ use std::io::Read;
 
 use anyhow::{Context, Result, anyhow, bail};
 use cm_capabilities::projection::format_update_ack;
-use cm_capabilities::validation::MetaInput;
-use cm_core::{ContextStore, EntryKind, MutationSource, UpdateEntry, WriteContext};
+use cm_capabilities::validation::{MetaInput, parse_kind};
+use cm_core::{ContextStore, MutationSource, UpdateEntry, WriteContext};
 use uuid::Uuid;
 
 /// `cm update` handler. Write path: constructs a [`WriteContext`] with
@@ -67,7 +67,7 @@ pub async fn run(
     };
 
     let kind = match kind {
-        Some(k) => Some(k.parse::<EntryKind>().map_err(|e| anyhow!("{e}"))?),
+        Some(k) => Some(parse_kind(&k).map_err(|e| anyhow!("{e}"))?),
         None => None,
     };
 
