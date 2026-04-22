@@ -43,6 +43,10 @@ async fn browse_defaults_to_auto_scope_for_mcp() {
     assert_eq!(structured["resolution"]["requested_scope"], "auto");
     assert_eq!(structured["resolution"]["resolved_scope"], "global");
     assert_eq!(structured["resolution"]["confidence"], "very_low");
+    assert_eq!(
+        structured["advisory"],
+        "no scope specified, using scope='auto' to infer the local scope. run `cm stats` to list all scopes."
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

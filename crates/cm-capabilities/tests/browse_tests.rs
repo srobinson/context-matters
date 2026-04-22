@@ -145,7 +145,7 @@ async fn browse_returns_all_entries_with_defaults() {
     let result = browse(
         &store,
         BrowseRequest {
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -156,6 +156,13 @@ async fn browse_returns_all_entries_with_defaults() {
     assert_eq!(result.total, 2);
     assert!(!result.has_more);
     assert!(result.next_cursor.is_none());
+    assert_eq!(result.scope_used.as_deref(), Some("auto"));
+    assert!(result.include_resolution);
+    assert_eq!(result.limit_used, 20);
+    assert_eq!(
+        result.advisory.as_deref(),
+        Some(cm_capabilities::browse::BROWSE_SCOPE_DEFAULT_ADVISORY)
+    );
 }
 
 // ── Scope filtering ──────────────────────────────────────────────
@@ -177,7 +184,7 @@ async fn browse_filters_by_scope_path() {
         &store,
         BrowseRequest {
             scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -203,7 +210,7 @@ async fn browse_filters_by_kind() {
         &store,
         BrowseRequest {
             kind: Some(EntryKind::Decision),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -227,7 +234,7 @@ async fn browse_filters_by_tag() {
         &store,
         BrowseRequest {
             tag: Some("infra".to_owned()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -251,7 +258,7 @@ async fn browse_filters_by_created_by() {
         &store,
         BrowseRequest {
             created_by: Some("agent:nancy".to_owned()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -303,7 +310,7 @@ async fn browse_excludes_superseded_by_default() {
     let result = browse(
         &store,
         BrowseRequest {
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -354,7 +361,7 @@ async fn browse_includes_superseded_when_opted_in() {
         &store,
         BrowseRequest {
             include_superseded: true,
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -385,7 +392,7 @@ async fn browse_pagination_with_cursor() {
     let page1 = browse(
         &store,
         BrowseRequest {
-            limit: 2,
+            limit: Some(2),
             ..Default::default()
         },
     )
@@ -401,7 +408,7 @@ async fn browse_pagination_with_cursor() {
     let page2 = browse(
         &store,
         BrowseRequest {
-            limit: 2,
+            limit: Some(2),
             cursor: page1.next_cursor,
             ..Default::default()
         },
@@ -416,7 +423,7 @@ async fn browse_pagination_with_cursor() {
     let page3 = browse(
         &store,
         BrowseRequest {
-            limit: 2,
+            limit: Some(2),
             cursor: page2.next_cursor,
             ..Default::default()
         },
@@ -449,7 +456,7 @@ async fn browse_respects_limit() {
     let result = browse(
         &store,
         BrowseRequest {
-            limit: 3,
+            limit: Some(3),
             ..Default::default()
         },
     )
@@ -472,7 +479,7 @@ async fn has_more_false_when_all_returned() {
     let result = browse(
         &store,
         BrowseRequest {
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -495,7 +502,7 @@ async fn browse_populates_sort_used_default() {
     let result = browse(
         &store,
         BrowseRequest {
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -517,7 +524,7 @@ async fn browse_populates_sort_used_explicit() {
         &store,
         BrowseRequest {
             sort: BrowseSort::Oldest,
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -539,7 +546,7 @@ async fn browse_returns_empty_when_no_matches() {
         &store,
         BrowseRequest {
             kind: Some(EntryKind::Decision),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )

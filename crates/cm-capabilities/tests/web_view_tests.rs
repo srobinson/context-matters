@@ -171,9 +171,13 @@ fn web_browse_view_hoists_uniform_scope() {
         total: 3,
         next_cursor: None,
         has_more: false,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -215,9 +219,13 @@ fn web_browse_view_projects_scope_resolution() {
         total: 1,
         next_cursor: None,
         has_more: false,
+        scope_used: Some("auto".to_owned()),
+        include_resolution: true,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: Some(smart_scope_resolution_fixture()),
+        advisory: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -287,9 +295,13 @@ fn web_browse_view_mixed_scope() {
         total: 2,
         next_cursor: None,
         has_more: false,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);

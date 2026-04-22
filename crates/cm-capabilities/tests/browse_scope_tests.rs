@@ -100,7 +100,7 @@ async fn browse_scope_explicit_path_filters_exactly() {
         &store,
         BrowseRequest {
             scope: Some("global/project:helioy".to_owned()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -130,7 +130,7 @@ async fn browse_matching_scope_and_scope_path_filter_exactly() {
         BrowseRequest {
             scope: Some(project_scope.as_str().to_owned()),
             scope_path: Some(project_scope),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -151,7 +151,7 @@ async fn browse_scope_and_scope_path_must_not_conflict() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             scope_path: Some(ScopePath::parse("global").unwrap()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -182,7 +182,7 @@ async fn browse_scope_auto_resolves_repo_from_cwd() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some("/tmp/helioy/context-matters".into()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -226,7 +226,7 @@ async fn browse_scope_auto_resolves_project_when_repo_scope_absent() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some("/tmp/helioy/context-matters".into()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -260,7 +260,7 @@ async fn browse_scope_auto_resolves_project_from_cwd_basename() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some("/tmp/helioy".into()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -300,7 +300,7 @@ async fn browse_scope_auto_ignores_non_local_project_ancestor() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some("/tmp/helioy/worktrees/context-matters".into()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -344,7 +344,7 @@ async fn browse_scope_auto_signals_ambiguous_repo_basename_match() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some("/tmp/worktrees/context-matters".into()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -381,7 +381,7 @@ async fn browse_scope_auto_falls_back_to_global_without_local_match() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some("/tmp/acme/no-local-match".into()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -402,7 +402,7 @@ async fn browse_scope_auto_falls_back_to_global_without_local_match() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_auto_falls_back_to_global_without_cwd() {
+async fn browse_scope_auto_uses_process_cwd_when_cwd_omitted() {
     let (store, _dir) = test_store().await;
     seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
     seed_scoped(
@@ -417,7 +417,7 @@ async fn browse_scope_auto_falls_back_to_global_without_cwd() {
         &store,
         BrowseRequest {
             scope: Some("auto".to_owned()),
-            limit: 20,
+            limit: Some(20),
             ..Default::default()
         },
     )
@@ -433,7 +433,7 @@ async fn browse_scope_auto_falls_back_to_global_without_cwd() {
         resolution
             .signals
             .iter()
-            .any(|signal| signal == "no cwd supplied; using global fallback")
+            .any(|signal| signal == "no local scope matched cwd; using global fallback")
     );
 }
 
@@ -529,7 +529,7 @@ async fn browse_scope_auto_preserves_other_filters_and_pagination() {
             created_by: Some("agent:auto".to_owned()),
             include_superseded: true,
             sort: BrowseSort::TitleAsc,
-            limit: 2,
+            limit: Some(2),
             ..Default::default()
         },
     )
@@ -556,7 +556,7 @@ async fn browse_scope_auto_preserves_other_filters_and_pagination() {
             created_by: Some("agent:auto".to_owned()),
             include_superseded: true,
             sort: BrowseSort::TitleAsc,
-            limit: 2,
+            limit: Some(2),
             cursor: page1.next_cursor,
             ..Default::default()
         },

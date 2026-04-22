@@ -178,15 +178,10 @@ pub(crate) struct BrowseQuery {
 /// wrapper so smart browse metadata exposure cannot drift.
 pub(crate) struct ExecutedBrowse {
     pub result: BrowseResult,
-    pub include_resolution: bool,
 }
 
 pub(crate) fn project_executed_browse(executed: &ExecutedBrowse) -> WebBrowseView {
-    let mut view = project_web_browse(&executed.result);
-    if !executed.include_resolution {
-        view.resolution = None;
-    }
-    view
+    project_web_browse(&executed.result)
 }
 
 /// Validate a parsed [`BrowseQuery`], convert it into a
@@ -218,7 +213,6 @@ pub(crate) async fn execute_browse(
         .transpose()
         .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
 
-    let scope_is_auto = matches!(bq.scope.as_deref().map(str::trim), Some("auto"));
     let scope_mode = bq
         .scope_mode
         .as_deref()
@@ -234,7 +228,6 @@ pub(crate) async fn execute_browse(
         Some(raw) => Some(raw.into()),
         None => None,
     };
-    let include_resolution = bq.include_resolution.unwrap_or(scope_is_auto);
 
     let kind = bq
         .kind
@@ -250,7 +243,6 @@ pub(crate) async fn execute_browse(
         .unwrap_or(BrowseSort::Recent);
 
     let include_superseded = bq.include_superseded.unwrap_or(false);
-    let limit = clamp_limit(bq.limit);
 
     let result = browse::browse(
         store,
@@ -259,23 +251,20 @@ pub(crate) async fn execute_browse(
             scope_path,
             scope_mode,
             cwd,
-            include_resolution,
+            include_resolution: bq.include_resolution,
             kind,
             tag: bq.tag,
             created_by: bq.created_by,
             include_superseded,
             sort,
-            limit,
+            limit: bq.limit,
             cursor: bq.cursor,
         },
     )
     .await
     .map_err(ApiError)?;
 
-    Ok(ExecutedBrowse {
-        result,
-        include_resolution,
-    })
+    Ok(ExecutedBrowse { result })
 }
 
 fn parse_browse_sort(s: &str) -> Result<BrowseSort, ApiError> {

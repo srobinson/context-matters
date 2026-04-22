@@ -7,19 +7,18 @@
 //! `crates/cm-cli/src/mcp/tools/browse.rs` so the two channels stay
 //! byte-identical for the same query.
 //!
-//! Browse semantics differ from recall: omitting `--scope` means *no filter*
-//! (return entries from every scope), not "default to global". The handler
-//! routes through [`crate::cli::scope::resolve_scope_filter`] which returns
-//! `None` on omission and prints the filter-flavor advisory.
+//! Browse scope defaults are owned by `cm_capabilities::browse`. When the
+//! capability applies a default, this adapter only renders the returned
+//! advisory to stderr.
 
 use anyhow::{Result, anyhow};
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
 use cm_capabilities::scope::BrowseScopeMode;
-use cm_capabilities::validation::{clamp_limit, parse_kind};
+use cm_capabilities::validation::parse_kind;
 use cm_core::{ContextStore, ScopePath};
 
-use crate::cli::scope::resolve_scope_filter;
+use crate::cli::scope::print_advisory;
 
 /// `cm browse` handler. Read-only: no `WriteContext` constructed.
 ///
@@ -42,16 +41,10 @@ pub async fn run(
     cursor: Option<String>,
     json: bool,
 ) -> Result<()> {
-    let scope = scope.filter(|s| !s.trim().is_empty());
-    let scope_is_auto = matches!(scope.as_deref().map(str::trim), Some("auto"));
-
     let scope_path = match scope_path.filter(|s| !s.trim().is_empty()) {
         Some(s) => Some(ScopePath::parse(&s).map_err(|e| anyhow!("{e}"))?),
         None => None,
     };
-    if scope.is_none() && scope_path.is_none() {
-        let _ = resolve_scope_filter(None);
-    }
 
     let scope_mode = match scope_mode {
         Some(mode) => mode
@@ -65,7 +58,6 @@ pub async fn run(
             return Err(anyhow!("cwd cannot be empty"));
         }
         Some(raw) => Some(raw.into()),
-        None if scope_is_auto => Some(std::env::current_dir()?),
         None => None,
     };
 
@@ -79,12 +71,12 @@ pub async fn run(
         scope_path,
         scope_mode,
         cwd,
-        include_resolution: include_resolution || scope_is_auto,
+        include_resolution: include_resolution.then_some(true),
         kind,
         tag,
         created_by,
         include_superseded,
-        limit: clamp_limit(limit),
+        limit,
         cursor,
         ..Default::default()
     };
@@ -93,11 +85,12 @@ pub async fn run(
         .await
         .map_err(|e| anyhow!("{e}"))?;
 
+    if let Some(advisory) = result.advisory.as_deref() {
+        print_advisory(advisory);
+    }
+
     if json {
-        let mut view = project_web_browse(&result);
-        if !request.include_resolution {
-            view.resolution = None;
-        }
+        let view = project_web_browse(&result);
         println!("{}", serde_json::to_string_pretty(&view)?);
     } else {
         // `format_browse_view` already ends with a newline — use `print!`.

@@ -139,6 +139,7 @@ fn browse_lists_seeded_entries_in_human_output() {
         .args(["browse"])
         .assert()
         .success()
+        .stderr(contains("using scope='auto'"))
         .stdout(contains("alpha entry"))
         .stdout(contains("beta entry"));
 }
@@ -172,6 +173,47 @@ fn browse_with_limit_caps_entry_count() {
         "with --limit 2, expected at most 2 entries (got {})",
         entries.len()
     );
+}
+
+#[test]
+fn browse_scope_path_filters_exact_scope() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global",
+            "--exchanges",
+            r#"[{"user":"q1","assistant":"a1","title":"global entry"}]"#,
+        ])
+        .assert()
+        .success();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global/project:helioy",
+            "--exchanges",
+            r#"[{"user":"q2","assistant":"a2","title":"project entry"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let assert = cm_with_data_dir(dir.path())
+        .args(["browse", "--scope-path", "global/project:helioy", "-j"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    let json: Value = serde_json::from_str(&stdout).expect("browse -j must emit valid JSON");
+    let titles: Vec<&str> = json["entries"]
+        .as_array()
+        .expect("browse view should expose entries")
+        .iter()
+        .map(|entry| entry["title"].as_str().expect("entry title is string"))
+        .collect();
+    assert_eq!(titles, vec!["project entry"]);
+    assert!(json.get("advisory").is_none());
+    assert!(json.get("resolution").is_none());
 }
 
 #[test]

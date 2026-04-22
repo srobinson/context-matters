@@ -262,7 +262,7 @@ async fn browse_basic_parity() {
     let expected = capability_browse(
         &store,
         BrowseRequest {
-            limit: clamp_limit(None),
+            limit: None,
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -287,7 +287,7 @@ async fn browse_with_filters_parity() {
         &store,
         BrowseRequest {
             kind: Some(EntryKind::Fact),
-            limit: clamp_limit(None),
+            limit: None,
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -308,7 +308,7 @@ async fn browse_agent_sort_matches_entries_parity() {
     let expected = capability_browse(
         &store,
         BrowseRequest {
-            limit: clamp_limit(None),
+            limit: None,
             sort: BrowseSort::TitleAsc,
             ..Default::default()
         },
@@ -340,8 +340,8 @@ async fn browse_agent_auto_scope_parity() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
-            include_resolution: true,
-            limit: clamp_limit(None),
+            include_resolution: Some(true),
+            limit: None,
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -373,8 +373,8 @@ async fn browse_entries_auto_scope_parity() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
-            include_resolution: true,
-            limit: clamp_limit(None),
+            include_resolution: Some(true),
+            limit: None,
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -400,7 +400,7 @@ async fn browse_scope_path_exact_parity() {
         &store,
         BrowseRequest {
             scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
-            limit: clamp_limit(None),
+            limit: None,
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -429,7 +429,8 @@ async fn browse_pagination_parity() {
     let cap_page1 = capability_browse(
         &store,
         BrowseRequest {
-            limit: 2,
+            scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            limit: Some(1),
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -437,7 +438,11 @@ async fn browse_pagination_parity() {
     .await;
 
     let app = test_app(store);
-    let web_page1 = get_json(app, "/api/agent/browse?limit=2").await;
+    let web_page1 = get_json(
+        app,
+        "/api/agent/browse?scope_path=global/project:helioy&limit=1",
+    )
+    .await;
 
     assert_eq!(cap_page1, web_page1, "Page 1 must match capability layer");
     assert!(
@@ -460,7 +465,8 @@ async fn browse_pagination_parity() {
     let cap_page2 = capability_browse(
         &store2,
         BrowseRequest {
-            limit: 2,
+            scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            limit: Some(1),
             sort: BrowseSort::Recent,
             cursor: Some(cursor.to_owned()),
             ..Default::default()
@@ -471,10 +477,14 @@ async fn browse_pagination_parity() {
     let (write_pool3, read_pool3) = schema::create_pools(&db_path).await.unwrap();
     let store3 = CmStore::new(write_pool3, read_pool3);
     let app2 = test_app(store3);
-    let web_page2 = get_json(app2, &format!("/api/agent/browse?limit=2&cursor={cursor}")).await;
+    let web_page2 = get_json(
+        app2,
+        &format!("/api/agent/browse?scope_path=global/project:helioy&limit=1&cursor={cursor}"),
+    )
+    .await;
 
     assert_eq!(cap_page2, web_page2, "Page 2 must match capability layer");
-    assert_eq!(cap_page2["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(cap_page2["entries"].as_array().unwrap().len(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -491,8 +501,8 @@ async fn browse_auto_scope_pagination_parity() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
-            include_resolution: true,
-            limit: 1,
+            include_resolution: Some(true),
+            limit: Some(1),
             sort: BrowseSort::Recent,
             ..Default::default()
         },
@@ -524,8 +534,8 @@ async fn browse_auto_scope_pagination_parity() {
         BrowseRequest {
             scope: Some("auto".to_owned()),
             cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
-            include_resolution: true,
-            limit: 1,
+            include_resolution: Some(true),
+            limit: Some(1),
             sort: BrowseSort::Recent,
             cursor: Some(cursor.to_owned()),
             ..Default::default()

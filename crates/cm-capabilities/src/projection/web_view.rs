@@ -13,12 +13,10 @@
 //! (and its originating request, where one is needed) to a view
 //! struct.
 //!
-//! Every shared computation — snippet windowing, histogram
-//! aggregation, uniform-key hoisting, BM25 normalisation, routing/tier
-//! tagging — is delegated to the existing
-//! helpers in the sibling projection modules. The YAML and web views
-//! cannot drift on any of these because they read from the same source
-//! of truth. See the DRY notes on [`super::browse_view::sort_as_str`],
+//! Every shared computation is delegated to the existing helpers in
+//! the sibling projection modules. The YAML and web views cannot drift
+//! on these because they read from the same source of truth. See the
+//! DRY notes on [`super::browse_view::sort_as_str`],
 //! [`super::recall_view::routing_explanation`], and
 //! [`super::recall_view::search_tier_header_tag`] for the three helpers
 //! that were promoted to `pub(crate)` specifically so this module could
@@ -134,6 +132,8 @@ pub struct WebScopeResolutionCandidate {
 pub struct WebBrowseView {
     pub header: WebBrowseHeader,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub advisory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<WebScopeResolution>,
     pub entries: Vec<WebBrowseRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -163,12 +163,7 @@ pub fn project_web_browse(result: &BrowseResult) -> WebBrowseView {
 pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBrowseView {
     let entries = result.entries.as_slice();
 
-    // Hoist uniform header columns so rows drop them. Matches the three
-    // hoists in `format_browse_view` exactly: scope, created_by, and
-    // (new for the web view) kind. The YAML view does not hoist kind
-    // because the `kinds:` histogram in the header already shows the
-    // distribution; the web view hoists it because the frontend column
-    // presentation benefits from the null-signal.
+    // Hoist uniform columns so rows drop values already carried by the header.
     let hoisted_scope = hoist_uniform(entries, |e| e.scope_path.as_str().to_owned());
     let hoisted_kind = hoist_uniform(entries, |e| e.kind.as_str().to_owned());
     let hoisted_created_by = hoist_uniform(entries, |e| e.created_by.clone());
@@ -217,7 +212,12 @@ pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBr
 
     WebBrowseView {
         header,
-        resolution: result.resolution.as_ref().map(project_scope_resolution),
+        advisory: result.advisory.clone(),
+        resolution: if result.include_resolution {
+            result.resolution.as_ref().map(project_scope_resolution)
+        } else {
+            None
+        },
         entries: rows,
         next_cursor: result.next_cursor.clone(),
         has_more: result.has_more,

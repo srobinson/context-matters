@@ -1,5 +1,5 @@
 {
-  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope for MCP sessions when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
+  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
   "inputSchema": {
     "properties": {
       "created_by": {
@@ -11,7 +11,7 @@
         "type": "string"
       },
       "cwd": {
-        "description": "Filesystem working directory used for scope=\"auto\" inference. MCP defaults this from the server process current directory when omitted.",
+        "description": "Filesystem working directory used for scope=\"auto\" inference. The capability defaults this from the process current directory when omitted.",
         "type": "string"
       },
       "include_resolution": {
@@ -41,7 +41,7 @@
         "type": "integer"
       },
       "scope": {
-        "description": "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" for MCP sessions when scope_path is omitted.",
+        "description": "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" when scope_path is omitted.",
         "type": "string"
       },
       "scope_mode": {
@@ -64,8 +64,12 @@
   },
   "name": "cx_browse",
   "outputSchema": {
-    "description": "Browse response: filtered inventory header, optional scope resolution metadata, rows, and pagination tail.",
+    "description": "Browse response: filtered inventory header, optional advisory, optional scope resolution metadata, rows, and pagination tail.",
     "properties": {
+      "advisory": {
+        "description": "Capability advisory emitted when browse applied a default.",
+        "type": "string"
+      },
       "entries": {
         "description": "Browse rows on this page. Order is significant (sort_used governs).",
         "items": {

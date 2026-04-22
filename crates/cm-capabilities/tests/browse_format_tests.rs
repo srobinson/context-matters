@@ -104,14 +104,18 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
         total: 113,
         next_cursor: Some("eyJzb3J0IjoicmVjZW50IiwibGFzdCI6ImZvbyJ9".to_owned()),
         has_more: true,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
 
     let request = BrowseRequest {
         tag: Some("session-log".to_owned()),
-        limit: 50,
+        limit: Some(50),
         ..Default::default()
     };
 
@@ -175,8 +179,10 @@ fn format_browse_view_omits_resolution_for_legacy_fixture() {
 fn format_browse_view_renders_auto_scope_resolution() {
     let (mut result, mut request, now) = session_log_fixture();
     result.resolution = Some(smart_scope_resolution_fixture());
+    result.scope_used = Some("auto".to_owned());
+    result.include_resolution = true;
     request.scope = Some("auto".to_owned());
-    request.include_resolution = true;
+    request.include_resolution = Some(true);
 
     let rendered = format_browse_view_at(&result, &request, now);
 
@@ -229,12 +235,16 @@ fn format_browse_view_empty_result_renders_clean() {
         total: 0,
         next_cursor: None,
         has_more: false,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
     let request = BrowseRequest {
-        limit: 50,
+        limit: Some(50),
         ..Default::default()
     };
 
@@ -347,12 +357,16 @@ fn format_browse_view_single_entry_hoists_all_uniform_fields() {
         total: 1,
         next_cursor: None,
         has_more: false,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
     let request = BrowseRequest {
-        limit: 50,
+        limit: Some(50),
         ..Default::default()
     };
 

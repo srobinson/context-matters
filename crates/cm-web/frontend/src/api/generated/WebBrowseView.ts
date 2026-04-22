@@ -10,4 +10,4 @@ import type { WebScopeResolution } from "./WebScopeResolution";
  * header fields, same row shape, same pagination hint. Frontends that
  * render this view see the exact mental model the MCP adapter shows.
  */
-export type WebBrowseView = { header: WebBrowseHeader, resolution: WebScopeResolution | null, entries: Array<WebBrowseRow>, next_cursor: string | null, has_more: boolean, };
+export type WebBrowseView = { header: WebBrowseHeader, advisory: string | null, resolution: WebScopeResolution | null, entries: Array<WebBrowseRow>, next_cursor: string | null, has_more: boolean, };
