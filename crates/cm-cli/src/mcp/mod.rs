@@ -21,7 +21,6 @@ pub use panic_guard::install_panic_hook;
 
 // Re-export helpers for internal use by tool handlers.
 pub(crate) use cm_capabilities::error::cm_err_to_string;
-pub(crate) use cm_capabilities::scope::ensure_scope_chain;
 pub(crate) use cm_capabilities::validation::check_input_size;
 
 pub(crate) use crate::shared::{

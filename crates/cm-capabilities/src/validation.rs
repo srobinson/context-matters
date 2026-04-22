@@ -98,7 +98,7 @@ pub fn parse_uuid_batch(ids: &[String]) -> Result<ParsedUuidBatch, String> {
 /// single source of truth for the `--meta`/`meta` wire shape. Callers convert
 /// to [`EntryMeta`] via [`MetaInput::into_entry_meta`], which validates the
 /// string fields and returns a typed error on failure.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct MetaInput {
     #[serde(default)]
     pub tags: Vec<String>,
@@ -113,6 +113,15 @@ pub struct MetaInput {
 }
 
 impl MetaInput {
+    /// Return true when the wire shape carries no metadata fields.
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
+            && self.confidence.is_none()
+            && self.source.is_none()
+            && self.expires_at.is_none()
+            && self.priority.is_none()
+    }
+
     /// Validate and project the wire-shape into [`EntryMeta`].
     ///
     /// Errors:

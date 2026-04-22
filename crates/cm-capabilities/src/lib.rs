@@ -9,4 +9,5 @@ pub mod projection;
 pub mod recall;
 pub mod scope;
 pub mod stats;
+pub mod store;
 pub mod validation;

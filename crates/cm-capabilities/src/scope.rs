@@ -432,11 +432,24 @@ pub async fn ensure_scope_chain(
     path: &ScopePath,
     ctx: &WriteContext,
 ) -> Result<(), String> {
+    ensure_scope_chain_with_status(store, path, ctx)
+        .await
+        .map(|_| ())
+        .map_err(cm_err_to_string)
+}
+
+/// Ensure the full scope chain exists and report whether any scope was created.
+pub async fn ensure_scope_chain_with_status(
+    store: &impl ContextStore,
+    path: &ScopePath,
+    ctx: &WriteContext,
+) -> Result<bool, CmError> {
     let ancestors: Vec<&str> = path.ancestors().collect();
+    let mut created = false;
 
     // Walk from root (last) to leaf (first)
     for ancestor_str in ancestors.into_iter().rev() {
-        let ancestor = ScopePath::parse(ancestor_str).map_err(|e| cm_err_to_string(e.into()))?;
+        let ancestor = ScopePath::parse(ancestor_str)?;
         match store.get_scope(&ancestor).await {
             Ok(_) => continue,
             Err(CmError::ScopeNotFound(_)) => {
@@ -453,13 +466,11 @@ pub async fn ensure_scope_chain(
                     label,
                     meta: None,
                 };
-                store
-                    .create_scope(new_scope, ctx)
-                    .await
-                    .map_err(cm_err_to_string)?;
+                store.create_scope(new_scope, ctx).await?;
+                created = true;
             }
-            Err(e) => return Err(cm_err_to_string(e)),
+            Err(e) => return Err(e),
         }
     }
-    Ok(())
+    Ok(created)
 }
