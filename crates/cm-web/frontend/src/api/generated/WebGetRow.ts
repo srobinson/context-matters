@@ -6,7 +6,7 @@
  * Mirrors the YAML `format_get_view` output: full UUID in `id`, full
  * body in `body`, scope/kind stringified, relative age, tags and
  * confidence when metadata is present. Structurally parallel to
- * [`WebBrowseRow`] and [`WebRecallRow`] so the frontend can reuse
+ * `WebBrowseRow` and `WebRecallRow` so the frontend can reuse
  * row-rendering primitives across the three views.
  */
 export type WebGetRow = { id: string, title: string, scope: string, kind: string, age: string, body: string, tags: Array<string>, confidence: string | null, };

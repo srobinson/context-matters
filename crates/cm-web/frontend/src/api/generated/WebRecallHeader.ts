@@ -7,9 +7,7 @@
  * routing branch, fallback tier, scope chain and hit counts,
  * histograms, and the post-projection token estimate. `routing` and
  * `tier` are both strings so the frontend need not import the Rust
- * enum shapes — the values come straight out of
- * [`super::recall_view::routing_explanation`] and
- * [`super::recall_view::search_tier_header_tag`], sharing the source
- * of truth with the YAML renderer.
+ * enum shapes; the values come straight out of the shared
+ * `routing_explanation` and `search_tier_header_tag` helpers.
  */
 export type WebRecallHeader = { query: string | null, routing: string, tier: string | null, candidates: number, returned: number, scope_chain: Array<string>, scope_hits: { [key in string]: number }, kinds_histogram: { [key in string]: number }, tags_histogram: { [key in string]: number }, tokens: number, };

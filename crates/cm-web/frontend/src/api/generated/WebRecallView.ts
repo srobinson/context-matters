@@ -6,7 +6,6 @@ import type { WebRecallRow } from "./WebRecallRow";
  * Full projection of a [`RecallResult`] for the cm-web HTTP API.
  *
  * Structurally parallel to the YAML `format_recall_view` output.
- * `advisories` is a forward-compatible slot for the dominance /
- * drill-down hints landing in ALP-1758; this issue leaves it empty.
+ * `advisories` carries capability messages such as omitted-scope defaults.
  */
 export type WebRecallView = { header: WebRecallHeader, entries: Array<WebRecallRow>, advisories: Array<string>, };

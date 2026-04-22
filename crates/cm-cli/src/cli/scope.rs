@@ -1,39 +1,30 @@
 //! `--scope` resolution helpers shared by every read/write subcommand.
 //!
-//! Two flavors are exposed:
+//! The helper exposed here is for deposit-style commands that still default to
+//! `global`. Browse and recall defaults live in `cm-capabilities` and are
+//! returned as capability advisories.
 //!
-//! * [`resolve_scope`] for *recall-style* commands where omission means
-//!   "default to `global` and walk the ancestor chain". Returns a `String`.
-//! * [`resolve_scope_filter`] for *browse-style* commands where omission
-//!   means "no filter, return entries from every scope". Returns
-//!   `Option<String>` so the capability layer can keep `scope_path = None`.
-//!
-//! Both helpers always print a one-line stderr advisory pointing users at
-//! `cm stats` for scope discovery — never gated on TTY — so users who pipe
+//! Scope advisories always print a one-line stderr message pointing users at
+//! `cm stats` for scope discovery, never gated on TTY, so users who pipe
 //! stdout to a file or another command still see the note.
 //!
-//! Tests assert on the substring `"no --scope specified"` (recall flavor)
-//! and `"browsing all scopes"` (filter flavor); keep both stable.
+//! Tests assert on the substring `"no --scope specified"`; keep it stable.
 
 use crate::cli::colors::Colors;
-
-/// Recall-flavor advisory body. Tests grep for `"no --scope specified"`.
-const ADVISORY_BODY_RECALL: &str =
-    "no --scope specified, searching 'global'. run `cm stats` to list all scopes.";
-
-/// Filter-flavor advisory body. Tests grep for `"browsing all scopes"`.
-const ADVISORY_BODY_FILTER: &str =
-    "no --scope specified, browsing all scopes. run `cm stats` to list all scopes.";
+use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 
 /// Build a colorized advisory line. Pure: takes a `Colors` set + body string
 /// and returns the rendered line. Split out so unit tests can inspect the
-/// rendering without capturing stderr, and so both [`resolve_scope`] and
-/// [`resolve_scope_filter`] share a single rendering path.
+/// rendering without capturing stderr.
 fn advisory(c: &Colors, body: &str) -> String {
     format!("{}note:{} {}", c.dim, c.reset, body)
 }
 
-/// Resolve `--scope` for recall-style commands (defaults to `"global"`).
+pub fn print_advisory(body: &str) {
+    eprintln!("{}", advisory(&Colors::stderr(), body));
+}
+
+/// Resolve `--scope` for legacy CLI commands that still default locally.
 ///
 /// * `Some("foo")` → returns `"foo"`, no I/O.
 /// * `Some("")` → treated as omitted (defaults to `"global"` with advisory).
@@ -42,23 +33,8 @@ pub fn resolve_scope(explicit: Option<&str>) -> String {
     match explicit {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => {
-            eprintln!("{}", advisory(&Colors::stderr(), ADVISORY_BODY_RECALL));
+            print_advisory(RECALL_SCOPE_DEFAULT_ADVISORY);
             "global".to_string()
-        }
-    }
-}
-
-/// Resolve `--scope` for browse-style commands (omission == no filter).
-///
-/// * `Some("foo")` → returns `Some("foo")`, no I/O.
-/// * `Some("")` → treated as omitted (returns `None` with advisory).
-/// * `None` → returns `None` and prints the filter advisory to stderr.
-pub fn resolve_scope_filter(explicit: Option<&str>) -> Option<String> {
-    match explicit {
-        Some(s) if !s.is_empty() => Some(s.to_string()),
-        _ => {
-            eprintln!("{}", advisory(&Colors::stderr(), ADVISORY_BODY_FILTER));
-            None
         }
     }
 }
@@ -90,41 +66,20 @@ mod tests {
     }
 
     #[test]
-    fn filter_explicit_value_returns_some() {
-        assert_eq!(
-            resolve_scope_filter(Some("project:cm")),
-            Some("project:cm".to_string())
-        );
-    }
-
-    #[test]
-    fn filter_none_returns_none() {
-        assert_eq!(resolve_scope_filter(None), None);
-    }
-
-    #[test]
-    fn filter_empty_string_treated_as_none() {
-        assert_eq!(resolve_scope_filter(Some("")), None);
-    }
-
-    #[test]
     fn advisory_bodies_contain_required_substrings() {
         // Stable wording assertions. If either substring changes, the
         // tests in `tests/cli_integration.rs` (ALP-1784) that grep stderr
         // need to change in the same commit.
-        assert!(ADVISORY_BODY_RECALL.contains("no --scope specified"));
-        assert!(ADVISORY_BODY_RECALL.contains("cm stats"));
-        assert!(ADVISORY_BODY_FILTER.contains("no --scope specified"));
-        assert!(ADVISORY_BODY_FILTER.contains("browsing all scopes"));
-        assert!(ADVISORY_BODY_FILTER.contains("cm stats"));
+        assert!(RECALL_SCOPE_DEFAULT_ADVISORY.contains("no --scope specified"));
+        assert!(RECALL_SCOPE_DEFAULT_ADVISORY.contains("cm stats"));
     }
 
     #[test]
     fn advisory_renders_with_disabled_colors_to_plain_text() {
         // When colors are disabled (NO_COLOR / non-tty / TERM=dumb),
         // the rendered advisory is plain ASCII with no escape bytes.
-        let plain = advisory(&Colors::for_tty(false), ADVISORY_BODY_RECALL);
-        assert_eq!(format!("note: {ADVISORY_BODY_RECALL}"), plain);
+        let plain = advisory(&Colors::for_tty(false), RECALL_SCOPE_DEFAULT_ADVISORY);
+        assert_eq!(format!("note: {RECALL_SCOPE_DEFAULT_ADVISORY}"), plain);
     }
 
     #[test]
@@ -140,7 +95,7 @@ mod tests {
         // With colors enabled, the rendered string starts with the dim
         // escape and ends with the body. We assert on byte content to
         // catch any drift in the format string composition.
-        let colored = advisory(&Colors::for_tty(true), ADVISORY_BODY_RECALL);
+        let colored = advisory(&Colors::for_tty(true), RECALL_SCOPE_DEFAULT_ADVISORY);
         // SAFETY: restores the exact environment captured above.
         unsafe {
             match prior_no_color {
@@ -154,6 +109,6 @@ mod tests {
         }
         assert!(colored.starts_with("\x1b[2m"), "expected dim prefix");
         assert!(colored.contains("\x1b[0m"), "expected reset escape");
-        assert!(colored.contains(ADVISORY_BODY_RECALL));
+        assert!(colored.contains(RECALL_SCOPE_DEFAULT_ADVISORY));
     }
 }

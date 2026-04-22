@@ -23,11 +23,16 @@ use uuid::Uuid;
 use cm_capabilities::browse::BrowseResult;
 use cm_capabilities::projection::{
     RecallRow, WebBrowseView, WebRecallView, project_web_browse_at, project_web_recall_at,
+    project_web_update,
 };
-use cm_capabilities::recall::{RecallRequest, RecallResult, RecallRouting, SearchTier};
+use cm_capabilities::recall::{
+    RECALL_SCOPE_DEFAULT_ADVISORY, RecallAdvisory, RecallRequest, RecallResult, RecallRouting,
+    SearchTier,
+};
 use cm_capabilities::scope::{
     BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
 };
+use cm_capabilities::update::UpdateResult;
 use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 
 /// Pinned reference `now`. Matches the value used in the sibling
@@ -35,6 +40,19 @@ use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 /// interpretable against a single instant.
 fn fixed_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 4, 11, 12, 0, 0).unwrap()
+}
+
+#[test]
+fn web_update_view_projects_ack_fields() {
+    let result = UpdateResult {
+        updated_id: "019d79d3-0000-7000-8000-000000000099".to_owned(),
+        content_hash: "a".repeat(64),
+    };
+
+    let view = project_web_update(&result);
+
+    assert_eq!(view.updated, result.updated_id);
+    assert_eq!(view.content_hash, result.content_hash);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -156,9 +174,13 @@ fn web_browse_view_hoists_uniform_scope() {
         total: 3,
         next_cursor: None,
         has_more: false,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -200,9 +222,13 @@ fn web_browse_view_projects_scope_resolution() {
         total: 1,
         next_cursor: None,
         has_more: false,
+        scope_used: Some("auto".to_owned()),
+        include_resolution: true,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: Some(smart_scope_resolution_fixture()),
+        advisory: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -272,9 +298,13 @@ fn web_browse_view_mixed_scope() {
         total: 2,
         next_cursor: None,
         has_more: false,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts: HashMap::new(),
         resolution: None,
+        advisory: None,
     };
 
     let view: WebBrowseView = project_web_browse_at(&result, now);
@@ -320,6 +350,7 @@ fn web_recall_view_brackets_snippets_on_search() {
         candidates_before_filter: 1,
         fetch_limit_used: 50,
         relation_counts: HashMap::new(),
+        advisories: Vec::new(),
     };
     let request = RecallRequest {
         query: Some("snippet".to_owned()),
@@ -391,6 +422,7 @@ fn web_recall_view_histograms_populated() {
         candidates_before_filter: 3,
         fetch_limit_used: 50,
         relation_counts: HashMap::new(),
+        advisories: Vec::new(),
     };
     let request = RecallRequest {
         query: None,
@@ -408,4 +440,31 @@ fn web_recall_view_histograms_populated() {
     assert_eq!(view.header.tags_histogram.get("beta"), Some(&1));
     assert_eq!(view.header.tags_histogram.get("gamma"), Some(&1));
     assert_eq!(view.header.tags_histogram.len(), 3);
+}
+
+#[test]
+fn web_recall_view_projects_capability_advisories() {
+    let now = fixed_now();
+    let result = RecallResult {
+        entries: Vec::new(),
+        scope_chain: vec!["global".to_owned()],
+        scope_hits: Vec::new(),
+        token_estimate: 0,
+        routing: RecallRouting::ScopeResolve,
+        tier: None,
+        candidates_before_filter: 0,
+        fetch_limit_used: 20,
+        relation_counts: HashMap::new(),
+        advisories: vec![RecallAdvisory::ScopeDefaulted {
+            applied: "global".to_owned(),
+        }],
+    };
+    let request = RecallRequest {
+        limit: 20,
+        ..Default::default()
+    };
+
+    let view: WebRecallView = project_web_recall_at(&result, &request, now);
+
+    assert_eq!(view.advisories, vec![RECALL_SCOPE_DEFAULT_ADVISORY]);
 }

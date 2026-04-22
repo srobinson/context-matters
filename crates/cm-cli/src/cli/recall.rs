@@ -7,13 +7,14 @@
 //! `crates/cm-cli/src/mcp/tools/recall.rs` so the two channels stay
 //! byte-identical for the same query.
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
-use cm_capabilities::validation::{check_input_size, clamp_limit};
+use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
 use cm_core::{ContextStore, EntryKind, ScopePath};
 
-use crate::cli::scope::resolve_scope;
+use crate::cli::errors::{capability_error, string_error};
+use crate::cli::scope::print_advisory;
 
 /// `cm recall` handler. Read-only: no `WriteContext` constructed.
 ///
@@ -32,15 +33,17 @@ pub async fn run(
     json: bool,
 ) -> Result<()> {
     if let Some(ref q) = query {
-        check_input_size(q, "query").map_err(|e| anyhow!("{e}"))?;
+        check_input_size(q, "query").map_err(string_error)?;
     }
 
-    let scope_str = resolve_scope(scope.as_deref());
-    let scope = Some(ScopePath::parse(&scope_str).map_err(|e| anyhow!("{e}"))?);
+    let scope = match scope.as_deref() {
+        Some(s) => Some(ScopePath::parse(s).map_err(capability_error)?),
+        None => None,
+    };
 
     let kinds: Vec<EntryKind> = kinds
         .iter()
-        .map(|k| k.parse::<EntryKind>().map_err(|e| anyhow!("{e}")))
+        .map(|k| parse_kind(k).map_err(string_error))
         .collect::<Result<Vec<_>, _>>()?;
 
     let request = RecallRequest {
@@ -55,7 +58,11 @@ pub async fn run(
     // Clone so the projection calls below can still borrow `&request`.
     let result = recall::recall(store, request.clone())
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
+
+    for advisory in &result.advisories {
+        print_advisory(advisory.body());
+    }
 
     if json {
         let view = project_web_recall(&result, &request);

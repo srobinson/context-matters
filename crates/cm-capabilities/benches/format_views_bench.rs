@@ -134,12 +134,16 @@ fn browse_fixture() -> (BrowseResult, BrowseRequest) {
         total: 247,
         next_cursor: Some("eyJzb3J0IjoicmVjZW50IiwibGFzdCI6ImZvbyJ9".to_owned()),
         has_more: true,
+        scope_used: None,
+        include_resolution: false,
+        limit_used: 50,
         sort_used: BrowseSort::Recent,
         relation_counts,
         resolution: None,
+        advisory: None,
     };
     let request = BrowseRequest {
-        limit: 50,
+        limit: Some(50),
         ..Default::default()
     };
     (result, request)
@@ -181,6 +185,7 @@ fn recall_fixture() -> (RecallResult, RecallRequest) {
         candidates_before_filter: 62,
         fetch_limit_used: 50,
         relation_counts,
+        advisories: Vec::new(),
     };
     let request = RecallRequest {
         query: Some("snippet strategy".to_owned()),

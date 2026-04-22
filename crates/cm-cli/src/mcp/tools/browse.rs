@@ -3,8 +3,8 @@
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
 use cm_capabilities::scope::BrowseScopeMode;
-use cm_capabilities::validation::clamp_limit;
-use cm_core::{ContextStore, EntryKind, ScopePath};
+use cm_capabilities::validation::parse_kind;
+use cm_core::{ContextStore, ScopePath};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -61,15 +61,6 @@ struct CxBrowseParams {
 pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let params: CxBrowseParams = parse_params(args)?;
 
-    let scope = params.scope.or_else(|| {
-        if params.scope_path.is_none() {
-            Some("auto".to_owned())
-        } else {
-            None
-        }
-    });
-    let scope_is_auto = matches!(scope.as_deref().map(str::trim), Some("auto"));
-
     let scope_path = match &params.scope_path {
         Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
         None => None,
@@ -85,31 +76,25 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolRe
             return Err("Invalid parameters: cwd cannot be empty".to_owned());
         }
         Some(raw) => Some(raw.into()),
-        None if scope_is_auto => Some(
-            std::env::current_dir()
-                .map_err(|e| format!("Failed to determine current working directory: {e}"))?,
-        ),
         None => None,
     };
 
     let kind = match &params.kind {
-        Some(k) => Some(k.parse::<EntryKind>().map_err(cm_err_to_string)?),
+        Some(k) => Some(parse_kind(k)?),
         None => None,
     };
 
-    let limit = clamp_limit(params.limit);
-
     let request = BrowseRequest {
-        scope,
+        scope: params.scope,
         scope_path,
         scope_mode,
         cwd,
-        include_resolution: params.include_resolution.unwrap_or(scope_is_auto),
+        include_resolution: params.include_resolution,
         kind,
         tag: params.tag,
         created_by: params.created_by,
         include_superseded: params.include_superseded,
-        limit,
+        limit: params.limit,
         cursor: params.cursor,
         ..Default::default()
     };
@@ -119,9 +104,6 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         .map_err(cm_err_to_string)?;
 
     let text = format_browse_view(&result, &request);
-    let mut view = project_web_browse(&result);
-    if !request.include_resolution {
-        view.resolution = None;
-    }
+    let view = project_web_browse(&result);
     dual_response(text, &view)
 }

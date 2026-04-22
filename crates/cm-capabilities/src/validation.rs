@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use cm_core::{Confidence, EntryMeta};
+use cm_core::{Confidence, EntryKind, EntryMeta};
 use serde::Deserialize;
+use uuid::Uuid;
 
-use crate::constants::{DEFAULT_LIMIT, MAX_INPUT_BYTES, MAX_LIMIT};
+use crate::constants::{DEFAULT_LIMIT, MAX_BATCH_IDS, MAX_INPUT_BYTES, MAX_LIMIT};
+use crate::stats::TagSort;
 
 /// Reject input exceeding the per-field byte limit.
 pub fn check_input_size(value: &str, field: &str) -> Result<(), String> {
@@ -30,6 +32,64 @@ pub fn parse_confidence(s: &str) -> Result<Confidence, String> {
     }
 }
 
+/// Parse an entry kind string to the EntryKind enum.
+pub fn parse_kind(s: &str) -> Result<EntryKind, String> {
+    s.parse::<EntryKind>()
+        .map_err(crate::error::cm_err_to_string)
+}
+
+/// Parse a stats tag-sort string to the TagSort enum.
+pub fn parse_tag_sort(s: &str) -> Result<TagSort, String> {
+    match s {
+        "name" => Ok(TagSort::Name),
+        "count" => Ok(TagSort::Count),
+        other => Err(format!(
+            "Invalid tag_sort '{other}'. Valid values: name, count."
+        )),
+    }
+}
+
+/// Parsed form of a caller-provided UUID batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedUuidBatch {
+    /// UUIDs in caller order, ready for store calls.
+    pub uuids: Vec<Uuid>,
+    /// Canonical lowercase hyphenated string form for projection diffs.
+    pub canonical_ids: Vec<String>,
+}
+
+/// Parse one user-provided UUID into canonical typed form.
+pub fn parse_uuid(raw: &str) -> Result<Uuid, String> {
+    Uuid::parse_str(raw).map_err(|e| format!("invalid UUID '{raw}': {e}"))
+}
+
+/// Validate and parse an entry-id batch.
+///
+/// The projection layer compares requested IDs to `Entry::id.to_string()`
+/// when computing missing rows, so this helper returns both typed UUIDs
+/// and canonical strings in the same order.
+pub fn parse_uuid_batch(ids: &[String]) -> Result<ParsedUuidBatch, String> {
+    if ids.is_empty() {
+        return Err("ids cannot be empty".to_owned());
+    }
+    if ids.len() > MAX_BATCH_IDS {
+        return Err(format!("maximum {MAX_BATCH_IDS} ids per request"));
+    }
+
+    let mut uuids = Vec::with_capacity(ids.len());
+    let mut canonical_ids = Vec::with_capacity(ids.len());
+    for raw in ids {
+        let id = parse_uuid(raw)?;
+        uuids.push(id);
+        canonical_ids.push(id.to_string());
+    }
+
+    Ok(ParsedUuidBatch {
+        uuids,
+        canonical_ids,
+    })
+}
+
 /// JSON-deserialisable input shape for the `meta` blob on `cx_update` and
 /// `cm update --meta`. Mirrors [`EntryMeta`] but accepts string-encoded
 /// `confidence` and ISO 8601 `expires_at` that need to be parsed.
@@ -38,7 +98,7 @@ pub fn parse_confidence(s: &str) -> Result<Confidence, String> {
 /// single source of truth for the `--meta`/`meta` wire shape. Callers convert
 /// to [`EntryMeta`] via [`MetaInput::into_entry_meta`], which validates the
 /// string fields and returns a typed error on failure.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct MetaInput {
     #[serde(default)]
     pub tags: Vec<String>,
@@ -53,6 +113,15 @@ pub struct MetaInput {
 }
 
 impl MetaInput {
+    /// Return true when the wire shape carries no metadata fields.
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
+            && self.confidence.is_none()
+            && self.source.is_none()
+            && self.expires_at.is_none()
+            && self.priority.is_none()
+    }
+
     /// Validate and project the wire-shape into [`EntryMeta`].
     ///
     /// Errors:
@@ -130,6 +199,69 @@ mod tests {
     #[test]
     fn parse_confidence_invalid() {
         assert!(parse_confidence("unknown").is_err());
+    }
+
+    #[test]
+    fn parse_kind_valid() {
+        assert_eq!(parse_kind("fact").unwrap(), EntryKind::Fact);
+        assert_eq!(parse_kind("decision").unwrap(), EntryKind::Decision);
+        assert_eq!(parse_kind("preference").unwrap(), EntryKind::Preference);
+        assert_eq!(parse_kind("lesson").unwrap(), EntryKind::Lesson);
+        assert_eq!(parse_kind("reference").unwrap(), EntryKind::Reference);
+        assert_eq!(parse_kind("feedback").unwrap(), EntryKind::Feedback);
+        assert_eq!(parse_kind("pattern").unwrap(), EntryKind::Pattern);
+        assert_eq!(parse_kind("observation").unwrap(), EntryKind::Observation);
+    }
+
+    #[test]
+    fn parse_kind_invalid_has_canonical_values() {
+        let err = parse_kind("memo").unwrap_err();
+        assert_eq!(
+            err,
+            "Invalid kind 'memo'. Valid values: fact, decision, preference, lesson, reference, feedback, pattern, observation."
+        );
+    }
+
+    #[test]
+    fn parse_tag_sort_valid() {
+        assert_eq!(parse_tag_sort("name").unwrap(), TagSort::Name);
+        assert_eq!(parse_tag_sort("count").unwrap(), TagSort::Count);
+    }
+
+    #[test]
+    fn parse_tag_sort_invalid_has_canonical_values() {
+        let err = parse_tag_sort("recent").unwrap_err();
+        assert_eq!(err, "Invalid tag_sort 'recent'. Valid values: name, count.");
+    }
+
+    #[test]
+    fn parse_uuid_batch_rejects_empty_ids() {
+        let err = parse_uuid_batch(&[]).unwrap_err();
+        assert_eq!(err, "ids cannot be empty");
+    }
+
+    #[test]
+    fn parse_uuid_batch_rejects_too_many_ids() {
+        let ids = vec!["019d8a01-0000-7000-8000-000000000001".to_owned(); MAX_BATCH_IDS + 1];
+        let err = parse_uuid_batch(&ids).unwrap_err();
+        assert_eq!(err, format!("maximum {MAX_BATCH_IDS} ids per request"));
+    }
+
+    #[test]
+    fn parse_uuid_batch_rejects_invalid_uuid() {
+        let err = parse_uuid_batch(&["not-a-uuid".to_owned()]).unwrap_err();
+        assert!(err.contains("invalid UUID 'not-a-uuid'"));
+    }
+
+    #[test]
+    fn parse_uuid_batch_returns_canonical_ids() {
+        let ids = vec!["019D8A01000070008000000000000001".to_owned()];
+        let parsed = parse_uuid_batch(&ids).unwrap();
+        assert_eq!(parsed.uuids.len(), 1);
+        assert_eq!(
+            parsed.canonical_ids,
+            vec!["019d8a01-0000-7000-8000-000000000001".to_owned()]
+        );
     }
 
     /// Guard: `MetaInput` round-trips an empty JSON object into an

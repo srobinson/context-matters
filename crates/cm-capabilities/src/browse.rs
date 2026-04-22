@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf};
 
 use cm_core::{
     BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
@@ -6,26 +6,35 @@ use cm_core::{
 use uuid::Uuid;
 
 use crate::scope::{BrowseScopeMode, ScopeResolution, resolve_browse_scope};
+use crate::validation::clamp_limit;
 
 // ── Types ────────────────────────────────────────────────────────
+
+pub const DEFAULT_BROWSE_SCOPE: &str = "auto";
+
+pub const BROWSE_SCOPE_DEFAULT_ADVISORY: &str = "no scope specified, using scope='auto' to infer the local scope. run `cm stats` to list all scopes.";
 
 /// Input for a browse operation.
 #[derive(Debug, Clone, Default)]
 pub struct BrowseRequest {
     /// Preferred scope input. Accepts "auto" for local resolution or an
-    /// explicit `ScopePath` string for exact filtering.
+    /// explicit `ScopePath` string for exact filtering. Defaults to
+    /// `DEFAULT_BROWSE_SCOPE` when both `scope` and `scope_path` are unset.
     pub scope: Option<String>,
     /// Backward compatible exact scope filter.
     pub scope_path: Option<ScopePath>,
     pub scope_mode: BrowseScopeMode,
     pub cwd: Option<PathBuf>,
-    pub include_resolution: bool,
+    /// Whether to render smart-scope resolution metadata. Defaults to true
+    /// for effective `scope="auto"` requests and false otherwise.
+    pub include_resolution: Option<bool>,
     pub kind: Option<EntryKind>,
     pub tag: Option<String>,
     pub created_by: Option<String>,
     pub include_superseded: bool,
     pub sort: BrowseSort,
-    pub limit: u32,
+    /// Requested page size. Clamped by the capability before querying.
+    pub limit: Option<u32>,
     pub cursor: Option<String>,
 }
 
@@ -36,6 +45,11 @@ pub struct BrowseResult {
     pub total: u64,
     pub next_cursor: Option<String>,
     pub has_more: bool,
+    /// Effective scope input after capability defaults. Used by projection
+    /// code to disclose `scope=auto` when callers omitted a scope.
+    pub scope_used: Option<String>,
+    pub include_resolution: bool,
+    pub limit_used: u32,
     /// Sort order actually applied to the query. Always populated (defaults
     /// to `BrowseSort::Recent` when the caller omits `sort`). The browse
     /// formatter surfaces this in the result header, e.g. `sort: recent`.
@@ -47,6 +61,7 @@ pub struct BrowseResult {
     /// zero and elides the `rels:` annotation entirely.
     pub relation_counts: HashMap<Uuid, u32>,
     pub resolution: Option<ScopeResolution>,
+    pub advisory: Option<String>,
 }
 
 // ── Core Function ────────────────────────────────────────────────
@@ -60,22 +75,51 @@ pub async fn browse(
     store: &impl ContextStore,
     request: BrowseRequest,
 ) -> Result<BrowseResult, CmError> {
+    let scope_defaulted = request.scope.is_none() && request.scope_path.is_none();
+    let mut effective_request = request;
+    if scope_defaulted {
+        effective_request.scope = Some(DEFAULT_BROWSE_SCOPE.to_owned());
+    }
+
+    let scope_is_auto = matches!(
+        effective_request.scope.as_deref().map(str::trim),
+        Some(DEFAULT_BROWSE_SCOPE)
+    );
+    if scope_is_auto && effective_request.cwd.is_none() {
+        effective_request.cwd = Some(env::current_dir().map_err(|e| {
+            CmError::Validation(format!(
+                "failed to determine current working directory: {e}"
+            ))
+        })?);
+    }
+
+    let include_resolution = effective_request
+        .include_resolution
+        .unwrap_or(scope_is_auto);
+    let limit_used = clamp_limit(effective_request.limit);
+
     // Capture the resolved sort before moving `request.sort` into the filter,
     // so the formatter can surface "sort: <variant>" in the browse header
     // without having to re-derive it from request-side state.
-    let sort_used = request.sort;
-    let resolved_scope = resolve_browse_scope(store, &request).await?;
+    let sort_used = effective_request.sort;
+    let scope_used = effective_request.scope.clone().or_else(|| {
+        effective_request
+            .scope_path
+            .as_ref()
+            .map(ToString::to_string)
+    });
+    let resolved_scope = resolve_browse_scope(store, &effective_request).await?;
 
     let filter = EntryFilter {
         scope_path: resolved_scope.scope_path,
-        kind: request.kind,
-        tag: request.tag,
-        created_by: request.created_by,
-        include_superseded: request.include_superseded,
-        sort: request.sort,
+        kind: effective_request.kind,
+        tag: effective_request.tag,
+        created_by: effective_request.created_by,
+        include_superseded: effective_request.include_superseded,
+        sort: effective_request.sort,
         pagination: Pagination {
-            limit: request.limit,
-            cursor: request.cursor,
+            limit: limit_used,
+            cursor: effective_request.cursor,
         },
     };
 
@@ -93,8 +137,12 @@ pub async fn browse(
         total: result.total,
         next_cursor: result.next_cursor,
         has_more,
+        scope_used,
+        include_resolution,
+        limit_used,
         sort_used,
         relation_counts,
         resolution: resolved_scope.resolution,
+        advisory: scope_defaulted.then(|| BROWSE_SCOPE_DEFAULT_ADVISORY.to_owned()),
     })
 }

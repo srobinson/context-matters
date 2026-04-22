@@ -3,19 +3,18 @@
 /**
  * One row in a recall result, shaped for the cm-web UI.
  *
- * Unlike [`WebBrowseRow`], `scope` and `kind` are plain `String`s: the
+ * Unlike `WebBrowseRow`, `scope` and `kind` are plain `String`s: the
  * recall view has no uniform-hoisting step because the scope chain
  * walk typically surfaces entries from multiple ancestors in the same
  * result, and the frontend wants the scope label visible per-row. The
- * BM25 `score` is normalised to `[0.0, 1.0]` via
- * [`super::recall_view::normalise_bm25`], so the best row always
+ * BM25 `score` is normalised to `[0.0, 1.0]`, so the best row always
  * renders as `1.00` regardless of raw FTS5 range; non-search routings
  * leave `score` as `None`.
  */
 export type WebRecallRow = { id: string, score: number | null, title: string, 
 /**
  * Smart snippet windowed around the first query match, with
- * `«term»` brackets when both routing is `Search` and the
+ * guillemet brackets when both routing is `Search` and the
  * request supplied a non-empty query. Bracket style matches
  * the YAML recall view exactly.
  */

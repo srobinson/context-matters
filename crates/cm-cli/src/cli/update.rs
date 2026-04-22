@@ -1,29 +1,21 @@
-//! `cm update` — partial update an entry by ID.
+//! `cm update` partial update entry by ID.
 //!
 //! Thin CLI handler: parses optional flags, reads body from stdin when
-//! `--body -` is passed, projects `--meta` JSON through the shared
-//! [`MetaInput`] into an [`EntryMeta`], constructs an [`UpdateEntry`], then
-//! calls [`ContextStore::update_entry`] with a [`WriteContext`] tagged
-//! [`MutationSource::Cli`]. Mirrors the MCP `cx_update` handler in
-//! `crates/cm-cli/src/mcp/tools/update.rs`.
-//!
-//! Note: `update` does NOT route through a `cm_capabilities::update::update`
-//! function (no such function exists). It calls [`ContextStore::update_entry`]
-//! directly, exactly as the MCP handler does. The "capability layer" for
-//! `update` is [`format_update_ack`] on the text branch and the shared
-//! [`MetaInput`] projection on the input side.
+//! `--body -` is passed, constructs an [`UpdateRequest`], then delegates to
+//! `cm_capabilities::update`.
 
 use std::io::Read;
 
-use anyhow::{Context, Result, anyhow, bail};
-use cm_capabilities::projection::format_update_ack;
+use anyhow::{Context, Result};
+use cm_capabilities::projection::{format_update_ack, project_web_update};
+use cm_capabilities::update::{self, UpdateRequest};
 use cm_capabilities::validation::MetaInput;
-use cm_core::{ContextStore, EntryKind, MutationSource, UpdateEntry, WriteContext};
-use uuid::Uuid;
+use cm_core::{ContextStore, MutationSource, WriteContext};
+
+use crate::cli::errors::capability_error;
 
 /// `cm update` handler. Write path: constructs a [`WriteContext`] with
-/// [`MutationSource::Cli`] provenance before calling
-/// [`ContextStore::update_entry`].
+/// [`MutationSource::Cli`] provenance before calling the shared capability.
 ///
 /// Field list mirrors the inline `Commands::Update` clap variant in
 /// [`super::cli_def`]. The destructure happens at the call site in
@@ -37,8 +29,6 @@ pub async fn run(
     meta: Option<String>,
     json: bool,
 ) -> Result<()> {
-    let uuid = Uuid::parse_str(&id).map_err(|e| anyhow!("invalid UUID '{id}': {e}"))?;
-
     // `--body -` reads from stdin, matching the fmm CLI convention. Lets
     // callers pipe multi-line markdown edits without shell-quoting every
     // newline.
@@ -59,23 +49,13 @@ pub async fn run(
     let meta = match meta {
         Some(raw) => Some(
             serde_json::from_str::<MetaInput>(&raw)
-                .with_context(|| "--meta must be a valid JSON object".to_owned())?
-                .into_entry_meta()
-                .map_err(|e| anyhow!("{e}"))?,
+                .with_context(|| "--meta must be a valid JSON object".to_owned())?,
         ),
         None => None,
     };
 
-    let kind = match kind {
-        Some(k) => Some(k.parse::<EntryKind>().map_err(|e| anyhow!("{e}"))?),
-        None => None,
-    };
-
-    if title.is_none() && body.is_none() && kind.is_none() && meta.is_none() {
-        bail!("at least one field must be provided (--title, --body, --kind, --meta)");
-    }
-
-    let update = UpdateEntry {
+    let request = UpdateRequest {
+        id,
         title,
         body,
         kind,
@@ -84,28 +64,18 @@ pub async fn run(
 
     let ctx = WriteContext::new(MutationSource::Cli);
 
-    let entry = store
-        .update_entry(uuid, update, &ctx)
+    let result = update::update(store, request, &ctx)
         .await
-        .map_err(|e| anyhow!("{e}"))?;
+        .map_err(capability_error)?;
 
     if json {
-        // No `project_web_update` exists — no sibling handler emits a
-        // FullEntryView-shaped JSON payload for writes, and the YAML ack is
-        // the canonical wire shape. Mirror that shape here with the full
-        // 64-char content_hash so programmatic callers can compare against
-        // the cm-store value directly rather than the 8-char display
-        // prefix used on the text branch.
-        let view = serde_json::json!({
-            "updated": entry.id.to_string(),
-            "content_hash": entry.content_hash,
-        });
+        let view = project_web_update(&result);
         println!("{}", serde_json::to_string_pretty(&view)?);
     } else {
         // `format_update_ack` already ends with a newline — use `print!`.
         print!(
             "{}",
-            format_update_ack(&entry.id.to_string(), &entry.content_hash)
+            format_update_ack(&result.updated_id, &result.content_hash)
         );
     }
 

@@ -14,6 +14,8 @@
 use std::path::Path;
 
 use assert_cmd::Command;
+use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
+use cm_capabilities::validation::{parse_kind, parse_tag_sort};
 use predicates::str::contains;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -138,6 +140,7 @@ fn browse_lists_seeded_entries_in_human_output() {
         .args(["browse"])
         .assert()
         .success()
+        .stderr(contains("using scope='auto'"))
         .stdout(contains("alpha entry"))
         .stdout(contains("beta entry"));
 }
@@ -174,6 +177,47 @@ fn browse_with_limit_caps_entry_count() {
 }
 
 #[test]
+fn browse_scope_path_filters_exact_scope() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global",
+            "--exchanges",
+            r#"[{"user":"q1","assistant":"a1","title":"global entry"}]"#,
+        ])
+        .assert()
+        .success();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global/project:helioy",
+            "--exchanges",
+            r#"[{"user":"q2","assistant":"a2","title":"project entry"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let assert = cm_with_data_dir(dir.path())
+        .args(["browse", "--scope-path", "global/project:helioy", "-j"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    let json: Value = serde_json::from_str(&stdout).expect("browse -j must emit valid JSON");
+    let titles: Vec<&str> = json["entries"]
+        .as_array()
+        .expect("browse view should expose entries")
+        .iter()
+        .map(|entry| entry["title"].as_str().expect("entry title is string"))
+        .collect();
+    assert_eq!(titles, vec!["project entry"]);
+    assert!(json.get("advisory").is_none());
+    assert!(json.get("resolution").is_none());
+}
+
+#[test]
 fn browse_auto_scope_can_emit_resolution_metadata() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())
@@ -202,6 +246,17 @@ fn browse_auto_scope_can_emit_resolution_metadata() {
     assert_eq!(json["resolution"]["requested_scope"], "auto");
     assert_eq!(json["resolution"]["resolved_scope"], "global");
     assert_eq!(json["resolution"]["scope_mode"], "resolved");
+}
+
+#[test]
+fn browse_invalid_kind_uses_capability_error() {
+    let dir = tempdir().unwrap();
+    let expected = parse_kind("memo").unwrap_err();
+    cm_with_data_dir(dir.path())
+        .args(["browse", "--kind", "memo"])
+        .assert()
+        .failure()
+        .stderr(contains(expected));
 }
 
 // ---------------- Export ----------------
@@ -329,6 +384,25 @@ fn recall_query_finds_seeded_entry_by_keyword() {
         .stdout(contains("keyword test"));
 }
 
+#[test]
+fn recall_without_scope_reports_default_advisory_on_stderr() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--exchanges",
+            r#"[{"user":"default scope body","assistant":"reply","title":"default scope test"}]"#,
+        ])
+        .assert()
+        .success();
+    cm_with_data_dir(dir.path())
+        .args(["recall"])
+        .assert()
+        .success()
+        .stdout(contains("default scope test"))
+        .stderr(contains(RECALL_SCOPE_DEFAULT_ADVISORY));
+}
+
 // ---------------- Stats counters ----------------
 
 #[test]
@@ -349,4 +423,15 @@ fn stats_reports_active_counter_after_deposit() {
         .stdout(contains("active:"))
         .stdout(contains("scopes:"))
         .stdout(contains("relations:"));
+}
+
+#[test]
+fn stats_invalid_tag_sort_uses_capability_error() {
+    let dir = tempdir().unwrap();
+    let expected = parse_tag_sort("recent").unwrap_err();
+    cm_with_data_dir(dir.path())
+        .args(["stats", "--tag-sort", "recent"])
+        .assert()
+        .failure()
+        .stderr(contains(expected));
 }

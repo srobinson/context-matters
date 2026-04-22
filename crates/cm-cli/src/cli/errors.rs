@@ -6,6 +6,26 @@
 //! shapes appear, add a new branch to [`hints_for`] and a matching test.
 
 use crate::cli::colors::Colors;
+use cm_capabilities::error::cm_err_to_string;
+use cm_core::CmError;
+
+/// Convert capability errors through the formatter shared with MCP tool handlers.
+///
+/// `print_error` adds the CLI envelope later, so this function returns only the
+/// canonical capability message. Keep CLI handlers on this path for byte parity
+/// with `cx_*` tool errors.
+pub fn capability_error(err: impl Into<CmError>) -> anyhow::Error {
+    string_error(cm_err_to_string(err.into()))
+}
+
+/// Wrap adapter-local string errors without changing their rendered text.
+///
+/// Use this for helpers that already return the same `String` message as the
+/// MCP adapter. Use [`capability_error`] for `CmError` and types converting
+/// into `CmError`.
+pub fn string_error(message: impl Into<String>) -> anyhow::Error {
+    anyhow::anyhow!("{}", message.into())
+}
 
 /// Print an error chain to stderr with colored prefixes and contextual hints.
 pub fn print_error(err: &anyhow::Error) {

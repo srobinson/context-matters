@@ -63,7 +63,7 @@ cli_about       = "Search and retrieve context entries from the store.\n\nCombin
 output_schema   = '''
 {
   "type": "object",
-  "description": "Recall response: query header, ranked rows, and trailing advisories.",
+  "description": "Recall response: query header, ranked rows, and capability advisories.",
   "required": ["header", "entries", "advisories"],
   "properties": {
     "header": {
@@ -103,7 +103,7 @@ output_schema   = '''
     },
     "advisories": {
       "type": "array",
-      "description": "Trailer advisory lines (routing, tier, dedup, drill-down) the formatter would emit as YAML comments.",
+      "description": "Capability advisory messages returned with the recall result.",
       "items": {"type": "string"}
     }
   }
@@ -278,7 +278,7 @@ cli_flag        = "--created-by"
 
 [tools.cx_browse]
 cli_name        = "browse"
-mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope for MCP sessions when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
+mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
 cli_about       = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content."
 # JSON Schema mirrors `WebBrowseView` (crates/cm-capabilities/src/projection/web_view.rs:112).
 # Header `scope`, `kind`, `created_by`, top-level `resolution`, row `scope`, and
@@ -287,24 +287,25 @@ cli_about       = "Browse entries with filtering and pagination.\n\nFor inventor
 output_schema   = '''
 {
   "type": "object",
-  "description": "Browse response: filtered inventory header, optional scope resolution metadata, rows, and pagination tail.",
+  "description": "Browse response: filtered inventory header, optional advisory, optional scope resolution metadata, rows, and pagination tail.",
   "required": ["header", "entries", "has_more"],
   "properties": {
     "header": {
       "type": "object",
-      "description": "Per-response filter + histogram envelope.",
+      "description": "Per-response result header with hoisted uniform columns and histograms.",
       "required": ["sort_used", "total", "returned", "kinds_histogram", "tags_histogram"],
       "properties": {
-        "sort_used": {"type": "string", "description": "Sort order the browse pipeline applied (e.g. updated_desc)."},
+        "sort_used": {"type": "string", "description": "Sort order the browse pipeline applied (e.g. updated_at desc)."},
         "total": {"type": "integer", "minimum": 0, "description": "Total matching rows in the store before pagination."},
         "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in `entries` on this page."},
-        "scope": {"type": "string", "description": "Scope filter the caller supplied. Omitted when unset."},
-        "kind": {"type": "string", "description": "Kind filter the caller supplied. Omitted when unset."},
-        "created_by": {"type": "string", "description": "Created-by filter the caller supplied. Omitted when unset."},
+        "scope": {"type": "string", "description": "Uniform scope path hoisted from all returned rows. Omitted when rows vary or the response is empty."},
+        "kind": {"type": "string", "description": "Uniform entry kind hoisted from all returned rows. Omitted when rows vary or the response is empty."},
+        "created_by": {"type": "string", "description": "Uniform creator attribution hoisted from all returned rows. Omitted when rows vary or the response is empty."},
         "kinds_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-kind counts across the returned rows."},
         "tags_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-tag counts across the returned rows."}
       }
     },
+    "advisory": {"type": "string", "description": "Capability advisory emitted when browse applied a default."},
     "resolution": {
       "type": "object",
       "description": "Scope resolution metadata when smart browse inference was requested.",
@@ -341,8 +342,8 @@ output_schema   = '''
           "title": {"type": "string"},
           "snippet": {"type": "string", "description": "Smart snippet of the entry body."},
           "age": {"type": "string", "description": "Relative age string (e.g. \"2h\", \"6d\")."},
-          "scope": {"type": "string", "description": "Row scope path. Omitted when the row has no scope."},
-          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"], "description": "Entry kind. Omitted when unset."},
+          "scope": {"type": "string", "description": "Row scope path. Omitted when the header hoists a uniform scope."},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"], "description": "Entry kind. Omitted when the header hoists a uniform kind."},
           "tags": {"type": "array", "items": {"type": "string"}}
         }
       }
@@ -356,7 +357,7 @@ output_schema   = '''
 [[tools.cx_browse.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" for MCP sessions when scope_path is omitted."
+mcp_description = "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" when scope_path is omitted."
 cli_help        = "Preferred scope: auto or explicit scope path"
 cli_flag        = "--scope"
 
@@ -378,7 +379,7 @@ cli_flag        = "--scope-mode"
 [[tools.cx_browse.params]]
 name            = "cwd"
 type            = "string"
-mcp_description = "Filesystem working directory used for scope=\"auto\" inference. MCP defaults this from the server process current directory when omitted."
+mcp_description = "Filesystem working directory used for scope=\"auto\" inference. The capability defaults this from the process current directory when omitted."
 cli_help        = "Working directory used for auto scope inference"
 cli_flag        = "--cwd"
 

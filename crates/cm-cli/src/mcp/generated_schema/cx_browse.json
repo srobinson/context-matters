@@ -1,5 +1,5 @@
 {
-  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope for MCP sessions when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
+  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
   "inputSchema": {
     "properties": {
       "created_by": {
@@ -11,7 +11,7 @@
         "type": "string"
       },
       "cwd": {
-        "description": "Filesystem working directory used for scope=\"auto\" inference. MCP defaults this from the server process current directory when omitted.",
+        "description": "Filesystem working directory used for scope=\"auto\" inference. The capability defaults this from the process current directory when omitted.",
         "type": "string"
       },
       "include_resolution": {
@@ -41,7 +41,7 @@
         "type": "integer"
       },
       "scope": {
-        "description": "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" for MCP sessions when scope_path is omitted.",
+        "description": "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" when scope_path is omitted.",
         "type": "string"
       },
       "scope_mode": {
@@ -64,8 +64,12 @@
   },
   "name": "cx_browse",
   "outputSchema": {
-    "description": "Browse response: filtered inventory header, optional scope resolution metadata, rows, and pagination tail.",
+    "description": "Browse response: filtered inventory header, optional advisory, optional scope resolution metadata, rows, and pagination tail.",
     "properties": {
+      "advisory": {
+        "description": "Capability advisory emitted when browse applied a default.",
+        "type": "string"
+      },
       "entries": {
         "description": "Browse rows on this page. Order is significant (sort_used governs).",
         "items": {
@@ -80,7 +84,7 @@
               "type": "string"
             },
             "kind": {
-              "description": "Entry kind. Omitted when unset.",
+              "description": "Entry kind. Omitted when the header hoists a uniform kind.",
               "enum": [
                 "fact",
                 "decision",
@@ -94,7 +98,7 @@
               "type": "string"
             },
             "scope": {
-              "description": "Row scope path. Omitted when the row has no scope.",
+              "description": "Row scope path. Omitted when the header hoists a uniform scope.",
               "type": "string"
             },
             "snippet": {
@@ -127,14 +131,14 @@
         "type": "boolean"
       },
       "header": {
-        "description": "Per-response filter + histogram envelope.",
+        "description": "Per-response result header with hoisted uniform columns and histograms.",
         "properties": {
           "created_by": {
-            "description": "Created-by filter the caller supplied. Omitted when unset.",
+            "description": "Uniform creator attribution hoisted from all returned rows. Omitted when rows vary or the response is empty.",
             "type": "string"
           },
           "kind": {
-            "description": "Kind filter the caller supplied. Omitted when unset.",
+            "description": "Uniform entry kind hoisted from all returned rows. Omitted when rows vary or the response is empty.",
             "type": "string"
           },
           "kinds_histogram": {
@@ -151,11 +155,11 @@
             "type": "integer"
           },
           "scope": {
-            "description": "Scope filter the caller supplied. Omitted when unset.",
+            "description": "Uniform scope path hoisted from all returned rows. Omitted when rows vary or the response is empty.",
             "type": "string"
           },
           "sort_used": {
-            "description": "Sort order the browse pipeline applied (e.g. updated_desc).",
+            "description": "Sort order the browse pipeline applied (e.g. updated_at desc).",
             "type": "string"
           },
           "tags_histogram": {

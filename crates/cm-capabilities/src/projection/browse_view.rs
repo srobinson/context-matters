@@ -76,14 +76,14 @@ fn render_header(
     entries: &[Entry],
     hoists: &Hoists,
 ) {
-    if let Some(q) = reconstruct_query(request) {
+    if let Some(q) = reconstruct_query(result, request) {
         let _ = writeln!(out, "query: {q}");
     }
     let _ = writeln!(out, "sort: {}", sort_as_str(result.sort_used));
     let _ = writeln!(out, "total: {}", result.total);
     let _ = writeln!(out, "returned: {}", entries.len());
 
-    if request.include_resolution {
+    if result.include_resolution {
         render_resolution(out, result);
     }
 
@@ -275,7 +275,7 @@ fn format_browse_drill_down(hint: &DrillDownHint) -> String {
     )
 }
 
-fn render_pagination_hint(out: &mut String, result: &BrowseResult, request: &BrowseRequest) {
+fn render_pagination_hint(out: &mut String, result: &BrowseResult, _request: &BrowseRequest) {
     if !result.has_more {
         return;
     }
@@ -285,7 +285,7 @@ fn render_pagination_hint(out: &mut String, result: &BrowseResult, request: &Bro
             let _ = writeln!(
                 out,
                 "\n# {remaining} more - cx_browse(cursor=\"{cursor}\", limit={limit}) to page",
-                limit = request.limit
+                limit = result.limit_used
             );
         }
         None => {
@@ -300,12 +300,14 @@ fn render_pagination_hint(out: &mut String, result: &BrowseResult, request: &Bro
 /// `key=value key=value ...` string from whichever filter fields are
 /// set. Returns `None` when nothing is filtered, in which case the
 /// formatter omits the `query:` line entirely.
-fn reconstruct_query(req: &BrowseRequest) -> Option<String> {
+fn reconstruct_query(result: &BrowseResult, req: &BrowseRequest) -> Option<String> {
     let mut parts: Vec<String> = Vec::with_capacity(5);
     if let Some(scope) = &req.scope {
         parts.push(format!("scope={scope}"));
     } else if let Some(sp) = &req.scope_path {
         parts.push(format!("scope={sp}"));
+    } else if let Some(scope) = &result.scope_used {
+        parts.push(format!("scope={scope}"));
     }
     if let Some(k) = &req.kind {
         parts.push(format!("kind={}", k.as_str()));
@@ -353,6 +355,22 @@ mod tests {
     use super::*;
     use cm_core::EntryKind;
 
+    fn empty_result(scope_used: Option<&str>) -> BrowseResult {
+        BrowseResult {
+            entries: Vec::new(),
+            total: 0,
+            next_cursor: None,
+            has_more: false,
+            scope_used: scope_used.map(str::to_owned),
+            include_resolution: false,
+            limit_used: 50,
+            sort_used: BrowseSort::Recent,
+            relation_counts: HashMap::new(),
+            resolution: None,
+            advisory: None,
+        }
+    }
+
     #[test]
     fn sort_as_str_covers_every_variant() {
         assert_eq!(sort_as_str(BrowseSort::Recent), "updated_at desc");
@@ -368,21 +386,36 @@ mod tests {
     #[test]
     fn reconstruct_query_joins_set_filters() {
         let mut req = BrowseRequest {
-            limit: 50,
+            limit: Some(50),
             ..Default::default()
         };
+        let result = empty_result(None);
         // Empty filter → None.
-        assert_eq!(reconstruct_query(&req), None);
+        assert_eq!(reconstruct_query(&result, &req), None);
 
         req.tag = Some("session-log".to_owned());
-        assert_eq!(reconstruct_query(&req).as_deref(), Some("tag=session-log"));
+        assert_eq!(
+            reconstruct_query(&result, &req).as_deref(),
+            Some("tag=session-log")
+        );
 
         req.kind = Some(EntryKind::Observation);
         req.include_superseded = true;
         // Order matches the field order in the function body.
         assert_eq!(
-            reconstruct_query(&req).as_deref(),
+            reconstruct_query(&result, &req).as_deref(),
             Some("kind=observation tag=session-log include_superseded=true"),
+        );
+    }
+
+    #[test]
+    fn reconstruct_query_uses_effective_scope_when_defaulted() {
+        let req = BrowseRequest::default();
+        let result = empty_result(Some("auto"));
+
+        assert_eq!(
+            reconstruct_query(&result, &req).as_deref(),
+            Some("scope=auto")
         );
     }
 }

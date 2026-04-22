@@ -1,0 +1,434 @@
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::Path,
+};
+
+use cm_core::{CmError, ContextStore, Scope, ScopeKind, ScopePath};
+
+use super::{
+    BrowseScopeInput, BrowseScopeMode, ResolvedBrowseScope, ScopeResolution,
+    ScopeResolutionCandidate, ScopeResolutionConfidence,
+};
+
+const AUTO_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
+const AUTO_SCOPE_STRONG_SIGNAL_SCORE: i32 = 100;
+const AUTO_SCOPE_WEAK_SIGNAL_SCORE: i32 = 30;
+const AUTO_SCOPE_FALLBACK_FLOOR_SCORE: i32 = 10;
+const AUTO_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
+
+const AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_EXACT_MATCH_SCORE;
+const AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_STRONG_SIGNAL_SCORE;
+const AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_NO_SIGNAL_SCORE + 1;
+
+pub async fn resolve_browse_scope(
+    store: &impl ContextStore,
+    request: &crate::browse::BrowseRequest,
+) -> Result<ResolvedBrowseScope, CmError> {
+    match normalize_browse_scope(request.scope.as_deref(), request.scope_path.as_ref())? {
+        None => Ok(ResolvedBrowseScope {
+            scope_path: None,
+            resolution: None,
+        }),
+        Some(BrowseScopeInput::Exact(scope_path)) => Ok(ResolvedBrowseScope {
+            scope_path: Some(scope_path),
+            resolution: None,
+        }),
+        Some(BrowseScopeInput::Auto) => {
+            let scopes = store.list_scopes(None).await?;
+            let resolution =
+                resolve_auto_scope(&scopes, request.cwd.as_deref(), request.scope_mode)?;
+            Ok(ResolvedBrowseScope {
+                scope_path: Some(resolution.resolved_scope.clone()),
+                resolution: Some(resolution),
+            })
+        }
+    }
+}
+
+fn normalize_browse_scope(
+    scope: Option<&str>,
+    scope_path: Option<&ScopePath>,
+) -> Result<Option<BrowseScopeInput>, CmError> {
+    let scope = scope.map(str::trim);
+    if matches!(scope, Some("")) {
+        return Err(CmError::Validation("scope cannot be empty".to_owned()));
+    }
+
+    match (scope, scope_path) {
+        (None, None) => Ok(None),
+        (None, Some(scope_path)) => Ok(Some(BrowseScopeInput::Exact(scope_path.clone()))),
+        (Some("auto"), None) => Ok(Some(BrowseScopeInput::Auto)),
+        (Some("auto"), Some(_)) => Err(CmError::Validation(
+            "scope='auto' cannot be combined with scope_path".to_owned(),
+        )),
+        (Some(scope), None) => Ok(Some(BrowseScopeInput::Exact(ScopePath::parse(scope)?))),
+        (Some(scope), Some(scope_path)) => {
+            let explicit = ScopePath::parse(scope)?;
+            if explicit == *scope_path {
+                Ok(Some(BrowseScopeInput::Exact(scope_path.clone())))
+            } else {
+                Err(CmError::Validation(format!(
+                    "scope conflicts with scope_path: scope='{explicit}', scope_path='{scope_path}'"
+                )))
+            }
+        }
+    }
+}
+
+fn resolve_auto_scope(
+    scopes: &[Scope],
+    cwd: Option<&Path>,
+    scope_mode: BrowseScopeMode,
+) -> Result<ScopeResolution, CmError> {
+    let cwd = CwdParts::from_path(cwd);
+    let candidates = filter_candidates(scopes, &cwd);
+
+    let Some(top) = candidates.first() else {
+        return Err(CmError::Validation(
+            "no candidate scope could be resolved for scope='auto'".to_owned(),
+        ));
+    };
+
+    let resolved_scope = top.scope.clone();
+    let confidence = rate_confidence(confidence_score(&candidates));
+    let signals = resolution_signals(&cwd, &candidates);
+
+    Ok(ScopeResolution {
+        requested_scope: "auto".to_owned(),
+        resolved_scope,
+        scope_mode,
+        confidence,
+        candidates,
+        signals,
+    })
+}
+
+fn filter_candidates(scopes: &[Scope], cwd: &CwdParts) -> Vec<ScopeResolutionCandidate> {
+    let mut candidate_paths = HashSet::new();
+    let mut matching_repo_parents = HashSet::new();
+    let scopes_by_path: BTreeMap<String, ScopePath> = scopes
+        .iter()
+        .map(|scope| (scope.path.as_str().to_owned(), scope.path.clone()))
+        .collect();
+
+    for scope in scopes {
+        if scope.path.as_str() == "global" {
+            candidate_paths.insert(scope.path.as_str().to_owned());
+            continue;
+        }
+
+        if !cwd.has_cwd || scope.kind != ScopeKind::Repo {
+            continue;
+        }
+
+        let segments = scope_segments(&scope.path);
+        if segments.repo.as_deref() == cwd.basename.as_deref() {
+            candidate_paths.insert(scope.path.as_str().to_owned());
+            if let Some(parent) = parent_project_path(&scope.path) {
+                matching_repo_parents.insert(parent.as_str().to_owned());
+            }
+        }
+    }
+
+    for scope in scopes {
+        if !cwd.has_cwd || scope.kind != ScopeKind::Project {
+            continue;
+        }
+
+        let segments = scope_segments(&scope.path);
+        let project_matches_cwd = segments.project.as_ref().is_some_and(|project| {
+            cwd.basename.as_ref() == Some(project) || cwd.parent_basename.as_ref() == Some(project)
+        });
+        let project_is_repo_parent = matching_repo_parents.contains(scope.path.as_str());
+
+        if project_matches_cwd || project_is_repo_parent {
+            candidate_paths.insert(scope.path.as_str().to_owned());
+        }
+    }
+
+    let mut candidates: Vec<ScopeResolutionCandidate> = candidate_paths
+        .into_iter()
+        .filter_map(|path| scopes_by_path.get(&path).cloned())
+        .map(|scope| score_candidate(scope, cwd))
+        .filter(|candidate| {
+            candidate.scope.leaf_kind() == ScopeKind::Global
+                || candidate.score >= AUTO_SCOPE_FALLBACK_FLOOR_SCORE
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| b.scope.depth().cmp(&a.scope.depth()))
+            .then_with(|| a.scope.as_str().cmp(b.scope.as_str()))
+    });
+
+    candidates
+}
+
+#[derive(Debug, Default)]
+struct CwdParts {
+    has_cwd: bool,
+    basename: Option<String>,
+    parent_basename: Option<String>,
+}
+
+impl CwdParts {
+    fn from_path(path: Option<&Path>) -> Self {
+        let Some(path) = path else {
+            return Self::default();
+        };
+
+        let names: Vec<String> = path
+            .components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .collect();
+
+        Self {
+            has_cwd: true,
+            basename: names.last().cloned(),
+            parent_basename: names.iter().rev().nth(1).cloned(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ScopeSegments {
+    project: Option<String>,
+    repo: Option<String>,
+}
+
+fn scope_segments(path: &ScopePath) -> ScopeSegments {
+    let mut segments = ScopeSegments::default();
+    for segment in path.as_str().split('/').skip(1) {
+        let Some((kind, id)) = segment.split_once(':') else {
+            continue;
+        };
+        match kind {
+            "project" => segments.project = Some(id.to_owned()),
+            "repo" => segments.repo = Some(id.to_owned()),
+            _ => {}
+        }
+    }
+    segments
+}
+
+fn parent_project_path(path: &ScopePath) -> Option<ScopePath> {
+    path.ancestors().skip(1).find_map(|ancestor| {
+        ScopePath::parse(ancestor)
+            .ok()
+            .filter(|path| path.leaf_kind() == ScopeKind::Project)
+    })
+}
+
+fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate {
+    let mut score = 0;
+    let mut matched = Vec::new();
+    let segments = scope_segments(&scope);
+
+    if cwd.has_cwd {
+        if segments.repo.as_deref() == cwd.basename.as_deref() {
+            score += AUTO_SCOPE_EXACT_MATCH_SCORE;
+            matched.push("repo".to_owned());
+        }
+
+        if segments.project.as_deref() == cwd.basename.as_deref() {
+            score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
+            matched.push("project_cwd".to_owned());
+        } else if segments.project.as_deref() == cwd.parent_basename.as_deref() {
+            score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
+            matched.push("project_parent".to_owned());
+        }
+    }
+
+    match scope.leaf_kind() {
+        ScopeKind::Repo => {
+            score += AUTO_SCOPE_WEAK_SIGNAL_SCORE;
+            matched.push("specificity".to_owned());
+        }
+        ScopeKind::Project => {
+            score += AUTO_SCOPE_FALLBACK_FLOOR_SCORE;
+            matched.push("project".to_owned());
+        }
+        ScopeKind::Global => {
+            matched.push("fallback".to_owned());
+        }
+        ScopeKind::Session => {}
+    }
+
+    ScopeResolutionCandidate {
+        scope,
+        score,
+        matched,
+    }
+}
+
+fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
+    let Some(top) = candidates.first() else {
+        return AUTO_SCOPE_NO_SIGNAL_SCORE;
+    };
+
+    if top.score >= AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
+        let repo_ties = candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.score == top.score && candidate.scope.leaf_kind() == ScopeKind::Repo
+            })
+            .count();
+        if repo_ties > 1 {
+            return AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE;
+        }
+    }
+
+    top.score
+}
+
+fn rate_confidence(score: i32) -> ScopeResolutionConfidence {
+    if score >= AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
+        ScopeResolutionConfidence::High
+    } else if score >= AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE {
+        ScopeResolutionConfidence::Medium
+    } else if score >= AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE {
+        ScopeResolutionConfidence::Low
+    } else {
+        ScopeResolutionConfidence::VeryLow
+    }
+}
+
+fn resolution_signals(cwd: &CwdParts, candidates: &[ScopeResolutionCandidate]) -> Vec<String> {
+    if !cwd.has_cwd {
+        return vec!["no cwd supplied; using global fallback".to_owned()];
+    }
+
+    let mut signals = Vec::new();
+    if let Some(repo) = &cwd.basename
+        && candidates
+            .iter()
+            .any(|candidate| candidate.matched.iter().any(|matched| matched == "repo"))
+    {
+        signals.push(format!("cwd basename matched repo scope segment: {repo}"));
+    }
+
+    if let Some(project) = &cwd.parent_basename
+        && candidates.iter().any(|candidate| {
+            candidate
+                .matched
+                .iter()
+                .any(|matched| matched == "project_parent")
+        })
+    {
+        signals.push(format!(
+            "cwd parent basename matched project scope segment: {project}"
+        ));
+    }
+
+    if let Some(project) = &cwd.basename
+        && candidates.iter().any(|candidate| {
+            candidate
+                .matched
+                .iter()
+                .any(|matched| matched == "project_cwd")
+        })
+    {
+        signals.push(format!(
+            "cwd basename matched project scope segment: {project}"
+        ));
+    }
+
+    if let Some(top) = candidates.first() {
+        let tied_top_count = candidates
+            .iter()
+            .filter(|candidate| candidate.score == top.score)
+            .count();
+        if tied_top_count > 1 {
+            signals.push(format!(
+                "ambiguous scope resolution; {tied_top_count} candidates share top score {}",
+                top.score
+            ));
+        }
+    }
+
+    if candidates
+        .first()
+        .is_some_and(|candidate| candidate.scope.leaf_kind() == ScopeKind::Global)
+    {
+        signals.push("no local scope matched cwd; using global fallback".to_owned());
+    }
+
+    signals
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use cm_core::ScopePath;
+
+    use super::*;
+
+    #[test]
+    fn score_candidate_combines_repo_match_and_specificity() {
+        let cwd = CwdParts::from_path(Some(Path::new("/tmp/worktrees/context-matters")));
+        let scope = ScopePath::parse("global/project:alpha/repo:context-matters").unwrap();
+
+        let candidate = score_candidate(scope, &cwd);
+
+        assert_eq!(
+            candidate.score,
+            AUTO_SCOPE_EXACT_MATCH_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE
+        );
+        assert_eq!(candidate.matched, vec!["repo", "specificity"]);
+    }
+
+    #[test]
+    fn rate_confidence_maps_score_bands() {
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE),
+            ScopeResolutionConfidence::High
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE - 1),
+            ScopeResolutionConfidence::Medium
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE),
+            ScopeResolutionConfidence::Medium
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE - 1),
+            ScopeResolutionConfidence::Low
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE),
+            ScopeResolutionConfidence::Low
+        );
+        assert_eq!(
+            rate_confidence(AUTO_SCOPE_NO_SIGNAL_SCORE),
+            ScopeResolutionConfidence::VeryLow
+        );
+    }
+
+    #[test]
+    fn confidence_score_demotes_tied_repo_matches_to_medium_boundary() {
+        let candidates = vec![
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:alpha/repo:context").unwrap(),
+                score: AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE,
+                matched: vec![],
+            },
+            ScopeResolutionCandidate {
+                scope: ScopePath::parse("global/project:beta/repo:context").unwrap(),
+                score: AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE,
+                matched: vec![],
+            },
+        ];
+
+        assert_eq!(
+            confidence_score(&candidates),
+            AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE
+        );
+    }
+}

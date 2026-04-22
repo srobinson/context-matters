@@ -161,7 +161,7 @@ fn protocol_tools_call_validation_failure_uses_error_workaround() {
     );
 
     assert_eq!(resp["id"], 101);
-    assert_tool_error_workaround(&resp, "Validation error: ids cannot be empty");
+    assert_tool_error_workaround(&resp, "ids cannot be empty");
 
     shutdown(child, stdin);
 }
