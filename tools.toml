@@ -292,15 +292,15 @@ output_schema   = '''
   "properties": {
     "header": {
       "type": "object",
-      "description": "Per-response filter + histogram envelope.",
+      "description": "Per-response result header with hoisted uniform columns and histograms.",
       "required": ["sort_used", "total", "returned", "kinds_histogram", "tags_histogram"],
       "properties": {
-        "sort_used": {"type": "string", "description": "Sort order the browse pipeline applied (e.g. updated_desc)."},
+        "sort_used": {"type": "string", "description": "Sort order the browse pipeline applied (e.g. updated_at desc)."},
         "total": {"type": "integer", "minimum": 0, "description": "Total matching rows in the store before pagination."},
         "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in `entries` on this page."},
-        "scope": {"type": "string", "description": "Scope filter the caller supplied. Omitted when unset."},
-        "kind": {"type": "string", "description": "Kind filter the caller supplied. Omitted when unset."},
-        "created_by": {"type": "string", "description": "Created-by filter the caller supplied. Omitted when unset."},
+        "scope": {"type": "string", "description": "Uniform scope path hoisted from all returned rows. Omitted when rows vary or the response is empty."},
+        "kind": {"type": "string", "description": "Uniform entry kind hoisted from all returned rows. Omitted when rows vary or the response is empty."},
+        "created_by": {"type": "string", "description": "Uniform creator attribution hoisted from all returned rows. Omitted when rows vary or the response is empty."},
         "kinds_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-kind counts across the returned rows."},
         "tags_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-tag counts across the returned rows."}
       }
@@ -342,8 +342,8 @@ output_schema   = '''
           "title": {"type": "string"},
           "snippet": {"type": "string", "description": "Smart snippet of the entry body."},
           "age": {"type": "string", "description": "Relative age string (e.g. \"2h\", \"6d\")."},
-          "scope": {"type": "string", "description": "Row scope path. Omitted when the row has no scope."},
-          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"], "description": "Entry kind. Omitted when unset."},
+          "scope": {"type": "string", "description": "Row scope path. Omitted when the header hoists a uniform scope."},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"], "description": "Entry kind. Omitted when the header hoists a uniform kind."},
           "tags": {"type": "array", "items": {"type": "string"}}
         }
       }

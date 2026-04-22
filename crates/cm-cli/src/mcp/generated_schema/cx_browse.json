@@ -84,7 +84,7 @@
               "type": "string"
             },
             "kind": {
-              "description": "Entry kind. Omitted when unset.",
+              "description": "Entry kind. Omitted when the header hoists a uniform kind.",
               "enum": [
                 "fact",
                 "decision",
@@ -98,7 +98,7 @@
               "type": "string"
             },
             "scope": {
-              "description": "Row scope path. Omitted when the row has no scope.",
+              "description": "Row scope path. Omitted when the header hoists a uniform scope.",
               "type": "string"
             },
             "snippet": {
@@ -131,14 +131,14 @@
         "type": "boolean"
       },
       "header": {
-        "description": "Per-response filter + histogram envelope.",
+        "description": "Per-response result header with hoisted uniform columns and histograms.",
         "properties": {
           "created_by": {
-            "description": "Created-by filter the caller supplied. Omitted when unset.",
+            "description": "Uniform creator attribution hoisted from all returned rows. Omitted when rows vary or the response is empty.",
             "type": "string"
           },
           "kind": {
-            "description": "Kind filter the caller supplied. Omitted when unset.",
+            "description": "Uniform entry kind hoisted from all returned rows. Omitted when rows vary or the response is empty.",
             "type": "string"
           },
           "kinds_histogram": {
@@ -155,11 +155,11 @@
             "type": "integer"
           },
           "scope": {
-            "description": "Scope filter the caller supplied. Omitted when unset.",
+            "description": "Uniform scope path hoisted from all returned rows. Omitted when rows vary or the response is empty.",
             "type": "string"
           },
           "sort_used": {
-            "description": "Sort order the browse pipeline applied (e.g. updated_desc).",
+            "description": "Sort order the browse pipeline applied (e.g. updated_at desc).",
             "type": "string"
           },
           "tags_histogram": {

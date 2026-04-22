@@ -67,7 +67,8 @@ fn root_long_help_uses_read_write_admin_groups() {
         .stdout(contains("WRITE Commands"))
         .stdout(contains("ADMIN Commands"))
         .stdout(contains("Examples"))
-        .stdout(contains("Scope Resolution"));
+        .stdout(contains("Scope Resolution"))
+        .stdout(contains("Browse defaults to scope=auto"));
 }
 
 #[test]

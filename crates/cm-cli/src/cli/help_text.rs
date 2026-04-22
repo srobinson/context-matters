@@ -63,8 +63,8 @@ pub const LONG_HELP: &str = cstr!(
   <dim>$</dim> <bold>cm export --scope global/project:helioy</bold> <dim># JSON snapshot of a subtree</dim>
 
 <bold><underline>Scope Resolution</underline></bold>
-  Recall defaults to <bold>global</bold>. Browse defaults to all scopes; use <bold>--scope auto</bold>
-  for local inference or <bold>--scope PATH</bold> for exact filtering.
+  Recall defaults to <bold>global</bold>. Browse defaults to <bold>scope=auto</bold>
+  for local inference; use <bold>--scope PATH</bold> for exact filtering.
   Run <bold>cm stats</bold> to discover all scope paths in the store.
 
 https://github.com/srobinson/context-matters"#
