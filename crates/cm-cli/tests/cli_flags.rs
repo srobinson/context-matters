@@ -106,6 +106,9 @@ fn browse_help_shows_per_arg_descriptions() {
     cm().args(["browse", "--help"])
         .assert()
         .success()
+        .stdout(contains(
+            "cm browse --scope cwd_inferred --cwd /path/to/repo",
+        ))
         .stdout(contains("Preferred scope"))
         .stdout(contains("cwd_inferred"))
         .stdout(predicates::str::contains("--scope-path").not())

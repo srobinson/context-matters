@@ -85,6 +85,7 @@ pub const BROWSE_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm browse --kind decision</bold>                           <dim># inventory of decisions</dim>
   <dim>$</dim> <bold>cm browse --scope global/project:helioy --tag rust</bold>
+  <dim>$</dim> <bold>cm browse --scope cwd_inferred --cwd /path/to/repo</bold>
   <dim>$</dim> <bold>cm browse --include-superseded --limit 50</bold>
   <dim>$</dim> <bold>cm browse -j</bold>                                        <dim># JSON for piping</dim>"#
 );

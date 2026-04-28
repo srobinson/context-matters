@@ -251,6 +251,7 @@ fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
         .expect("generated skill doc should be readable");
     for required in [
         "Public request inputs use `scope` only.",
+        r#"cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")"#,
         "`cwd_inferred` is the reserved value for cwd based scope resolution.",
         "`scope_path` may still appear in persisted entries, export rows, and response data",
     ] {

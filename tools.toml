@@ -46,6 +46,8 @@ global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 
 Public request inputs use `scope` only. Pass an exact scope path through `scope`, or pass `cwd_inferred`.
 
+For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`.
+
 `cwd_inferred` is the reserved value for cwd based scope resolution. It replaces the old public `auto` selector and normalizes linked git worktrees to the source repository identity.
 
 Do not send `scope_path`, `scope_mode`, or `scope="auto"` in public requests. Migrated MCP, CLI, and cm-web request surfaces reject those inputs. `scope_path` may still appear in persisted entries, export rows, and response data because those values identify exact stored data.
