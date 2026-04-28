@@ -163,6 +163,47 @@ fn protocol_migrated_scope_tools_reject_scope_path() {
 }
 
 #[test]
+fn protocol_non_scope_tools_reject_removed_scope_inputs() {
+    let dir = tempfile::tempdir().unwrap();
+    let (child, mut stdin, mut stdout) = spawn_server(&dir);
+
+    send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+
+    let cases = [
+        ("cx_get", json!({"ids": [], "scope_path": "global"})),
+        (
+            "cx_update",
+            json!({
+                "id": "018f0000-0000-7000-8000-000000000000",
+                "title": "Bad",
+                "scope_path": "global"
+            }),
+        ),
+        ("cx_forget", json!({"ids": [], "scope_mode": "resolved"})),
+        ("cx_stats", json!({"scope_mode": "resolved"})),
+    ];
+
+    for (index, (tool, args)) in cases.into_iter().enumerate() {
+        let resp = send_request(
+            &mut stdin,
+            &mut stdout,
+            &call_tool(args, tool, 40 + index as u64),
+        );
+        let message = tool_error_message(&resp);
+        assert!(
+            message.contains("has been removed"),
+            "{tool} should reject removed scope inputs, got {message:?}"
+        );
+    }
+
+    shutdown(child, stdin);
+}
+
+#[test]
 fn protocol_migrated_scope_tools_accept_exact_scope() {
     let dir = tempfile::tempdir().unwrap();
     let (child, mut stdin, mut stdout) = spawn_server(&dir);
