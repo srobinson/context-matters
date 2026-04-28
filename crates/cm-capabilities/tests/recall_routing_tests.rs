@@ -3,6 +3,7 @@
 mod common;
 
 use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{EntryKind, ScopePath};
 use common::{
     create_global, seed_entry, seed_entry_with_scope, seed_entry_with_tags,
@@ -61,7 +62,9 @@ async fn routing_search_with_scope_filters_to_ancestors() {
         &store,
         RecallRequest {
             query: Some("sqlx".to_owned()),
-            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },
@@ -129,7 +132,9 @@ async fn routing_tag_scope_walk_with_scope_walks_ancestors() {
         &store,
         RecallRequest {
             tags: vec!["infra".to_owned()],
-            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },
@@ -164,7 +169,9 @@ async fn routing_scope_resolve_when_scope_no_query_no_tags() {
     let result = recall(
         &store,
         RecallRequest {
-            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },

@@ -1,32 +1,24 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::collections::HashMap;
 
-use cm_core::{
-    BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
-};
+use cm_core::{BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination};
 use uuid::Uuid;
 
-use crate::scope::{BrowseScopeMode, ScopeResolution, resolve_browse_scope};
+use crate::scope::{CWD_INFERRED_SCOPE, ScopeResolution, ScopeSelector, resolve_browse_scope};
 use crate::validation::clamp_limit;
 
 // ── Types ────────────────────────────────────────────────────────
 
-pub const DEFAULT_BROWSE_SCOPE: &str = "auto";
+pub const DEFAULT_BROWSE_SCOPE: &str = CWD_INFERRED_SCOPE;
 
-pub const BROWSE_SCOPE_DEFAULT_ADVISORY: &str = "no scope specified, using scope='auto' to infer the local scope. run `cm stats` to list all scopes.";
+pub const BROWSE_SCOPE_DEFAULT_ADVISORY: &str = "no scope specified, using scope='cwd_inferred' to infer the local scope. run `cm stats` to list all scopes.";
 
 /// Input for a browse operation.
 #[derive(Debug, Clone, Default)]
 pub struct BrowseRequest {
-    /// Preferred scope input. Accepts "auto" for local resolution or an
-    /// explicit `ScopePath` string for exact filtering. Defaults to
-    /// `DEFAULT_BROWSE_SCOPE` when both `scope` and `scope_path` are unset.
-    pub scope: Option<String>,
-    /// Backward compatible exact scope filter.
-    pub scope_path: Option<ScopePath>,
-    pub scope_mode: BrowseScopeMode,
-    pub cwd: Option<PathBuf>,
+    /// Scope selector. Defaults to `cwd_inferred` when unset.
+    pub scope: Option<ScopeSelector>,
     /// Whether to render smart-scope resolution metadata. Defaults to true
-    /// for effective `scope="auto"` requests and false otherwise.
+    /// for effective `scope="cwd_inferred"` requests and false otherwise.
     pub include_resolution: Option<bool>,
     pub kind: Option<EntryKind>,
     pub tag: Option<String>,
@@ -46,7 +38,7 @@ pub struct BrowseResult {
     pub next_cursor: Option<String>,
     pub has_more: bool,
     /// Effective scope input after capability defaults. Used by projection
-    /// code to disclose `scope=auto` when callers omitted a scope.
+    /// code to disclose `scope=cwd_inferred` when callers omitted a scope.
     pub scope_used: Option<String>,
     pub include_resolution: bool,
     pub limit_used: u32,
@@ -75,40 +67,31 @@ pub async fn browse(
     store: &impl ContextStore,
     request: BrowseRequest,
 ) -> Result<BrowseResult, CmError> {
-    let scope_defaulted = request.scope.is_none() && request.scope_path.is_none();
+    let scope_defaulted = request.scope.is_none();
     let mut effective_request = request;
     if scope_defaulted {
-        effective_request.scope = Some(DEFAULT_BROWSE_SCOPE.to_owned());
+        effective_request.scope = Some(ScopeSelector::cwd_inferred(None));
     }
 
-    let scope_is_auto = matches!(
-        effective_request.scope.as_deref().map(str::trim),
-        Some(DEFAULT_BROWSE_SCOPE)
+    let scope_is_cwd_inferred = matches!(
+        effective_request.scope,
+        Some(ScopeSelector::CwdInferred { .. })
     );
-    if scope_is_auto && effective_request.cwd.is_none() {
-        effective_request.cwd = Some(env::current_dir().map_err(|e| {
-            CmError::Validation(format!(
-                "failed to determine current working directory: {e}"
-            ))
-        })?);
-    }
-
     let include_resolution = effective_request
         .include_resolution
-        .unwrap_or(scope_is_auto);
+        .unwrap_or(scope_is_cwd_inferred);
     let limit_used = clamp_limit(effective_request.limit);
 
     // Capture the resolved sort before moving `request.sort` into the filter,
     // so the formatter can surface "sort: <variant>" in the browse header
     // without having to re-derive it from request-side state.
     let sort_used = effective_request.sort;
-    let scope_used = effective_request.scope.clone().or_else(|| {
-        effective_request
-            .scope_path
-            .as_ref()
-            .map(ToString::to_string)
-    });
-    let resolved_scope = resolve_browse_scope(store, &effective_request).await?;
+    let selector = effective_request
+        .scope
+        .as_ref()
+        .expect("browse scope is defaulted before resolution");
+    let scope_used = Some(selector.requested_scope());
+    let resolved_scope = resolve_browse_scope(store, selector).await?;
 
     let filter = EntryFilter {
         scope_path: resolved_scope.scope_path,

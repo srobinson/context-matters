@@ -210,6 +210,7 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(Strin
         }
 
         let mut input_schema = serde_json::json!({
+            "additionalProperties": false,
             "type": "object",
             "properties": properties
         });
@@ -371,7 +372,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         (
             "cx_browse",
             "List entries with filters and pagination",
-            r#"`cx_browse(kind: "decision", scope_path: "global/project:helioy")`"#,
+            r#"`cx_browse(kind: "decision", scope: "global/project:helioy")`"#,
         ),
         (
             "cx_get",
@@ -396,7 +397,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         (
             "cx_export",
             "Export entries as JSON for backup",
-            r#"`cx_export(scope_path: "global/project:helioy")`"#,
+            r#"`cx_export(scope: "global/project:helioy")`"#,
         ),
     ];
 
@@ -458,7 +459,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
     out.push_str(
         "3. **Classify accurately** — the `kind` field drives recall priority and filtering\n",
     );
-    out.push_str("4. **Use specific scope paths** — overly broad scoping pollutes recall for unrelated work\n");
+    out.push_str("4. **Use specific `scope` selectors**. Overly broad scoping pollutes recall for unrelated work\n");
     out.push_str("5. **Two-phase retrieval** — `cx_recall`/`cx_browse` return snippets; use `cx_get` for full body\n");
     out.push_str("6. **Store feedback immediately** — when the user corrects you, `kind: \"feedback\"` gets highest recall priority\n");
     out.push_str("7. **Do not mention the context system** to the user unless asked\n");

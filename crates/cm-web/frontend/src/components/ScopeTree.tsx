@@ -116,7 +116,7 @@ function ScopeNodeRow({ node, depth }: { node: ScopeNode; depth: number }) {
         )}
         <Link
           to="/feed"
-          search={{ scope_path: node.path }}
+          search={{ scope: node.path }}
           className="min-w-0 flex-1 truncate font-mono text-xs text-foreground hover:underline underline-offset-2"
         >
           {node.segment}

@@ -4,7 +4,7 @@ import type { FeedMode } from "@/components/domain/FeedModeSelect";
 
 export type FeedSearch = {
   mode?: FeedMode;
-  scope_path?: string;
+  scope?: string;
   kind?: EntryKind;
   tag?: string;
   created_by?: string;
@@ -15,9 +15,16 @@ export type FeedSearch = {
 };
 
 export function validateFeedSearch(search: Record<string, unknown>): FeedSearch {
+  const scope =
+    typeof search.scope === "string"
+      ? search.scope
+      : typeof search.scope_path === "string"
+        ? search.scope_path
+        : undefined;
+
   return {
     mode: isFeedMode(search.mode) ? search.mode : undefined,
-    scope_path: typeof search.scope_path === "string" ? search.scope_path : undefined,
+    scope,
     kind: isEntryKind(search.kind) ? search.kind : undefined,
     tag: typeof search.tag === "string" ? search.tag : undefined,
     created_by: typeof search.created_by === "string" ? search.created_by : undefined,

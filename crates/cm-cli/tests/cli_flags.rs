@@ -8,6 +8,7 @@
 //! milliseconds.
 
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use tempfile::tempdir;
 
@@ -68,7 +69,7 @@ fn root_long_help_uses_read_write_admin_groups() {
         .stdout(contains("ADMIN Commands"))
         .stdout(contains("Examples"))
         .stdout(contains("Scope Resolution"))
-        .stdout(contains("Browse defaults to scope=auto"));
+        .stdout(contains("Browse defaults to scope=cwd_inferred"));
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn recall_help_shows_per_arg_descriptions() {
         .assert()
         .success()
         .stdout(contains("FTS5 search query"))
-        .stdout(contains("Scope path"))
+        .stdout(contains("Scope selector"))
         .stdout(contains("Filter by entry kind"));
 }
 
@@ -105,9 +106,16 @@ fn browse_help_shows_per_arg_descriptions() {
     cm().args(["browse", "--help"])
         .assert()
         .success()
+        .stdout(contains(
+            "cm browse --scope cwd_inferred --cwd /path/to/repo",
+        ))
         .stdout(contains("Preferred scope"))
-        .stdout(contains("Compatibility exact scope path"))
-        .stdout(contains("Working directory used for auto scope inference"))
+        .stdout(contains("cwd_inferred"))
+        .stdout(predicates::str::contains("--scope-path").not())
+        .stdout(predicates::str::contains("--scope-mode").not())
+        .stdout(contains(
+            "Working directory used for cwd_inferred scope resolution",
+        ))
         .stdout(contains("Include scope resolution metadata"))
         .stdout(contains("Filter by kind"))
         .stdout(contains("Pagination cursor"));
@@ -136,6 +144,9 @@ fn store_help_shows_per_arg_descriptions() {
         .assert()
         .success()
         .stdout(contains("Entry title"))
+        .stdout(contains("--scope"))
+        .stdout(contains("cwd_inferred"))
+        .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Confidence level"))
         .stdout(contains("Numeric priority"));
 }
@@ -155,6 +166,9 @@ fn deposit_help_shows_per_arg_descriptions() {
         .assert()
         .success()
         .stdout(contains("JSON array of"))
+        .stdout(contains("--scope"))
+        .stdout(contains("cwd_inferred"))
+        .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Optional conversation summary"));
 }
 
@@ -188,8 +202,47 @@ fn export_help_shows_per_arg_descriptions() {
     cm().args(["export", "--help"])
         .assert()
         .success()
-        .stdout(contains("Filter to scope subtree"))
+        .stdout(contains("Filter export to scope selector"))
+        .stdout(contains("cwd_inferred"))
+        .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Export format"));
+}
+
+#[test]
+fn migrated_scope_help_names_cwd_inferred_as_reserved_value() {
+    for command in ["recall", "store", "deposit", "browse", "export"] {
+        cm().args([command, "--help"])
+            .assert()
+            .success()
+            .stdout(contains("reserved value cwd_inferred"));
+    }
+}
+
+#[test]
+fn removed_scope_path_flag_is_rejected() {
+    cm().args(["browse", "--scope-path", "global"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(contains("unexpected argument '--scope-path'"));
+
+    cm().args([
+        "deposit",
+        "--exchanges",
+        r#"[{"user":"u","assistant":"a"}]"#,
+        "--scope-path",
+        "global",
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(contains("unexpected argument '--scope-path'"));
+
+    cm().args(["export", "--scope-path", "global"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(contains("unexpected argument '--scope-path'"));
 }
 
 #[test]

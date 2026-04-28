@@ -2,15 +2,19 @@
 
 use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
-use cm_core::{ContextStore, EntryKind, ScopePath};
+use cm_core::{ContextStore, EntryKind};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{ToolResult, cm_err_to_string, dual_response, parse_params};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
+};
 
 /// Parameters for the `cx_recall` tool.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CxRecallParams {
     #[serde(default)]
     query: Option<String>,
@@ -32,6 +36,7 @@ struct CxRecallParams {
 }
 
 pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
+    reject_removed_scope_inputs(args)?;
     let params: CxRecallParams = parse_params(args)?;
 
     // Validate query size if provided
@@ -41,7 +46,7 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<ToolRe
 
     // Parse and validate scope path
     let scope = match &params.scope {
-        Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
+        Some(s) => Some(ScopeSelector::parse(s).map_err(cm_err_to_string)?),
         None => None,
     };
 

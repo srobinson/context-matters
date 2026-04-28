@@ -23,7 +23,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::projection::snippet;
-use crate::scope::ensure_scope_chain;
+use crate::scope::{ScopeSelector, ensure_scope_chain, resolve_scope_selection};
 use crate::validation::check_input_size;
 
 /// Maximum exchanges per deposit call. Kept low because each exchange
@@ -68,8 +68,8 @@ pub struct DepositRequest {
     /// the tags `conversation, summary` and linked to every exchange via
     /// an [`RelationKind::Elaborates`] relation.
     pub summary: Option<String>,
-    /// Target scope path. Auto-created top-down if missing.
-    pub scope_path: String,
+    /// Target scope selector. Defaults to `global` when unset.
+    pub scope: Option<ScopeSelector>,
     /// Attribution string stamped on every created entry.
     pub created_by: String,
 }
@@ -139,7 +139,11 @@ pub async fn deposit(
         }
     }
 
-    let scope_path = ScopePath::parse(&request.scope_path)?;
+    let scope_selector = request
+        .scope
+        .unwrap_or_else(|| ScopeSelector::Path(ScopePath::global()));
+    let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
+    let scope_path = resolved_scope.write_scope_path()?.clone();
 
     // `ensure_scope_chain` returns `Result<(), String>` because it
     // predates this capability layer and was written against the MCP

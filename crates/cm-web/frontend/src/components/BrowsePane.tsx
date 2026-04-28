@@ -26,7 +26,7 @@ export function BrowsePane({ expandedIds, onToggleExpanded }: BrowsePaneProps) {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
 
   const query = useAgentBrowse({
-    scope_path: scope,
+    scope,
     kind,
     tag,
     created_by: agent,
@@ -36,7 +36,7 @@ export function BrowsePane({ expandedIds, onToggleExpanded }: BrowsePaneProps) {
   });
 
   const handleFilterChange = useCallback((update: Partial<FilterState>) => {
-    if ("scope_path" in update) setScope(update.scope_path);
+    if ("scope" in update) setScope(update.scope);
     if ("kind" in update) setKind(update.kind);
     if ("tag" in update) setTag(update.tag);
     if ("created_by" in update) setAgent(update.created_by);
@@ -55,7 +55,7 @@ export function BrowsePane({ expandedIds, onToggleExpanded }: BrowsePaneProps) {
     <>
       <FilterBar
         filters={{
-          scope_path: scope,
+          scope,
           kind,
           tag,
           created_by: agent,

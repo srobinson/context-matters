@@ -106,6 +106,29 @@ fn store_stub_points_users_to_curator_ui() {
         .stdout(contains("cm serve --web"));
 }
 
+#[test]
+fn store_stub_rejects_removed_auto_scope_selector() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["store", "--scope", "auto"])
+        .assert()
+        .failure()
+        .stderr(contains("scope='auto' has been removed"));
+}
+
+#[test]
+fn store_stub_accepts_current_scope_selectors() {
+    for scope in ["cwd_inferred", "global/project:helioy"] {
+        let dir = tempdir().unwrap();
+        cm_with_data_dir(dir.path())
+            .args(["store", "--scope", scope])
+            .assert()
+            .success()
+            .stdout(contains("Curator"))
+            .stdout(contains("cm serve --web"));
+    }
+}
+
 // ---------------- Init ----------------
 
 #[test]
@@ -140,7 +163,7 @@ fn browse_lists_seeded_entries_in_human_output() {
         .args(["browse"])
         .assert()
         .success()
-        .stderr(contains("using scope='auto'"))
+        .stderr(contains("using scope='cwd_inferred'"))
         .stdout(contains("alpha entry"))
         .stdout(contains("beta entry"));
 }
@@ -177,7 +200,7 @@ fn browse_with_limit_caps_entry_count() {
 }
 
 #[test]
-fn browse_scope_path_filters_exact_scope() {
+fn browse_scope_filters_exact_scope() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())
         .args([
@@ -201,7 +224,7 @@ fn browse_scope_path_filters_exact_scope() {
         .success();
 
     let assert = cm_with_data_dir(dir.path())
-        .args(["browse", "--scope-path", "global/project:helioy", "-j"])
+        .args(["browse", "--scope", "global/project:helioy", "-j"])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
@@ -218,7 +241,7 @@ fn browse_scope_path_filters_exact_scope() {
 }
 
 #[test]
-fn browse_auto_scope_can_emit_resolution_metadata() {
+fn browse_cwd_inferred_scope_can_emit_resolution_metadata() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())
         .args([
@@ -233,7 +256,7 @@ fn browse_auto_scope_can_emit_resolution_metadata() {
         .args([
             "browse",
             "--scope",
-            "auto",
+            "cwd_inferred",
             "--cwd",
             dir.path().to_str().expect("tempdir should be utf-8"),
             "--include-resolution",
@@ -243,7 +266,7 @@ fn browse_auto_scope_can_emit_resolution_metadata() {
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
     let json: Value = serde_json::from_str(&stdout).expect("browse -j must emit valid JSON");
-    assert_eq!(json["resolution"]["requested_scope"], "auto");
+    assert_eq!(json["resolution"]["requested_scope"], "cwd_inferred");
     assert_eq!(json["resolution"]["resolved_scope"], "global");
     assert_eq!(json["resolution"]["scope_mode"], "resolved");
 }

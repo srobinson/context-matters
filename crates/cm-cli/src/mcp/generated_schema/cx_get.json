@@ -1,6 +1,7 @@
 {
   "description": "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts full hyphenated UUIDv7 strings only. IDs that do not exist are silently omitted. Maximum 100 IDs per request.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "ids": {
         "description": "Entry IDs: full hyphenated UUIDv7 strings. Max 100 per request.",

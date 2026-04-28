@@ -30,7 +30,8 @@ use cm_capabilities::recall::{
     SearchTier,
 };
 use cm_capabilities::scope::{
-    BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
+    BrowseScopeMode, CWD_INFERRED_SCOPE, ScopeResolution, ScopeResolutionCandidate,
+    ScopeResolutionConfidence,
 };
 use cm_capabilities::update::UpdateResult;
 use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
@@ -102,7 +103,7 @@ fn make_row(
 
 fn smart_scope_resolution_fixture() -> ScopeResolution {
     ScopeResolution {
-        requested_scope: "auto".to_owned(),
+        requested_scope: CWD_INFERRED_SCOPE.to_owned(),
         resolved_scope: ScopePath::parse("global/project:helioy/repo:context-matters")
             .expect("test fixture scope parses"),
         scope_mode: BrowseScopeMode::Resolved,
@@ -222,7 +223,7 @@ fn web_browse_view_projects_scope_resolution() {
         total: 1,
         next_cursor: None,
         has_more: false,
-        scope_used: Some("auto".to_owned()),
+        scope_used: Some(CWD_INFERRED_SCOPE.to_owned()),
         include_resolution: true,
         limit_used: 50,
         sort_used: BrowseSort::Recent,
@@ -236,7 +237,7 @@ fn web_browse_view_projects_scope_resolution() {
         .resolution
         .expect("smart browse projection should include resolution metadata");
 
-    assert_eq!(resolution.requested_scope, "auto");
+    assert_eq!(resolution.requested_scope, CWD_INFERRED_SCOPE);
     assert_eq!(
         resolution.resolved_scope,
         "global/project:helioy/repo:context-matters",

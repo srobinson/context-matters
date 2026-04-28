@@ -3,6 +3,7 @@
 mod common;
 
 use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{EntryKind, ScopePath};
 use common::{create_global, seed_entry, seed_entry_with_scope, seed_entry_with_tags, test_store};
 
@@ -124,7 +125,9 @@ async fn recall_row_score_is_none_on_scope_resolve() {
     let result = recall(
         &store,
         RecallRequest {
-            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },

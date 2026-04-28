@@ -16,12 +16,15 @@ use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cm_capabilities::projection::{WebBrowseView, WebRecallView, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{
-    ContextStore, Entry, EntryKind, EntryRelation, MutationSource, NewEntry, ScopePath,
+    ContextStore, Entry, EntryKind, EntryMeta, EntryRelation, MutationSource, NewEntry,
     UpdateEntry, WriteContext,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -61,9 +64,9 @@ async fn browse(
 
 #[derive(Debug, Deserialize)]
 struct SearchQuery {
-    #[serde(rename = "query")]
     q: String,
-    scope_path: Option<String>,
+    scope: Option<String>,
+    cwd: Option<String>,
     kind: Option<String>,
     tag: Option<String>,
     limit: Option<u32>,
@@ -71,8 +74,9 @@ struct SearchQuery {
 
 async fn search(
     State(state): State<Arc<AppState>>,
-    Query(sq): Query<SearchQuery>,
+    raw_query: RawQuery,
 ) -> Result<Json<WebRecallView>, ApiError> {
+    let sq = parse_search_query(raw_query.0.as_deref())?;
     if sq.q.is_empty() {
         return Err(ApiError(cm_core::CmError::Validation(
             "query parameter is required".to_owned(),
@@ -80,11 +84,7 @@ async fn search(
     }
     check_input_size(&sq.q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
 
-    let scope = sq
-        .scope_path
-        .map(|s| ScopePath::parse(&s))
-        .transpose()
-        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+    let scope = agent::parse_scope_selector(sq.scope, sq.cwd)?;
 
     let kinds: Vec<EntryKind> = sq
         .kind
@@ -111,6 +111,44 @@ async fn search(
         .map_err(ApiError)?;
 
     Ok(Json(project_web_recall(&result, &request)))
+}
+
+fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
+    let mut q = None;
+    let mut scope = None;
+    let mut cwd = None;
+    let mut kind = None;
+    let mut tag = None;
+    let mut limit = None;
+
+    for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
+        match key.as_ref() {
+            "query" => q = Some(value.into_owned()),
+            "scope" => scope = Some(value.into_owned()),
+            "cwd" => cwd = Some(value.into_owned()),
+            "scope_path" => return Err(agent::err_scope_path_removed()),
+            "scope_mode" => return Err(agent::err_scope_mode_removed()),
+            "kind" => kind = Some(value.into_owned()),
+            "tag" => tag = Some(value.into_owned()),
+            "limit" => {
+                limit = Some(value.parse::<u32>().map_err(|_| {
+                    ApiError(cm_core::CmError::Validation(format!(
+                        "invalid limit: '{value}'"
+                    )))
+                })?)
+            }
+            _ => {}
+        }
+    }
+
+    Ok(SearchQuery {
+        q: q.unwrap_or_default(),
+        scope,
+        cwd,
+        kind,
+        tag,
+        limit,
+    })
 }
 
 // ── Recall compatibility alias ──────────────────────────────────
@@ -197,18 +235,56 @@ async fn forget_entry(
 #[derive(Debug, Deserialize)]
 struct MergeRequest {
     old_id: String,
-    new_entry: NewEntry,
+    new_entry: EntryWriteRequest,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EntryWriteRequest {
+    scope: String,
+    kind: EntryKind,
+    title: String,
+    body: String,
+    created_by: String,
+    #[serde(default)]
+    meta: Option<EntryMeta>,
+}
+
+impl TryFrom<EntryWriteRequest> for NewEntry {
+    type Error = ApiError;
+
+    fn try_from(value: EntryWriteRequest) -> Result<Self, Self::Error> {
+        let scope_path = match ScopeSelector::parse(&value.scope).map_err(ApiError)? {
+            ScopeSelector::Path(scope_path) => scope_path,
+            ScopeSelector::CwdInferred { .. } => {
+                return Err(ApiError(cm_core::CmError::Validation(
+                    "scope='cwd_inferred' is not supported for entry write bodies".to_owned(),
+                )));
+            }
+        };
+
+        Ok(NewEntry {
+            scope_path,
+            kind: value.kind,
+            title: value.title,
+            body: value.body,
+            created_by: value.created_by,
+            meta: value.meta,
+        })
+    }
 }
 
 async fn merge_entry(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<MergeRequest>,
+    Json(body): Json<Value>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let body: MergeRequest = parse_json_body(body)?;
     let old_uuid = parse_uuid(&body.old_id)?;
     let ctx = WriteContext::new(MutationSource::Web);
+    let new_entry = body.new_entry.try_into()?;
     let entry = state
         .store
-        .supersede_entry(old_uuid, body.new_entry, &ctx)
+        .supersede_entry(old_uuid, new_entry, &ctx)
         .await?;
     tracing::info!(
         action = "supersede",
@@ -223,8 +299,9 @@ async fn merge_entry(
 
 async fn create_entry(
     State(state): State<Arc<AppState>>,
-    Json(new_entry): Json<NewEntry>,
+    Json(body): Json<Value>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let new_entry: NewEntry = parse_json_body::<EntryWriteRequest>(body)?.try_into()?;
     let ctx = WriteContext::new(MutationSource::Web);
     let entry = state.store.create_entry(new_entry, &ctx).await?;
     tracing::info!(
@@ -241,4 +318,15 @@ async fn create_entry(
 fn parse_uuid(s: &str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(s)
         .map_err(|_| ApiError(cm_core::CmError::Validation(format!("invalid UUID: '{s}'"))))
+}
+
+fn parse_json_body<T>(body: Value) -> Result<T, ApiError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    serde_json::from_value(body).map_err(|e| {
+        ApiError(cm_core::CmError::Validation(format!(
+            "invalid request body: {e}"
+        )))
+    })
 }

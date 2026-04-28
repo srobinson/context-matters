@@ -82,10 +82,6 @@ pub enum Commands {
     Browse {
         #[arg(long, help = gh::BROWSE_SCOPE_HELP)]
         scope: Option<String>,
-        #[arg(long = "scope-path", help = gh::BROWSE_SCOPE_PATH_HELP)]
-        scope_path: Option<String>,
-        #[arg(long, help = gh::BROWSE_SCOPE_MODE_HELP)]
-        scope_mode: Option<String>,
         #[arg(long, help = gh::BROWSE_CWD_HELP)]
         cwd: Option<String>,
         #[arg(long, help = gh::BROWSE_INCLUDE_RESOLUTION_HELP)]
@@ -136,8 +132,8 @@ pub enum Commands {
         body: Option<String>,
         #[arg(long, help = gh::STORE_KIND_HELP)]
         kind: Option<String>,
-        #[arg(long = "scope", help = gh::STORE_SCOPE_PATH_HELP)]
-        scope_path: Option<String>,
+        #[arg(long, help = gh::STORE_SCOPE_HELP)]
+        scope: Option<String>,
         #[arg(long, help = gh::STORE_CREATED_BY_HELP)]
         created_by: Option<String>,
         #[arg(long, value_delimiter = ',', help = gh::STORE_TAGS_HELP)]
@@ -178,8 +174,8 @@ pub enum Commands {
         exchanges: String,
         #[arg(long, help = gh::DEPOSIT_SUMMARY_HELP)]
         summary: Option<String>,
-        #[arg(long = "scope", help = gh::DEPOSIT_SCOPE_PATH_HELP)]
-        scope_path: Option<String>,
+        #[arg(long, help = gh::DEPOSIT_SCOPE_HELP)]
+        scope: Option<String>,
         #[arg(long, help = gh::DEPOSIT_CREATED_BY_HELP)]
         created_by: Option<String>,
         #[arg(short = 'j', long, help = "Emit JSON instead of human-readable text")]
@@ -210,8 +206,8 @@ pub enum Commands {
     /// Export entries and scopes as JSON.
     #[command(long_about = gh::EXPORT_ABOUT, after_help = ht::EXPORT_AFTER_HELP)]
     Export {
-        #[arg(long = "scope", help = gh::EXPORT_SCOPE_PATH_HELP)]
-        scope_path: Option<String>,
+        #[arg(long, help = gh::EXPORT_SCOPE_HELP)]
+        scope: Option<String>,
         #[arg(long, help = gh::EXPORT_FORMAT_HELP)]
         format: Option<String>,
     },

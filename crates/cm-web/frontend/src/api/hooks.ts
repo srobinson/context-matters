@@ -12,6 +12,7 @@ import {
   type BrowseView,
   type EntryDetail,
   type MutationListParams,
+  type NewEntryRequest,
   type PagedResponse,
   type RecallParams,
   type RecallView,
@@ -19,7 +20,6 @@ import {
   type Stats,
 } from "./client";
 import type { MutationRecord } from "./generated/MutationRecord";
-import type { NewEntry } from "./generated/NewEntry";
 import type { UpdateEntry } from "./generated/UpdateEntry";
 
 // --- Query key factory ---
@@ -126,7 +126,7 @@ export function useMutationHistory(
 export function useCreateEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (entry: NewEntry) => api.entries.create(entry),
+    mutationFn: (entry: NewEntryRequest) => api.entries.create(entry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.agent.all });
@@ -151,7 +151,7 @@ export function useUpdateEntry() {
 export function useMergeEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ oldId, newEntry }: { oldId: string; newEntry: NewEntry }) =>
+    mutationFn: ({ oldId, newEntry }: { oldId: string; newEntry: NewEntryRequest }) =>
       api.entries.merge(oldId, newEntry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.entries.all });

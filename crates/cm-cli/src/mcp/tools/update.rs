@@ -5,9 +5,12 @@ use cm_capabilities::update::{self, UpdateRequest};
 use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde_json::Value;
 
-use crate::mcp::{ToolResult, cm_err_to_string, parse_params, yaml_response};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, yaml_response,
+};
 
 pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
+    reject_removed_scope_inputs(args)?;
     let request: UpdateRequest = parse_params(args)?;
     let ctx = WriteContext::new(MutationSource::Mcp);
 

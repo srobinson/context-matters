@@ -1,6 +1,7 @@
 use super::support::{seed_scoped, test_store};
 
 use cm_capabilities::browse::{BrowseRequest, browse};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{EntryKind, ScopePath};
 
 #[tokio::test(flavor = "multi_thread")]
@@ -18,7 +19,9 @@ async fn browse_scope_explicit_path_filters_exactly() {
     let result = browse(
         &store,
         BrowseRequest {
-            scope: Some("global/project:helioy".to_owned()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: Some(20),
             ..Default::default()
         },
@@ -32,7 +35,7 @@ async fn browse_scope_explicit_path_filters_exactly() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_matching_scope_and_scope_path_filter_exactly() {
+async fn browse_scope_selector_exact_path_filters_exactly() {
     let (store, _dir) = test_store().await;
     seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
     seed_scoped(
@@ -47,8 +50,7 @@ async fn browse_matching_scope_and_scope_path_filter_exactly() {
     let result = browse(
         &store,
         BrowseRequest {
-            scope: Some(project_scope.as_str().to_owned()),
-            scope_path: Some(project_scope),
+            scope: Some(ScopeSelector::Path(project_scope)),
             limit: Some(20),
             ..Default::default()
         },
@@ -61,25 +63,12 @@ async fn browse_matching_scope_and_scope_path_filter_exactly() {
     assert!(result.resolution.is_none());
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_and_scope_path_must_not_conflict() {
-    let (store, _dir) = test_store().await;
-
-    let err = browse(
-        &store,
-        BrowseRequest {
-            scope: Some("auto".to_owned()),
-            scope_path: Some(ScopePath::parse("global").unwrap()),
-            limit: Some(20),
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap_err();
+#[test]
+fn browse_selector_rejects_removed_auto_value() {
+    let err = ScopeSelector::parse("auto").unwrap_err();
 
     assert!(
-        err.to_string()
-            .contains("cannot be combined with scope_path"),
+        err.to_string().contains("scope='auto' has been removed"),
         "unexpected error: {err}",
     );
 }

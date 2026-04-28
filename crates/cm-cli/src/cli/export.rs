@@ -19,6 +19,7 @@
 
 use anyhow::{Context, Result};
 use cm_capabilities::export::{ExportRequest, export};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::ContextStore;
 
 use crate::cli::errors::capability_error;
@@ -30,13 +31,18 @@ use crate::cli::errors::capability_error;
 /// `main.rs`; this keeps the handler decoupled from the clap surface.
 pub async fn run(
     store: &impl ContextStore,
-    scope_path: Option<String>,
+    scope: Option<String>,
     format: Option<String>,
 ) -> Result<()> {
+    let scope = scope
+        .as_deref()
+        .map(ScopeSelector::parse)
+        .transpose()
+        .map_err(capability_error)?;
     let view = export(
         store,
         ExportRequest {
-            scope_path,
+            scope,
             format: format.unwrap_or_else(|| "json".to_owned()),
         },
     )

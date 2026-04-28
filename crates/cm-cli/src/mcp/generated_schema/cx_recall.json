@@ -1,6 +1,7 @@
 {
   "description": "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "kinds": {
         "description": "Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pattern, observation.",
@@ -22,7 +23,7 @@
         "type": "string"
       },
       "scope": {
-        "description": "Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:helioy/repo:nancyr' also searches 'global/project:helioy' and 'global'. Default: 'global'.",
+        "description": "Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'.",
         "type": "string"
       },
       "tags": {

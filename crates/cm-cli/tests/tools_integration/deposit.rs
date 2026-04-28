@@ -1,4 +1,5 @@
 use cm_cli::mcp::tools;
+use cm_core::ContextStore;
 use serde_json::json;
 
 use crate::common::{create_global, test_store};
@@ -65,4 +66,39 @@ async fn deposit_rejects_empty_exchanges() {
     let result = tools::cx_deposit(&store, &json!({"exchanges": []})).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("cannot be empty"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deposit_rejects_removed_scope_inputs_before_writing() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    for (args, expected) in [
+        (
+            json!({
+                "exchanges": [{"user": "u", "assistant": "a"}],
+                "scope_path": "global"
+            }),
+            "scope_path has been removed",
+        ),
+        (
+            json!({
+                "exchanges": [{"user": "u", "assistant": "a"}],
+                "scope": "auto"
+            }),
+            "scope='auto' has been removed",
+        ),
+        (
+            json!({
+                "exchanges": [{"user": "u", "assistant": "a"}],
+                "scope_mode": "resolved"
+            }),
+            "scope_mode has been removed",
+        ),
+    ] {
+        let err = tools::cx_deposit(&store, &args).await.unwrap_err();
+        assert!(err.contains(expected), "expected {expected:?}, got {err:?}");
+    }
+
+    assert_eq!(store.export(None).await.unwrap().len(), 0);
 }

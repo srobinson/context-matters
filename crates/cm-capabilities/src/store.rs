@@ -6,22 +6,17 @@
 use cm_core::{CmError, ContextStore, EntryKind, NewEntry, ScopePath, WriteContext};
 use serde::Deserialize;
 
-use crate::scope::ensure_scope_chain_with_status;
+use crate::scope::{ScopeSelector, ensure_scope_chain_with_status, resolve_scope_selection};
 use crate::validation::{MetaInput, check_input_size, parse_kind};
 
-const DEFAULT_SCOPE_PATH: &str = "global";
 const DEFAULT_CREATED_BY: &str = "agent:claude-code";
-
-fn default_scope_path() -> String {
-    DEFAULT_SCOPE_PATH.to_owned()
-}
 
 fn default_created_by() -> String {
     DEFAULT_CREATED_BY.to_owned()
 }
 
 /// Input for a store operation.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct StoreRequest {
     /// Short summary displayed in search results.
     pub title: String,
@@ -29,18 +24,62 @@ pub struct StoreRequest {
     pub body: String,
     /// Entry classification.
     pub kind: String,
-    /// Target scope path. Auto-created if missing.
-    #[serde(default = "default_scope_path")]
-    pub scope_path: String,
+    /// Target scope selector. Defaults to `global` when unset.
+    pub scope: Option<ScopeSelector>,
     /// Attribution string.
-    #[serde(default = "default_created_by")]
     pub created_by: String,
     /// Metadata fields accepted as top-level store parameters.
-    #[serde(flatten)]
     pub meta: MetaInput,
     /// ID of an existing entry that this new entry supersedes.
-    #[serde(default)]
     pub supersedes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoreRequestWire {
+    title: String,
+    body: String,
+    kind: String,
+    #[serde(default)]
+    scope: Option<ScopeSelector>,
+    #[serde(default = "default_created_by")]
+    created_by: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    confidence: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    priority: Option<i32>,
+    #[serde(default)]
+    supersedes: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for StoreRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = StoreRequestWire::deserialize(deserializer)?;
+        Ok(Self {
+            title: wire.title,
+            body: wire.body,
+            kind: wire.kind,
+            scope: wire.scope,
+            created_by: wire.created_by,
+            meta: MetaInput {
+                tags: wire.tags,
+                confidence: wire.confidence,
+                source: wire.source,
+                expires_at: wire.expires_at,
+                priority: wire.priority,
+            },
+            supersedes: wire.supersedes,
+        })
+    }
 }
 
 /// Result of a store operation.
@@ -63,7 +102,11 @@ pub async fn store(
     check_input_size(&request.title, "title").map_err(CmError::Validation)?;
     check_input_size(&request.body, "body").map_err(CmError::Validation)?;
 
-    let scope_path = ScopePath::parse(&request.scope_path)?;
+    let scope_selector = request
+        .scope
+        .unwrap_or_else(|| ScopeSelector::Path(ScopePath::global()));
+    let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
+    let scope_path = resolved_scope.write_scope_path()?.clone();
     let kind = parse_kind(&request.kind).map_err(CmError::Validation)?;
 
     let meta = if request.meta.is_empty() {

@@ -4,10 +4,11 @@ use super::support::{
 };
 
 use cm_capabilities::browse::{BrowseRequest, browse};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{EntryKind, ScopePath};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_filters_by_scope_path() {
+async fn browse_filters_by_exact_scope_selector() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     seed_entry(&store, "Global fact", "At global.", EntryKind::Fact).await;
@@ -23,7 +24,9 @@ async fn browse_filters_by_scope_path() {
     let result = browse(
         &store,
         BrowseRequest {
-            scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: Some(20),
             ..Default::default()
         },

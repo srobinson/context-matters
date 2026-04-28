@@ -303,9 +303,7 @@ fn render_pagination_hint(out: &mut String, result: &BrowseResult, _request: &Br
 fn reconstruct_query(result: &BrowseResult, req: &BrowseRequest) -> Option<String> {
     let mut parts: Vec<String> = Vec::with_capacity(5);
     if let Some(scope) = &req.scope {
-        parts.push(format!("scope={scope}"));
-    } else if let Some(sp) = &req.scope_path {
-        parts.push(format!("scope={sp}"));
+        parts.push(format!("scope={}", scope.requested_scope()));
     } else if let Some(scope) = &result.scope_used {
         parts.push(format!("scope={scope}"));
     }
@@ -411,11 +409,11 @@ mod tests {
     #[test]
     fn reconstruct_query_uses_effective_scope_when_defaulted() {
         let req = BrowseRequest::default();
-        let result = empty_result(Some("auto"));
+        let result = empty_result(Some("cwd_inferred"));
 
         assert_eq!(
             reconstruct_query(&result, &req).as_deref(),
-            Some("scope=auto")
+            Some("scope=cwd_inferred")
         );
     }
 }

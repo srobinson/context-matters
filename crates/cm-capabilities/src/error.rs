@@ -9,7 +9,7 @@ pub fn cm_err_to_string(e: CmError) -> String {
         CmError::ScopeNotFound(path) => {
             format!(
                 "Scope '{path}' does not exist. Use cx_stats to list available scopes, \
-                 or create it by storing an entry with a new scope_path."
+                 or create it by storing an entry with a new scope."
             )
         }
         CmError::DuplicateContent(existing_id) => {
@@ -21,7 +21,7 @@ pub fn cm_err_to_string(e: CmError) -> String {
         }
         CmError::InvalidScopePath(e) => {
             format!(
-                "Invalid scope_path: {e}. Format: 'global', 'global/project:<id>', \
+                "Invalid scope: {e}. Format: 'global', 'global/project:<id>', \
                  'global/project:<id>/repo:<id>', or \
                  'global/project:<id>/repo:<id>/session:<id>'. \
                  Identifiers must be lowercase alphanumeric with hyphens."
@@ -50,6 +50,7 @@ pub fn cm_err_to_string(e: CmError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cm_core::ScopePathError;
 
     #[test]
     fn cm_err_to_string_includes_recovery_guidance() {
@@ -70,6 +71,15 @@ mod tests {
         let err = CmError::ScopeNotFound("global/project:foo".to_owned());
         let msg = cm_err_to_string(err);
         assert!(msg.contains("cx_stats"));
+    }
+
+    #[test]
+    fn cm_err_to_string_uses_public_scope_name_for_invalid_scope() {
+        let err =
+            CmError::InvalidScopePath(ScopePathError::MalformedSegment("bad scope".to_owned()));
+        let msg = cm_err_to_string(err);
+        assert!(msg.contains("Invalid scope:"));
+        assert!(!msg.contains("Invalid scope_path:"));
     }
 
     #[test]

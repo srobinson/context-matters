@@ -1,6 +1,7 @@
 {
-  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
+  "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to cwd_inferred when scope is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "created_by": {
         "description": "Filter by creator attribution string.",
@@ -11,11 +12,11 @@
         "type": "string"
       },
       "cwd": {
-        "description": "Filesystem working directory used for scope=\"auto\" inference. The capability defaults this from the process current directory when omitted.",
+        "description": "Filesystem working directory used for scope=\"cwd_inferred\" resolution. The capability defaults this from the process current directory when omitted.",
         "type": "string"
       },
       "include_resolution": {
-        "description": "Include scope resolution metadata in the response. Defaults to true when scope=\"auto\".",
+        "description": "Include scope resolution metadata in the response. Defaults to true when scope=\"cwd_inferred\".",
         "type": "boolean"
       },
       "include_superseded": {
@@ -41,18 +42,7 @@
         "type": "integer"
       },
       "scope": {
-        "description": "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" when scope_path is omitted.",
-        "type": "string"
-      },
-      "scope_mode": {
-        "description": "Scope resolution mode. Only \"resolved\" is implemented in this first pass.",
-        "enum": [
-          "resolved"
-        ],
-        "type": "string"
-      },
-      "scope_path": {
-        "description": "Compatibility exact scope filter. When supplied, browse filters to this exact scope path and does not infer a local scope.",
+        "description": "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted.",
         "type": "string"
       },
       "tag": {
@@ -232,7 +222,7 @@
             "type": "string"
           },
           "requested_scope": {
-            "description": "Scope input supplied by the caller, usually auto.",
+            "description": "Scope input supplied by the caller, usually cwd_inferred.",
             "type": "string"
           },
           "resolved_scope": {

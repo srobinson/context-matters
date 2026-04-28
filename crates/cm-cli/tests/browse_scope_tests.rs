@@ -2,7 +2,7 @@
 //!
 //! Capability-level resolver behavior is covered in cm-capabilities.
 //! These tests focus on the cx_browse tool boundary: parameter mapping,
-//! default MCP auto scope, conflict errors, text projection, and
+//! default MCP inferred scope, removed input errors, text projection, and
 //! structuredContent resolution metadata.
 
 mod common;
@@ -13,7 +13,7 @@ use serde_json::json;
 use common::{create_global, test_store};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_defaults_to_auto_scope_for_mcp() {
+async fn browse_defaults_to_cwd_inferred_scope_for_mcp() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
@@ -27,30 +27,30 @@ async fn browse_defaults_to_auto_scope_for_mcp() {
     let result = tools::cx_browse(&store, &json!({})).await.unwrap();
 
     assert!(
-        result.text.contains("query: scope=auto"),
-        "default MCP browse should disclose auto scope:\n{}",
+        result.text.contains("query: scope=cwd_inferred"),
+        "default MCP browse should disclose cwd_inferred scope:\n{}",
         result.text,
     );
     assert!(
         result.text.contains("resolution:"),
-        "auto browse should render compact resolution metadata:\n{}",
+        "cwd_inferred browse should render compact resolution metadata:\n{}",
         result.text,
     );
     let structured = result
         .structured
         .as_ref()
         .expect("cx_browse emits structured content");
-    assert_eq!(structured["resolution"]["requested_scope"], "auto");
+    assert_eq!(structured["resolution"]["requested_scope"], "cwd_inferred");
     assert_eq!(structured["resolution"]["resolved_scope"], "global");
     assert_eq!(structured["resolution"]["confidence"], "very_low");
     assert_eq!(
         structured["advisory"],
-        "no scope specified, using scope='auto' to infer the local scope. run `cm stats` to list all scopes."
+        "no scope specified, using scope='cwd_inferred' to infer the local scope. run `cm stats` to list all scopes."
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
+async fn browse_cwd_inferred_scope_resolves_repo_and_returns_resolution() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
     let repo_scope = "global/project:helioy/repo:context-matters";
@@ -67,7 +67,7 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
             "title": "Repo fact",
             "body": "Repo-local fact.",
             "kind": "fact",
-            "scope_path": repo_scope
+            "scope": repo_scope
         }),
     )
     .await
@@ -76,7 +76,7 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
     let result = tools::cx_browse(
         &store,
         &json!({
-            "scope": "auto",
+            "scope": "cwd_inferred",
             "cwd": "/tmp/helioy/context-matters",
             "limit": 20
         }),
@@ -85,7 +85,7 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
     .unwrap();
 
     assert!(
-        result.text.contains("query: scope=auto"),
+        result.text.contains("query: scope=cwd_inferred"),
         "\n{}",
         result.text
     );
@@ -104,12 +104,12 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
     assert!(result.text.contains("Repo fact"), "\n{}", result.text);
     assert!(
         !result.text.contains("Global fact"),
-        "auto browse must use the resolved exact repo scope:\n{}",
+        "cwd_inferred browse must use the resolved exact repo scope:\n{}",
         result.text,
     );
     assert!(
         result.text.len() < 1200,
-        "auto browse text should stay compact:\n{}",
+        "cwd_inferred browse text should stay compact:\n{}",
         result.text,
     );
 
@@ -117,7 +117,7 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
         .structured
         .as_ref()
         .expect("cx_browse emits structured content");
-    assert_eq!(structured["resolution"]["requested_scope"], "auto");
+    assert_eq!(structured["resolution"]["requested_scope"], "cwd_inferred");
     assert_eq!(structured["resolution"]["resolved_scope"], repo_scope);
     assert_eq!(structured["resolution"]["scope_mode"], "resolved");
     assert_eq!(structured["resolution"]["confidence"], "high");
@@ -126,7 +126,7 @@ async fn browse_auto_scope_resolves_repo_and_returns_resolution() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_path_stays_exact_without_resolution() {
+async fn browse_scope_stays_exact_without_resolution() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
@@ -142,7 +142,7 @@ async fn browse_scope_path_stays_exact_without_resolution() {
             "title": "Project fact",
             "body": "Project-local fact.",
             "kind": "fact",
-            "scope_path": "global/project:helioy"
+            "scope": "global/project:helioy"
         }),
     )
     .await
@@ -150,7 +150,7 @@ async fn browse_scope_path_stays_exact_without_resolution() {
 
     let result = tools::cx_browse(
         &store,
-        &json!({"scope_path": "global/project:helioy", "limit": 20}),
+        &json!({"scope": "global/project:helioy", "limit": 20}),
     )
     .await
     .unwrap();
@@ -164,7 +164,7 @@ async fn browse_scope_path_stays_exact_without_resolution() {
     assert!(!result.text.contains("Global fact"), "\n{}", result.text);
     assert!(
         !result.text.contains("resolution:"),
-        "explicit scope_path should not infer scope:\n{}",
+        "explicit scope should not infer scope:\n{}",
         result.text,
     );
     let structured = result
@@ -176,16 +176,31 @@ async fn browse_scope_path_stays_exact_without_resolution() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_rejects_conflicting_scope_and_scope_path() {
+async fn browse_rejects_removed_scope_path() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
-    let err = tools::cx_browse(&store, &json!({"scope": "auto", "scope_path": "global"}))
+    let err = tools::cx_browse(&store, &json!({"scope_path": "global"}))
         .await
         .unwrap_err();
 
     assert!(
-        err.contains("cannot be combined with scope_path"),
+        err.contains("scope_path has been removed"),
+        "unexpected error: {err}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_rejects_removed_auto_scope() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let err = tools::cx_browse(&store, &json!({"scope": "auto"}))
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.contains("scope='auto' has been removed"),
         "unexpected error: {err}",
     );
 }

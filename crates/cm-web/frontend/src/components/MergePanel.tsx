@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import type { NewEntryRequest } from "@/api/client";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryKind } from "@/api/generated/EntryKind";
-import type { NewEntry } from "@/api/generated/NewEntry";
 import { useForgetEntry, useMergeEntry } from "@/api/hooks";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -91,8 +91,8 @@ export function MergePanel({ entries, onComplete, onCancel }: MergePanelProps) {
       }
     }
 
-    const newEntry: NewEntry = {
-      scope_path: baseEntry.scope_path,
+    const newEntry: NewEntryRequest = {
+      scope: baseEntry.scope_path,
       kind: baseEntry.kind as EntryKind,
       title: baseEntry.title,
       body: baseEntry.body,

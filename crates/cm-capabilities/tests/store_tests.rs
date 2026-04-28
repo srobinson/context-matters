@@ -1,6 +1,9 @@
 //! Capability-level tests for store defaults, validation, metadata parsing,
 //! scope creation, and supersedes handling.
 
+mod common;
+
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::store::{StoreRequest, store as store_entry};
 use cm_core::{
     CmError, Confidence, ContextStore, MutationSource, NewScope, ScopePath, WriteContext,
@@ -58,9 +61,42 @@ fn assert_validation(err: CmError, expected: &str) {
 fn store_request_deserializes_scope_and_created_by_defaults() {
     let request = minimal_request("Defaulted store", "Body.");
 
-    assert_eq!(request.scope_path, "global");
+    assert_eq!(request.scope, None);
     assert_eq!(request.created_by, "agent:claude-code");
     assert!(request.meta.is_empty());
+}
+
+#[test]
+fn store_request_deserializes_exact_scope_selector() {
+    let request = request(json!({
+        "title": "Scoped store",
+        "body": "Body.",
+        "kind": "fact",
+        "scope": "global/project:helioy/repo:context-matters"
+    }));
+
+    assert_eq!(
+        request.scope,
+        Some(ScopeSelector::Path(
+            ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+        ))
+    );
+}
+
+#[test]
+fn store_request_rejects_removed_scope_path_input() {
+    let err = serde_json::from_value::<StoreRequest>(json!({
+        "title": "Legacy store",
+        "body": "Body.",
+        "kind": "fact",
+        "scope_path": "global/project:helioy"
+    }))
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("scope_path"),
+        "unexpected error: {err}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -133,7 +169,7 @@ async fn store_auto_creates_scope_chain_and_reports_creation() {
         "title": "Repo decision",
         "body": "Use sqlx.",
         "kind": "decision",
-        "scope_path": "global/project:helioy/repo:nancyr"
+        "scope": "global/project:helioy/repo:nancyr"
     }));
 
     let result = store_entry(&store, request, &wctx()).await.unwrap();
@@ -152,6 +188,70 @@ async fn store_auto_creates_scope_chain_and_reports_creation() {
         .await
         .unwrap();
     assert_eq!(repo.label, "nancyr");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn store_resolves_cwd_inferred_scope_before_writing() {
+    let (store, _dir) = test_store().await;
+    common::ensure_scope(&store, "global/project:helioy/repo:context-matters").await;
+    let mut request = minimal_request("Inferred write", "Body.");
+    request.scope = Some(ScopeSelector::cwd_inferred(Some(
+        "/tmp/helioy/context-matters".into(),
+    )));
+
+    let result = store_entry(&store, request, &wctx()).await.unwrap();
+
+    assert!(!result.scope_created);
+    assert_eq!(
+        result.scope_path,
+        "global/project:helioy/repo:context-matters"
+    );
+    let entries = store.export(None).await.unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].scope_path.as_str(),
+        "global/project:helioy/repo:context-matters"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn store_rejects_low_confidence_cwd_inferred_without_partial_write() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    let mut request = minimal_request("Rejected inferred write", "Body.");
+    request.scope = Some(ScopeSelector::cwd_inferred(Some(
+        "/tmp/acme/no-local-match".into(),
+    )));
+
+    let err = store_entry(&store, request, &wctx()).await.unwrap_err();
+
+    assert_validation(
+        err,
+        "scope='cwd_inferred' writes require high confidence inference",
+    );
+    assert_eq!(store.export(None).await.unwrap().len(), 0);
+    assert_eq!(store.list_scopes(None).await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn store_rejects_ambiguous_cwd_inferred_without_partial_write() {
+    let (store, _dir) = test_store().await;
+    common::ensure_scope(&store, "global/project:alpha/repo:context-matters").await;
+    common::ensure_scope(&store, "global/project:beta/repo:context-matters").await;
+    let scope_count = store.list_scopes(None).await.unwrap().len();
+    let mut request = minimal_request("Rejected ambiguous write", "Body.");
+    request.scope = Some(ScopeSelector::cwd_inferred(Some(
+        "/tmp/worktrees/context-matters".into(),
+    )));
+
+    let err = store_entry(&store, request, &wctx()).await.unwrap_err();
+
+    assert_validation(
+        err,
+        "scope='cwd_inferred' writes require high confidence inference",
+    );
+    assert_eq!(store.export(None).await.unwrap().len(), 0);
+    assert_eq!(store.list_scopes(None).await.unwrap().len(), scope_count);
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -15,14 +15,15 @@ use super::types::{RecallRequest, RecallRouting, SearchTier};
 pub(super) async fn route_query(
     store: &impl ContextStore,
     request: &RecallRequest,
+    scope: Option<&ScopePath>,
     fetch_limit: u32,
 ) -> Result<(Vec<RecallRow>, RecallRouting, u32, Option<SearchTier>), CmError> {
     match &request.query {
-        Some(query) => route_search(store, query, request.scope.as_ref(), fetch_limit).await,
+        Some(query) => route_search(store, query, scope, fetch_limit).await,
         None if !request.tags.is_empty() => {
             let entries = recall_candidates_without_query(
                 store,
-                request.scope.as_ref(),
+                scope,
                 &request.kinds,
                 &request.tags,
                 request.limit,
@@ -35,7 +36,7 @@ pub(super) async fn route_query(
                 None,
             ))
         }
-        None => route_without_query(store, request, fetch_limit).await,
+        None => route_without_query(store, request, scope, fetch_limit).await,
     }
 }
 
@@ -84,9 +85,10 @@ async fn route_search(
 async fn route_without_query(
     store: &impl ContextStore,
     request: &RecallRequest,
+    scope: Option<&ScopePath>,
     fetch_limit: u32,
 ) -> Result<(Vec<RecallRow>, RecallRouting, u32, Option<SearchTier>), CmError> {
-    match &request.scope {
+    match scope {
         Some(scope_path) => {
             let entries = store
                 .resolve_context(scope_path, &request.kinds, fetch_limit)

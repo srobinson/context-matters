@@ -5,22 +5,29 @@
 //! metadata, confidence enum validation) for a workflow that has no real CLI
 //! customer. The clap surface in [`super::cli_def`] is registered with the
 //! generated `STORE_*` help constants so `cm store --help` and
-//! `cm --markdown-help` document every flag, but invocation prints a short
-//! pointer to the Curator UI and exits 0.
+//! `cm --markdown-help` document every flag. Valid invocations print a short
+//! pointer to the Curator UI and exit 0.
 //!
-//! All flags parse and are silently dropped. If a real handler is ever
-//! needed, this file is the hook point.
+//! Accepted flags parse and are dropped after scope selector validation. If a
+//! real handler is ever needed, this file is the hook point.
 //!
 //! Agents continue to use the MCP `cx_store` tool, which lives in
 //! `crates/cm-cli/src/mcp/tools/store.rs` and is unaffected by this stub.
 
 use anyhow::Result;
+use cm_capabilities::scope::ScopeSelector;
 
 use crate::cli::colors::Colors;
+use crate::cli::errors::capability_error;
 
 /// `cm store` handler. Synchronous because it touches no I/O beyond
-/// `println!`. Returns `Ok(())` after printing; the binary exits 0.
-pub fn run() -> Result<()> {
+/// `println!`. Validates the optional scope selector before printing so
+/// removed public inputs fail the same way as MCP `cx_store`.
+pub fn run(scope: Option<String>) -> Result<()> {
+    if let Some(scope) = scope {
+        ScopeSelector::parse(&scope).map_err(capability_error)?;
+    }
+
     let c = Colors::stdout();
     println!(
         "{bold}cm store{reset} is not exposed as a CLI handler.",
@@ -58,11 +65,10 @@ pub fn run() -> Result<()> {
 mod tests {
     use super::*;
 
-    /// `run` must always return `Ok(())`. The stub is by definition
-    /// infallible — if this regresses, callers in `main.rs` would start
-    /// propagating errors that should never have existed.
+    /// Without a scope selector, `run` prints the stub message and exits
+    /// successfully.
     #[test]
     fn run_returns_ok() {
-        assert!(run().is_ok());
+        assert!(run(None).is_ok());
     }
 }

@@ -1,6 +1,7 @@
 {
   "description": "Batch-store conversation exchanges for future context. Each exchange (user/assistant pair) becomes an observation entry. Optional summary creates a linked observation with 'elaborates' relations to each exchange. All entries created in a single transaction. Maximum 50 exchanges per deposit.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "created_by": {
         "description": "Attribution string. Default: 'agent:claude-code'.",
@@ -25,8 +26,8 @@
         },
         "type": "array"
       },
-      "scope_path": {
-        "description": "Target scope path. Auto-created if missing. Default: 'global'.",
+      "scope": {
+        "description": "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'.",
         "type": "string"
       },
       "summary": {

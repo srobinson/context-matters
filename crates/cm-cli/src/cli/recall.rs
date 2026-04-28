@@ -10,8 +10,9 @@
 use anyhow::Result;
 use cm_capabilities::projection::{format_recall_view, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::{check_input_size, clamp_limit, parse_kind};
-use cm_core::{ContextStore, EntryKind, ScopePath};
+use cm_core::{ContextStore, EntryKind};
 
 use crate::cli::errors::{capability_error, string_error};
 use crate::cli::scope::print_advisory;
@@ -37,7 +38,7 @@ pub async fn run(
     }
 
     let scope = match scope.as_deref() {
-        Some(s) => Some(ScopePath::parse(s).map_err(capability_error)?),
+        Some(s) => Some(ScopeSelector::parse(s).map_err(capability_error)?),
         None => None,
     };
 

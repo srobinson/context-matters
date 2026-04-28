@@ -4,6 +4,7 @@ mod common;
 
 use cm_capabilities::constants::MAX_LIMIT;
 use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{EntryKind, ScopePath};
 use common::{create_global, seed_entry, seed_entry_with_scope, seed_entry_with_tags, test_store};
 
@@ -16,7 +17,9 @@ async fn scope_chain_extracted_from_scope_path() {
     let result = recall(
         &store,
         RecallRequest {
-            scope: Some(ScopePath::parse("global/project:helioy/repo:cm").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy/repo:cm").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },
@@ -133,7 +136,9 @@ async fn scope_resolve_trace_metadata_populated() {
     let result = recall(
         &store,
         RecallRequest {
-            scope: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },

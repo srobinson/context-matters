@@ -23,7 +23,7 @@ workflow = """
 2. cx_recall(query: "summary of task", scope: "global/project:helioy/repo:nancyr")
    → retrieve facts, decisions, preferences, feedback relevant to THIS task
 3. Work on the task
-4. cx_store(title: "...", body: "...", kind: "decision", scope_path: "global/project:helioy")
+4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
    → persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
    → preserve conversation at session end for continuity
@@ -43,6 +43,14 @@ global/project:helioy                           — project-level decisions
 global/project:helioy/repo:nancyr               — codebase-specific facts
 global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
+
+Public request inputs use `scope` only. Pass an exact scope path through `scope`, or pass `cwd_inferred`.
+
+For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`.
+
+`cwd_inferred` is the reserved value for cwd based scope resolution. It replaces the old public `auto` selector and normalizes linked git worktrees to the source repository identity.
+
+Do not send `scope_path`, `scope_mode`, or `scope="auto"` in public requests. Migrated MCP, CLI, and cm-web request surfaces reject those inputs. `scope_path` may still appear in persisted entries, export rows, and response data because those values identify exact stored data.
 
 ### Two-Phase Retrieval
 
@@ -120,8 +128,8 @@ cli_flag        = "query"
 [[tools.cx_recall.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:helioy/repo:nancyr' also searches 'global/project:helioy' and 'global'. Default: 'global'."
-cli_help        = "Scope path (retrieves from this scope and ancestors). Default: global"
+mcp_description = "Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'."
+cli_help        = "Scope selector: exact path or reserved value cwd_inferred. Default: global"
 cli_flag        = "--scope"
 
 [[tools.cx_recall.params]]
@@ -185,10 +193,10 @@ cli_help        = "Entry kind: fact, decision, preference, lesson, reference, fe
 cli_flag        = "--kind"
 
 [[tools.cx_store.params]]
-name            = "scope_path"
+name            = "scope"
 type            = "string"
-mcp_description = "Target scope path. Auto-created with ancestor chain if it does not exist. Default: 'global'. Format: 'global', 'global/project:<id>', 'global/project:<id>/repo:<id>', 'global/project:<id>/repo:<id>/session:<id>'."
-cli_help        = "Target scope path (auto-created if missing). Default: global"
+mcp_description = "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'."
+cli_help        = "Target scope selector: exact path or reserved value cwd_inferred. Default: global"
 cli_flag        = "--scope"
 
 [[tools.cx_store.params]]
@@ -263,10 +271,10 @@ cli_help        = "Optional conversation summary (linked to exchanges)"
 cli_flag        = "--summary"
 
 [[tools.cx_deposit.params]]
-name            = "scope_path"
+name            = "scope"
 type            = "string"
-mcp_description = "Target scope path. Auto-created if missing. Default: 'global'."
-cli_help        = "Target scope path (auto-created if missing). Default: global"
+mcp_description = "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'."
+cli_help        = "Target scope selector: exact path or reserved value cwd_inferred. Default: global"
 cli_flag        = "--scope"
 
 [[tools.cx_deposit.params]]
@@ -278,7 +286,7 @@ cli_flag        = "--created-by"
 
 [tools.cx_browse]
 cli_name        = "browse"
-mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
+mcp_description = "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to cwd_inferred when scope is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC."
 cli_about       = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content."
 # JSON Schema mirrors `WebBrowseView` (crates/cm-capabilities/src/projection/web_view.rs:112).
 # Header `scope`, `kind`, `created_by`, top-level `resolution`, row `scope`, and
@@ -311,7 +319,7 @@ output_schema   = '''
       "description": "Scope resolution metadata when smart browse inference was requested.",
       "required": ["requested_scope", "resolved_scope", "scope_mode", "confidence", "candidates", "signals"],
       "properties": {
-        "requested_scope": {"type": "string", "description": "Scope input supplied by the caller, usually auto."},
+        "requested_scope": {"type": "string", "description": "Scope input supplied by the caller, usually cwd_inferred."},
         "resolved_scope": {"type": "string", "description": "Existing exact scope path used for the browse query."},
         "scope_mode": {"type": "string", "enum": ["resolved"], "description": "Scope resolution mode applied."},
         "confidence": {"type": "string", "enum": ["high", "medium", "low", "very_low"], "description": "Resolver confidence in the selected scope."},
@@ -357,36 +365,21 @@ output_schema   = '''
 [[tools.cx_browse.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Preferred browse scope. Use \"auto\" to infer the most plausible existing local scope from cwd, or pass an explicit scope path for exact filtering. Defaults to \"auto\" when scope_path is omitted."
-cli_help        = "Preferred scope: auto or explicit scope path"
+mcp_description = "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted."
+cli_help        = "Preferred scope: reserved value cwd_inferred or exact scope path"
 cli_flag        = "--scope"
-
-[[tools.cx_browse.params]]
-name            = "scope_path"
-type            = "string"
-mcp_description = "Compatibility exact scope filter. When supplied, browse filters to this exact scope path and does not infer a local scope."
-cli_help        = "Compatibility exact scope path (no ancestor walk)"
-cli_flag        = "--scope-path"
-
-[[tools.cx_browse.params]]
-name            = "scope_mode"
-type            = "string"
-enum            = ["resolved"]
-mcp_description = "Scope resolution mode. Only \"resolved\" is implemented in this first pass."
-cli_help        = "Scope resolution mode: resolved"
-cli_flag        = "--scope-mode"
 
 [[tools.cx_browse.params]]
 name            = "cwd"
 type            = "string"
-mcp_description = "Filesystem working directory used for scope=\"auto\" inference. The capability defaults this from the process current directory when omitted."
-cli_help        = "Working directory used for auto scope inference"
+mcp_description = "Filesystem working directory used for scope=\"cwd_inferred\" resolution. The capability defaults this from the process current directory when omitted."
+cli_help        = "Working directory used for cwd_inferred scope resolution"
 cli_flag        = "--cwd"
 
 [[tools.cx_browse.params]]
 name            = "include_resolution"
 type            = "boolean"
-mcp_description = "Include scope resolution metadata in the response. Defaults to true when scope=\"auto\"."
+mcp_description = "Include scope resolution metadata in the response. Defaults to true when scope=\"cwd_inferred\"."
 cli_help        = "Include scope resolution metadata"
 cli_flag        = "--include-resolution"
 
@@ -609,8 +602,8 @@ cli_flag        = "--tag-sort"
 
 [tools.cx_export]
 cli_name        = "export"
-mcp_description = "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree."
-cli_about       = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter to a subtree."
+mcp_description = "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter with a scope selector."
+cli_about       = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter with an exact path or cwd_inferred."
 # JSON Schema matches the current ad-hoc JSON envelope emitted by
 # `crates/cm-cli/src/mcp/tools/export.rs`. Unlike the other read tools, cx_export already
 # returns structured JSON (not YAML) because the JSON *is* the canonical output.
@@ -679,10 +672,10 @@ output_schema   = '''
 '''
 
 [[tools.cx_export.params]]
-name            = "scope_path"
+name            = "scope"
 type            = "string"
-mcp_description = "Filter export to a specific scope path and its descendants. Omit to export everything."
-cli_help        = "Filter to scope subtree (omit for full export)"
+mcp_description = "Filter export to a scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Omit to export everything."
+cli_help        = "Filter export to scope selector: exact path or reserved value cwd_inferred"
 cli_flag        = "--scope"
 
 [[tools.cx_export.params]]

@@ -43,6 +43,7 @@ context-matters/
 - **UUID v7** for entry IDs. Time-sortable, 1.9+ for monotonicity within the same millisecond.
 - **BLAKE3 content hashing** for deduplication. Hash input: `scope_path + \0 + kind + \0 + body`. Title excluded.
 - **Scope hierarchy**: `global > project > repo > session`. Ancestor walk provides context inheritance. Scopes auto-created by MCP tools.
+- **Public scope selector**: migrated request surfaces accept `scope`, not `scope_path`. Pass an exact path through `scope` or use reserved `cwd_inferred` for cwd based resolution.
 - **Soft-delete via `superseded_by`**. Forgotten entries set `superseded_by = own ID`. Superseded entries point to replacement.
 - **FTS5** with porter + unicode61 tokenizer. Content-sync triggers keep index in lockstep with entries table.
 
@@ -83,6 +84,18 @@ global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
 
 Scopes form a strict hierarchy. Context at broader scopes is visible at narrower scopes via ancestor walk. Intermediate levels can be omitted.
+
+Public request examples use `scope`:
+
+```json
+{ "scope": "global/project:helioy/repo:nancyr" }
+```
+
+```json
+{ "scope": "cwd_inferred" }
+```
+
+`cwd_inferred` replaces the former public `auto` selector. It resolves from the supplied `cwd` or process cwd, and linked git worktrees normalize to the source repository identity. Public request inputs named `scope_path` or `scope_mode` are rejected on migrated MCP, CLI, and cm-web surfaces. Persisted exact data may still expose `scope_path` in entries, exports, response DTOs, and internal domain types.
 
 ## Database
 

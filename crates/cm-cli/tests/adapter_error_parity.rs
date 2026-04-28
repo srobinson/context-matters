@@ -42,9 +42,7 @@ async fn cli_and_mcp_share_adapter_error_strings() {
 
     let cli_error = cli::browse::run(
         &store,
-        None,
         Some("workspace".to_owned()),
-        None,
         None,
         false,
         None,
@@ -58,15 +56,13 @@ async fn cli_and_mcp_share_adapter_error_strings() {
     .await
     .unwrap_err()
     .to_string();
-    let mcp_error = tools::cx_browse(&store, &json!({ "scope_path": "workspace" }))
+    let mcp_error = tools::cx_browse(&store, &json!({ "scope": "workspace" }))
         .await
         .unwrap_err();
     assert_eq!(cli_error, mcp_error, "browse invalid scope path");
 
     let cli_error = cli::browse::run(
         &store,
-        None,
-        None,
         None,
         Some(" ".to_owned()),
         false,
@@ -124,7 +120,7 @@ async fn cli_and_mcp_share_adapter_error_strings() {
     .await
     .unwrap_err()
     .to_string();
-    let mcp_error = tools::cx_deposit(&store, &json!({ "exchanges": [], "scope_path": "global" }))
+    let mcp_error = tools::cx_deposit(&store, &json!({ "exchanges": [], "scope": "global" }))
         .await
         .unwrap_err();
     assert_eq!(cli_error, mcp_error, "deposit empty exchanges");

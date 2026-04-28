@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
+use axum::http::{Method, StatusCode};
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{project_web_browse, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
@@ -62,6 +63,33 @@ pub(super) async fn get_json(app: Router, uri: &str) -> Value {
     assert_eq!(resp.status(), 200, "GET {uri} returned {}", resp.status());
     let body = resp.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body).unwrap()
+}
+
+pub(super) async fn request_json(
+    app: Router,
+    method: Method,
+    uri: &str,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut builder = axum::http::Request::builder().method(method).uri(uri);
+    if body.is_some() {
+        builder = builder.header("content-type", "application/json");
+    }
+    let req = builder
+        .body(match body {
+            Some(value) => Body::from(serde_json::to_vec(&value).unwrap()),
+            None => Body::empty(),
+        })
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let status = resp.status();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json = if body.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&body).unwrap()
+    };
+    (status, json)
 }
 
 pub(super) async fn seed_entries(store: &CmStore) {
