@@ -194,29 +194,48 @@ async fn merge_entry_body_uses_scope_not_scope_path() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn entry_write_bodies_reject_removed_scope_path() {
+async fn entry_write_bodies_reject_removed_scope_inputs() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
     let entries = store.export(None).await.unwrap();
     let old_id = entries[0].id.to_string();
 
     let app = test_app(store);
-    let new_entry = json!({
-        "scope_path": "global/project:helioy",
-        "kind": "fact",
-        "title": "Removed field",
-        "body": "This request should fail.",
-        "created_by": "agent:test"
-    });
+    let invalid_entries = [
+        json!({
+            "scope_path": "global/project:helioy",
+            "kind": "fact",
+            "title": "Removed scope path",
+            "body": "This request should fail.",
+            "created_by": "agent:test"
+        }),
+        json!({
+            "scope": "auto",
+            "kind": "fact",
+            "title": "Removed auto",
+            "body": "This request should fail.",
+            "created_by": "agent:test"
+        }),
+        json!({
+            "scope": "global/project:helioy",
+            "scope_mode": "resolved",
+            "kind": "fact",
+            "title": "Removed scope mode",
+            "body": "This request should fail.",
+            "created_by": "agent:test"
+        }),
+    ];
 
-    for (uri, body) in [
-        ("/api/entries", new_entry.clone()),
-        (
-            "/api/entries/merge",
-            json!({ "old_id": old_id, "new_entry": new_entry }),
-        ),
-    ] {
-        let (status, body) = request_json(app.clone(), Method::POST, uri, Some(body)).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri} returned {body:?}");
+    for new_entry in invalid_entries {
+        for (uri, body) in [
+            ("/api/entries", new_entry.clone()),
+            (
+                "/api/entries/merge",
+                json!({ "old_id": old_id, "new_entry": new_entry.clone() }),
+            ),
+        ] {
+            let (status, body) = request_json(app.clone(), Method::POST, uri, Some(body)).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{uri} returned {body:?}");
+        }
     }
 }

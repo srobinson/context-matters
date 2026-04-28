@@ -117,6 +117,31 @@ async fn deposit_rejects_medium_confidence_cwd_inferred_without_partial_write() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn deposit_rejects_ambiguous_cwd_inferred_without_partial_write() {
+    let (store, _dir) = common::test_store().await;
+    common::ensure_scope(&store, "global/project:alpha/repo:context-matters").await;
+    common::ensure_scope(&store, "global/project:beta/repo:context-matters").await;
+    let scope_count = store.list_scopes(None).await.unwrap().len();
+
+    let err = deposit(
+        &store,
+        request(Some(ScopeSelector::cwd_inferred(Some(
+            "/tmp/worktrees/context-matters".into(),
+        )))),
+        &wctx(),
+    )
+    .await
+    .unwrap_err();
+
+    assert_validation(
+        err,
+        "scope='cwd_inferred' writes require high confidence inference",
+    );
+    assert_eq!(store.export(None).await.unwrap().len(), 0);
+    assert_eq!(store.list_scopes(None).await.unwrap().len(), scope_count);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn deposit_rejects_empty_cwd_without_partial_write() {
     let (store, _dir) = common::test_store().await;
     common::create_global(&store).await;
