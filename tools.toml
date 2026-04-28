@@ -120,8 +120,8 @@ cli_flag        = "query"
 [[tools.cx_recall.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Scope selector to search within. Pass an exact scope path or 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'."
-cli_help        = "Scope selector: exact path or cwd_inferred. Default: global"
+mcp_description = "Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'."
+cli_help        = "Scope selector: exact path or reserved value cwd_inferred. Default: global"
 cli_flag        = "--scope"
 
 [[tools.cx_recall.params]]
@@ -187,8 +187,8 @@ cli_flag        = "--kind"
 [[tools.cx_store.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. Default: 'global'."
-cli_help        = "Target scope selector: exact path or cwd_inferred. Default: global"
+mcp_description = "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'."
+cli_help        = "Target scope selector: exact path or reserved value cwd_inferred. Default: global"
 cli_flag        = "--scope"
 
 [[tools.cx_store.params]]
@@ -265,8 +265,8 @@ cli_flag        = "--summary"
 [[tools.cx_deposit.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. Default: 'global'."
-cli_help        = "Target scope selector: exact path or cwd_inferred. Default: global"
+mcp_description = "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'."
+cli_help        = "Target scope selector: exact path or reserved value cwd_inferred. Default: global"
 cli_flag        = "--scope"
 
 [[tools.cx_deposit.params]]
@@ -357,8 +357,8 @@ output_schema   = '''
 [[tools.cx_browse.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Preferred browse scope. Use \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted."
-cli_help        = "Preferred scope: cwd_inferred or exact scope path"
+mcp_description = "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted."
+cli_help        = "Preferred scope: reserved value cwd_inferred or exact scope path"
 cli_flag        = "--scope"
 
 [[tools.cx_browse.params]]
@@ -666,8 +666,8 @@ output_schema   = '''
 [[tools.cx_export.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Filter export to a scope selector. Pass an exact scope path or 'cwd_inferred'. Omit to export everything."
-cli_help        = "Filter export to scope selector: exact path or cwd_inferred"
+mcp_description = "Filter export to a scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Omit to export everything."
+cli_help        = "Filter export to scope selector: exact path or reserved value cwd_inferred"
 cli_flag        = "--scope"
 
 [[tools.cx_export.params]]

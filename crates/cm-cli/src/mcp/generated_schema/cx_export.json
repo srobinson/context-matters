@@ -10,7 +10,7 @@
         "type": "string"
       },
       "scope": {
-        "description": "Filter export to a scope selector. Pass an exact scope path or 'cwd_inferred'. Omit to export everything.",
+        "description": "Filter export to a scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Omit to export everything.",
         "type": "string"
       }
     },

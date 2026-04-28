@@ -206,6 +206,16 @@ fn export_help_shows_per_arg_descriptions() {
 }
 
 #[test]
+fn migrated_scope_help_names_cwd_inferred_as_reserved_value() {
+    for command in ["recall", "store", "deposit", "browse", "export"] {
+        cm().args([command, "--help"])
+            .assert()
+            .success()
+            .stdout(contains("reserved value cwd_inferred"));
+    }
+}
+
+#[test]
 fn removed_scope_path_flag_is_rejected() {
     cm().args(["browse", "--scope-path", "global"])
         .assert()

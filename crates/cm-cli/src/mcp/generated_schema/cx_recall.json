@@ -22,7 +22,7 @@
         "type": "string"
       },
       "scope": {
-        "description": "Scope selector to search within. Pass an exact scope path or 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'.",
+        "description": "Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'.",
         "type": "string"
       },
       "tags": {

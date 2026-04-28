@@ -5,7 +5,7 @@ pub const RECALL_ABOUT: &str = "Search and retrieve context entries from the sto
 #[rustfmt::skip]
 pub const RECALL_QUERY_HELP: &str = "FTS5 search query (prefix: rust*, phrase: \"scope path\", boolean: AND/OR/NOT)";
 #[rustfmt::skip]
-pub const RECALL_SCOPE_HELP: &str = "Scope selector: exact path or cwd_inferred. Default: global";
+pub const RECALL_SCOPE_HELP: &str = "Scope selector: exact path or reserved value cwd_inferred. Default: global";
 #[rustfmt::skip]
 pub const RECALL_KINDS_HELP: &str = "Filter by entry kind (comma-separated). Valid: fact, decision, preference, lesson, reference, feedback, pattern, observation";
 #[rustfmt::skip]
@@ -24,7 +24,7 @@ pub const STORE_BODY_HELP: &str = "Entry body content (markdown)";
 #[rustfmt::skip]
 pub const STORE_KIND_HELP: &str = "Entry kind: fact, decision, preference, lesson, reference, feedback, pattern, observation";
 #[rustfmt::skip]
-pub const STORE_SCOPE_HELP: &str = "Target scope selector: exact path or cwd_inferred. Default: global";
+pub const STORE_SCOPE_HELP: &str = "Target scope selector: exact path or reserved value cwd_inferred. Default: global";
 #[rustfmt::skip]
 pub const STORE_CREATED_BY_HELP: &str = "Attribution (format: source_type:identifier). Default: agent:claude-code";
 #[rustfmt::skip]
@@ -47,14 +47,14 @@ pub const DEPOSIT_EXCHANGES_HELP: &str = "JSON array of {user, assistant, title?
 #[rustfmt::skip]
 pub const DEPOSIT_SUMMARY_HELP: &str = "Optional conversation summary (linked to exchanges)";
 #[rustfmt::skip]
-pub const DEPOSIT_SCOPE_HELP: &str = "Target scope selector: exact path or cwd_inferred. Default: global";
+pub const DEPOSIT_SCOPE_HELP: &str = "Target scope selector: exact path or reserved value cwd_inferred. Default: global";
 #[rustfmt::skip]
 pub const DEPOSIT_CREATED_BY_HELP: &str = "Attribution (format: source_type:identifier). Default: agent:claude-code";
 
 #[rustfmt::skip]
 pub const BROWSE_ABOUT: &str = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content.";
 #[rustfmt::skip]
-pub const BROWSE_SCOPE_HELP: &str = "Preferred scope: cwd_inferred or exact scope path";
+pub const BROWSE_SCOPE_HELP: &str = "Preferred scope: reserved value cwd_inferred or exact scope path";
 #[rustfmt::skip]
 pub const BROWSE_CWD_HELP: &str = "Working directory used for cwd_inferred scope resolution";
 #[rustfmt::skip]
@@ -103,6 +103,6 @@ pub const STATS_TAG_SORT_HELP: &str = "Tag sort order: name (alphabetical, defau
 #[rustfmt::skip]
 pub const EXPORT_ABOUT: &str = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter with an exact path or cwd_inferred.";
 #[rustfmt::skip]
-pub const EXPORT_SCOPE_HELP: &str = "Filter export to scope selector: exact path or cwd_inferred";
+pub const EXPORT_SCOPE_HELP: &str = "Filter export to scope selector: exact path or reserved value cwd_inferred";
 #[rustfmt::skip]
 pub const EXPORT_FORMAT_HELP: &str = "Export format (currently only json). Default: json";

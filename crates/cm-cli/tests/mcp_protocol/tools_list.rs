@@ -1,5 +1,14 @@
 use crate::common::{send_request, shutdown, spawn_server};
 use serde_json::json;
+use std::{fs, path::PathBuf};
+
+const MIGRATED_SCOPE_TOOLS: [&str; 5] = [
+    "cx_browse",
+    "cx_recall",
+    "cx_store",
+    "cx_deposit",
+    "cx_export",
+];
 
 #[test]
 fn protocol_tools_list() {
@@ -75,13 +84,7 @@ fn protocol_tools_list() {
         "cx_browse outputSchema must document optional resolution metadata"
     );
 
-    for migrated in [
-        "cx_browse",
-        "cx_recall",
-        "cx_store",
-        "cx_deposit",
-        "cx_export",
-    ] {
+    for migrated in MIGRATED_SCOPE_TOOLS {
         let tool = tools
             .iter()
             .find(|tool| tool["name"] == migrated)
@@ -133,4 +136,98 @@ fn protocol_tools_list() {
     }
 
     shutdown(child, stdin);
+}
+
+#[test]
+fn public_scope_artifacts_do_not_expose_removed_request_terms() {
+    assert_tools_toml_has_only_scope_request_params();
+    assert_generated_scope_schema_inputs_are_current();
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in [
+        "src/cli/generated_help.rs",
+        "templates/SKILL.md",
+        "src/mcp/generated_schema.rs",
+    ] {
+        let content = fs::read_to_string(manifest.join(relative))
+            .unwrap_or_else(|e| panic!("failed to read {relative}: {e}"));
+        assert_no_public_scope_stale_terms(relative, &content);
+    }
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("cm-cli lives under crates/")
+        .parent()
+        .expect("crates/ lives under workspace root")
+        .to_path_buf()
+}
+
+fn assert_tools_toml_has_only_scope_request_params() {
+    let content = fs::read_to_string(workspace_root().join("tools.toml"))
+        .expect("tools.toml should be readable");
+    assert_no_public_scope_stale_terms("tools.toml", &content);
+
+    for stale in [
+        "name            = \"scope_path\"",
+        "name            = \"scope_mode\"",
+        "cli_flag        = \"--scope-path\"",
+        "cli_flag        = \"--scope-mode\"",
+        "scope=auto",
+        "scope='auto'",
+        "scope: \"auto\"",
+    ] {
+        assert!(
+            !content.contains(stale),
+            "tools.toml exposes removed public scope request term {stale}"
+        );
+    }
+}
+
+fn assert_generated_scope_schema_inputs_are_current() {
+    let schema_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/mcp/generated_schema");
+    for tool in MIGRATED_SCOPE_TOOLS {
+        let relative = format!("src/mcp/generated_schema/{tool}.json");
+        let content = fs::read_to_string(schema_dir.join(format!("{tool}.json")))
+            .unwrap_or_else(|e| panic!("failed to read {relative}: {e}"));
+        let schema: serde_json::Value = serde_json::from_str(&content)
+            .unwrap_or_else(|e| panic!("{relative} should be valid JSON: {e}"));
+        let input = &schema["inputSchema"];
+        let input_text = serde_json::to_string(input).expect("input schema serializes");
+        for removed in ["scope_path", "scope_mode"] {
+            assert!(
+                !input_text.contains(removed),
+                "{relative} inputSchema exposes removed request field {removed}"
+            );
+        }
+        let props = input["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{relative} inputSchema has properties"));
+        assert!(
+            props.contains_key("scope"),
+            "{relative} missing scope input"
+        );
+        let scope_description = props["scope"]["description"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{relative} scope input has description"));
+        assert!(
+            scope_description.contains("reserved value")
+                && scope_description.contains("cwd_inferred"),
+            "{relative} scope input should describe cwd_inferred as reserved value"
+        );
+        assert!(
+            !scope_description.contains("auto"),
+            "{relative} scope input still describes auto inference"
+        );
+    }
+}
+
+fn assert_no_public_scope_stale_terms(relative: &str, content: &str) {
+    for stale in ["--scope-path", "--scope-mode", "scope=auto", "scope='auto'"] {
+        assert!(
+            !content.contains(stale),
+            "{relative} contains stale public scope term {stale}"
+        );
+    }
 }

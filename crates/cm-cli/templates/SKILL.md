@@ -82,7 +82,7 @@ Search and retrieve context entries relevant to the current task. Primary retrie
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phra... |
-| `scope` | string | no | Scope selector to search within. Pass an exact scope path or 'cwd_inferred'. Exact scopes retrieve entries from that ... |
+| `scope` | string | no | Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -97,7 +97,7 @@ Store a single context entry with structured metadata. Scopes are auto-created i
 | `title` | string | yes | Short summary of the entry. Displayed in search results and browse listings. |
 | `body` | string | yes | Full content body in markdown. |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | yes | Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rat... |
-| `scope` | string | no | Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. De... |
+| `scope` | string | no | Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created ... |
 | `created_by` | string | no | Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolid... |
 | `tags` | array<string> | no | Freeform tags for categorization and filtering. Pass a JSON array: ["tag1", "tag2"]. |
 | `confidence` | enum: high \| medium \| low | no | Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level. |
@@ -114,7 +114,7 @@ Batch-store conversation exchanges for future context. Each exchange (user/assis
 |-----------|------|----------|-------------|
 | `exchanges` | array<object> | yes | Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optio... |
 | `summary` | string | no | Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates'... |
-| `scope` | string | no | Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. De... |
+| `scope` | string | no | Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created ... |
 | `created_by` | string | no | Attribution string. Default: 'agent:claude-code'. |
 
 ### `cx_browse`
@@ -123,7 +123,7 @@ List entries with filtering and cursor-based pagination. For inventory and explo
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | no | Preferred browse scope. Use "cwd_inferred" to infer the most plausible existing local scope from cwd, or pass an exac... |
+| `scope` | string | no | Preferred browse scope. Use the reserved value "cwd_inferred" to infer the most plausible existing local scope from c... |
 | `cwd` | string | no | Filesystem working directory used for scope="cwd_inferred" resolution. The capability defaults this from the process ... |
 | `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="cwd_inferred". |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | no | Filter by entry kind. |
@@ -175,7 +175,7 @@ Export entries and scopes as JSON for backup or migration. Returns all active en
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | no | Filter export to a scope selector. Pass an exact scope path or 'cwd_inferred'. Omit to export everything. |
+| `scope` | string | no | Filter export to a scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Omit to export ever... |
 | `format` | enum: json | no | Export format. Currently only 'json' is supported. Default: 'json'. |
 
 ## Rules

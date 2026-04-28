@@ -41,7 +41,7 @@
         "type": "integer"
       },
       "scope": {
-        "description": "Preferred browse scope. Use \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted.",
+        "description": "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted.",
         "type": "string"
       },
       "tag": {
