@@ -47,6 +47,20 @@ global/project:helioy/repo:fmm               codebase-specific facts
 global/project:helioy/repo:fmm/session:abc   ephemeral task context
 ```
 
+Public request inputs select scope with `scope` only:
+
+```json
+{ "scope": "global/project:helioy/repo:fmm" }
+```
+
+```json
+{ "scope": "cwd_inferred" }
+```
+
+`cwd_inferred` is the reserved value for cwd based resolution. It uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory. Previous `auto` selectors should migrate to `cwd_inferred`.
+
+`scope_path` is no longer accepted as a public request input on migrated MCP, CLI, and web request surfaces. It can still appear in persisted entries, export rows, response data, and internal exact path types because those values identify where data is stored.
+
 ## Architecture
 
 Three crates, clean separation:

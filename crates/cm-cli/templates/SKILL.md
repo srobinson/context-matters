@@ -64,6 +64,12 @@ global/project:helioy/repo:nancyr               — codebase-specific facts
 global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
 
+Public request inputs use `scope` only. Pass an exact scope path through `scope`, or pass `cwd_inferred`.
+
+`cwd_inferred` is the reserved value for cwd based scope resolution. It replaces the old public `auto` selector and normalizes linked git worktrees to the source repository identity.
+
+Do not send `scope_path`, `scope_mode`, or `scope="auto"` in public requests. Migrated MCP, CLI, and cm-web request surfaces reject those inputs. `scope_path` may still appear in persisted entries, export rows, and response data because those values identify exact stored data.
+
 ### Two-Phase Retrieval
 
 cx_recall and cx_browse return metadata + snippet (first 200 chars of body).
@@ -183,7 +189,7 @@ Export entries and scopes as JSON for backup or migration. Returns all active en
 1. **Call `cx_recall` after receiving a task** with a summary of what you are working on
 2. **Store selectively** — persist genuinely reusable knowledge, not routine observations
 3. **Classify accurately** — the `kind` field drives recall priority and filtering
-4. **Use specific scope paths** — overly broad scoping pollutes recall for unrelated work
+4. **Use specific `scope` selectors**. Overly broad scoping pollutes recall for unrelated work
 5. **Two-phase retrieval** — `cx_recall`/`cx_browse` return snippets; use `cx_get` for full body
 6. **Store feedback immediately** — when the user corrects you, `kind: "feedback"` gets highest recall priority
 7. **Do not mention the context system** to the user unless asked

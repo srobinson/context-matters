@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### BREAKING CHANGES
+
+* Scope selection request inputs now use `scope` only on migrated MCP, CLI, and cm-web surfaces. Public `scope_path`, `scope_mode`, and `scope="auto"` inputs are rejected.
+* Use `scope="cwd_inferred"` when callers want cwd based scope inference. Linked git worktrees resolve through git metadata to the source repository identity.
+* `scope_path` remains part of persisted exact data, including stored entries, export rows, response DTOs, and internal exact path models.
+
 ### Compatibility Notes
 
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.

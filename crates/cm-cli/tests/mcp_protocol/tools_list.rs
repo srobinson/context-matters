@@ -1,6 +1,9 @@
 use crate::common::{send_request, shutdown, spawn_server};
 use serde_json::json;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 const MIGRATED_SCOPE_TOOLS: [&str; 5] = [
     "cx_browse",
@@ -153,6 +156,7 @@ fn public_scope_artifacts_do_not_expose_removed_request_terms() {
             .unwrap_or_else(|e| panic!("failed to read {relative}: {e}"));
         assert_no_public_scope_stale_terms(relative, &content);
     }
+    assert_skill_doc_explains_scope_request_boundary(&manifest);
 }
 
 fn workspace_root() -> PathBuf {
@@ -228,6 +232,21 @@ fn assert_no_public_scope_stale_terms(relative: &str, content: &str) {
         assert!(
             !content.contains(stale),
             "{relative} contains stale public scope term {stale}"
+        );
+    }
+}
+
+fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
+    let content = fs::read_to_string(manifest.join("templates/SKILL.md"))
+        .expect("generated skill doc should be readable");
+    for required in [
+        "Public request inputs use `scope` only.",
+        "`cwd_inferred` is the reserved value for cwd based scope resolution.",
+        "`scope_path` may still appear in persisted entries, export rows, and response data",
+    ] {
+        assert!(
+            content.contains(required),
+            "generated skill doc missing scope migration boundary text: {required}"
         );
     }
 }

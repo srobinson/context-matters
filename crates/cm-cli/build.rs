@@ -458,7 +458,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
     out.push_str(
         "3. **Classify accurately** — the `kind` field drives recall priority and filtering\n",
     );
-    out.push_str("4. **Use specific scope paths** — overly broad scoping pollutes recall for unrelated work\n");
+    out.push_str("4. **Use specific `scope` selectors**. Overly broad scoping pollutes recall for unrelated work\n");
     out.push_str("5. **Two-phase retrieval** — `cx_recall`/`cx_browse` return snippets; use `cx_get` for full body\n");
     out.push_str("6. **Store feedback immediately** — when the user corrects you, `kind: \"feedback\"` gets highest recall priority\n");
     out.push_str("7. **Do not mention the context system** to the user unless asked\n");
