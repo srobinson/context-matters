@@ -8,6 +8,7 @@
 //! emits a byte-identical shape for the same request.
 
 use cm_capabilities::export::{ExportRequest, export};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::ContextStore;
 use serde::Deserialize;
 use serde_json::Value;
@@ -31,11 +32,17 @@ fn default_format() -> String {
 
 pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let params: CxExportParams = parse_params(args)?;
+    let scope = params
+        .scope_path
+        .as_deref()
+        .map(ScopeSelector::parse)
+        .transpose()
+        .map_err(cm_err_to_string)?;
 
     let view = export(
         store,
         ExportRequest {
-            scope_path: params.scope_path,
+            scope,
             format: params.format,
         },
     )

@@ -22,7 +22,7 @@ use cm_capabilities::projection::{
 use cm_capabilities::recall::{self, RecallRequest, RecallResult};
 use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::{check_input_size, clamp_limit};
-use cm_core::{BrowseSort, EntryKind, ScopePath};
+use cm_core::{BrowseSort, EntryKind};
 use cm_store::CmStore;
 use serde::Deserialize;
 use url::form_urlencoded;
@@ -116,9 +116,9 @@ pub(crate) async fn execute_recall(
 
     let scope = rq
         .scope
-        .map(|s| ScopePath::parse(&s))
+        .map(|s| ScopeSelector::parse(&s))
         .transpose()
-        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+        .map_err(ApiError)?;
 
     let kinds: Vec<EntryKind> = rq
         .kinds

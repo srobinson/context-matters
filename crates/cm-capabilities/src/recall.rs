@@ -4,6 +4,7 @@ use cm_core::{CmError, ContextStore, ScopePath};
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
+use crate::scope::{ScopeSelector, resolve_scope_selection};
 
 mod routing;
 mod types;
@@ -21,12 +22,15 @@ use routing::route_query;
 /// applies post-filtering, token budget tracking, and scope chain extraction.
 pub async fn recall(
     store: &impl ContextStore,
-    mut request: RecallRequest,
+    request: RecallRequest,
 ) -> Result<RecallResult, CmError> {
     let scope_defaulted = request.scope.is_none();
-    if scope_defaulted {
-        request.scope = Some(ScopePath::global());
-    }
+    let scope_selector = request
+        .scope
+        .clone()
+        .unwrap_or_else(|| ScopeSelector::Path(ScopePath::global()));
+    let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
+    let scope_path = resolved_scope.scope_path.as_ref();
 
     let has_post_filter = !request.kinds.is_empty() || !request.tags.is_empty();
     let fetch_limit = if has_post_filter {
@@ -36,12 +40,12 @@ pub async fn recall(
     };
 
     let (raw_rows, routing, actual_fetch_limit, tier) =
-        route_query(store, &request, fetch_limit).await?;
+        route_query(store, &request, scope_path, fetch_limit).await?;
     let candidates_before_filter = raw_rows.len();
 
     let rows = post_filter_rows(raw_rows, &request);
     let (budget_rows, total_tokens) = apply_token_budget(rows, request.max_tokens);
-    let (scope_chain, scope_hits) = scope_chain_and_hits(request.scope.as_ref(), &budget_rows);
+    let (scope_chain, scope_hits) = scope_chain_and_hits(scope_path, &budget_rows);
 
     let relation_count_ids = budget_rows.iter().map(|r| r.entry.id).collect::<Vec<_>>();
     let relation_counts = store.count_relations_for(&relation_count_ids).await?;

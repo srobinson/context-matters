@@ -3,6 +3,7 @@
 use cm_capabilities::recall::{
     RECALL_SCOPE_DEFAULT_ADVISORY, RecallAdvisory, RecallRequest, RecallRouting, recall,
 };
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{
     ContextStore, EntryKind, MutationSource, NewEntry, NewScope, ScopePath, WriteContext,
 };
@@ -91,7 +92,9 @@ async fn recall_rows_sort_by_scope_depth_with_explicit_scope() {
         &store,
         RecallRequest {
             query: Some("needle".to_owned()),
-            scope: Some(ScopePath::parse("global/project:very-long-project-name").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:very-long-project-name").unwrap(),
+            )),
             limit: 20,
             ..Default::default()
         },
@@ -103,6 +106,63 @@ async fn recall_rows_sort_by_scope_depth_with_explicit_scope() {
     assert_eq!(result.entries.len(), 2);
     assert_eq!(result.entries[0].entry.title, "Narrow project scope");
     assert_eq!(result.entries[1].entry.title, "Broad global scope");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_rows_sort_by_scope_depth_with_cwd_inferred_scope() {
+    let (store, _dir) = test_store().await;
+    seed_entry_with_scope(
+        &store,
+        "Broad global scope",
+        "Depth ordering regression needle.",
+        EntryKind::Fact,
+        "global",
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Project scope",
+        "Depth ordering regression needle.",
+        EntryKind::Fact,
+        "global/project:helioy",
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Repo scope",
+        "Depth ordering regression needle.",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("needle".to_owned()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert_eq!(result.entries.len(), 3);
+    assert_eq!(result.entries[0].entry.title, "Repo scope");
+    assert_eq!(result.entries[1].entry.title, "Project scope");
+    assert_eq!(result.entries[2].entry.title, "Broad global scope");
+    assert_eq!(
+        result.scope_chain,
+        vec![
+            "global/project:helioy/repo:context-matters",
+            "global/project:helioy",
+            "global",
+        ]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

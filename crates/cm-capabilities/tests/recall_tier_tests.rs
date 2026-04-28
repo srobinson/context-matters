@@ -14,6 +14,7 @@
 //! grandfathered test file.
 
 use cm_capabilities::recall::{RecallRequest, RecallRouting, SearchTier, recall};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{
     ContextStore, EntryKind, MutationSource, NewEntry, NewScope, ScopePath, WriteContext,
 };
@@ -336,7 +337,7 @@ async fn non_search_routing_leaves_tier_none() {
         &store,
         RecallRequest {
             query: None,
-            scope: Some(ScopePath::global()),
+            scope: Some(ScopeSelector::Path(ScopePath::global())),
             limit: 20,
             ..Default::default()
         },

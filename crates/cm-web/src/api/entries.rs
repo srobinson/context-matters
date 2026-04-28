@@ -16,6 +16,7 @@ use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cm_capabilities::projection::{WebBrowseView, WebRecallView, project_web_recall};
 use cm_capabilities::recall::{self, RecallRequest};
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{
     ContextStore, Entry, EntryKind, EntryRelation, MutationSource, NewEntry, ScopePath,
@@ -99,7 +100,7 @@ async fn search(
 
     let request = RecallRequest {
         query: Some(sq.q),
-        scope,
+        scope: scope.map(ScopeSelector::Path),
         kinds,
         tags,
         limit,

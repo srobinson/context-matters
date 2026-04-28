@@ -1,5 +1,5 @@
-//! Export capability: JSON snapshot of the store, optionally filtered to a
-//! scope subtree.
+//! Export capability: JSON snapshot of the store, optionally filtered to an
+//! exact scope.
 //!
 //! Lifts the format validation, scope-prefix filtering, and snapshot
 //! assembly out of the `cx_export` MCP handler so both the MCP tool and
@@ -15,16 +15,16 @@
 //! shape in one place is what makes that contract enforceable.
 
 use chrono::{DateTime, Utc};
-use cm_core::{CmError, ContextStore, Entry, Scope, ScopePath};
+use cm_core::{CmError, ContextStore, Entry, Scope};
 use serde::Serialize;
+
+use crate::scope::{ScopeSelector, resolve_scope_selection};
 
 /// Inputs to [`export`].
 #[derive(Debug, Clone)]
 pub struct ExportRequest {
-    /// Filter to a specific scope subtree (`None` = full export). Both
-    /// channels accept the unparsed string and let this capability call
-    /// [`ScopePath::parse`] so error formatting is consistent.
-    pub scope_path: Option<String>,
+    /// Filter to a specific scope (`None` = full export).
+    pub scope: Option<ScopeSelector>,
     /// Output format. Currently only `"json"` is accepted; any other
     /// value short-circuits to [`CmError::Validation`] before any store
     /// access.
@@ -36,7 +36,7 @@ pub struct ExportRequest {
 /// Field order matches the legacy MCP `cx_export` JSON shape so existing
 /// backups remain forward-compatible:
 ///
-/// 1. `entries` — every active entry inside the requested scope subtree
+/// 1. `entries` — every active entry in the requested exact scope
 /// 2. `scopes` — every scope whose path string starts with the request
 ///    scope path (or all scopes when no filter was given)
 /// 3. `exported_at` — server-side timestamp at the moment the snapshot
@@ -48,7 +48,7 @@ pub struct ExportView {
     /// Active entries in the requested subtree.
     pub entries: Vec<Entry>,
     /// Scopes in the requested subtree (prefix match against the scope
-    /// path string when [`ExportRequest::scope_path`] is `Some`).
+    /// path string when [`ExportRequest::scope`] is `Some`).
     pub scopes: Vec<Scope>,
     /// Server-side snapshot timestamp.
     pub exported_at: DateTime<Utc>,
@@ -66,7 +66,7 @@ pub struct ExportView {
 ///
 /// Scope filtering happens in two layers:
 ///
-/// * `store.export(scope_path.as_ref())` filters entries server-side.
+/// * `store.export(scope_path)` filters entries server-side by exact scope.
 /// * `list_scopes(None)` returns every scope, then a string `starts_with`
 ///   prefix match keeps only those inside the requested subtree.
 ///
@@ -85,15 +85,19 @@ pub async fn export(
         )));
     }
 
-    let scope_path = match request.scope_path.as_deref() {
-        Some(s) => Some(ScopePath::parse(s)?),
+    let scope_path = match request.scope.as_ref() {
+        Some(selector) => Some(resolve_scope_selection(store, selector).await?),
         None => None,
     };
+    let scope_path = scope_path
+        .as_ref()
+        .map(|selection| selection.read_scope_path())
+        .transpose()?;
 
-    let entries = store.export(scope_path.as_ref()).await?;
+    let entries = store.export(scope_path).await?;
 
     let all_scopes = store.list_scopes(None).await?;
-    let scopes: Vec<Scope> = match &scope_path {
+    let scopes: Vec<Scope> = match scope_path {
         Some(sp) => all_scopes
             .into_iter()
             .filter(|s| s.path.as_str().starts_with(sp.as_str()))

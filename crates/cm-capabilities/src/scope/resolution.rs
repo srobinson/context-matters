@@ -22,7 +22,7 @@ const INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE: i32 = INFERRED_SCOPE_EXACT_MATCH
 const INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE: i32 = INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
 const INFERRED_SCOPE_LOW_CONFIDENCE_MIN_SCORE: i32 = INFERRED_SCOPE_NO_SIGNAL_SCORE + 1;
 
-pub async fn resolve_browse_scope(
+pub async fn resolve_scope_selection(
     store: &impl ContextStore,
     selector: &ScopeSelector,
 ) -> Result<ResolvedScopeSelection, CmError> {
@@ -42,6 +42,13 @@ pub async fn resolve_browse_scope(
             })
         }
     }
+}
+
+pub async fn resolve_browse_scope(
+    store: &impl ContextStore,
+    selector: &ScopeSelector,
+) -> Result<ResolvedScopeSelection, CmError> {
+    resolve_scope_selection(store, selector).await
 }
 
 fn resolve_cwd_inferred_scope(

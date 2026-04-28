@@ -19,6 +19,7 @@
 
 use anyhow::{Context, Result};
 use cm_capabilities::export::{ExportRequest, export};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::ContextStore;
 
 use crate::cli::errors::capability_error;
@@ -33,10 +34,15 @@ pub async fn run(
     scope_path: Option<String>,
     format: Option<String>,
 ) -> Result<()> {
+    let scope = scope_path
+        .as_deref()
+        .map(ScopeSelector::parse)
+        .transpose()
+        .map_err(capability_error)?;
     let view = export(
         store,
         ExportRequest {
-            scope_path,
+            scope,
             format: format.unwrap_or_else(|| "json".to_owned()),
         },
     )

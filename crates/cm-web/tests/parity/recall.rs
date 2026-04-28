@@ -1,4 +1,5 @@
 use cm_capabilities::recall::RecallRequest;
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::clamp_limit;
 use cm_core::ScopePath;
 
@@ -37,7 +38,7 @@ async fn recall_with_scope_and_tags_parity() {
     let expected = capability_recall(
         &store,
         RecallRequest {
-            scope: Some(scope),
+            scope: Some(ScopeSelector::Path(scope)),
             tags: vec!["architecture".to_owned()],
             limit: clamp_limit(None),
             ..Default::default()

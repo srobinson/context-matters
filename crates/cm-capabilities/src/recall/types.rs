@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
-use cm_core::{EntryKind, ScopePath};
+use cm_core::EntryKind;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::projection::RecallRow;
+use crate::scope::ScopeSelector;
 
 pub const DEFAULT_RECALL_SCOPE: &str = "global";
 pub const RECALL_SCOPE_DEFAULT_ADVISORY: &str =
@@ -16,7 +17,7 @@ pub const RECALL_SCOPE_DEFAULT_ADVISORY: &str =
 pub struct RecallRequest {
     pub query: Option<String>,
     /// Omitted scope defaults to [`DEFAULT_RECALL_SCOPE`] inside the capability.
-    pub scope: Option<ScopePath>,
+    pub scope: Option<ScopeSelector>,
     pub kinds: Vec<EntryKind>,
     pub tags: Vec<String>,
     pub limit: u32,
