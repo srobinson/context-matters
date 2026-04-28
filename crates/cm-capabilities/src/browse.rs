@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 use cm_core::{
     BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopePath,
@@ -85,14 +85,6 @@ pub async fn browse(
         effective_request.scope.as_deref().map(str::trim),
         Some(DEFAULT_BROWSE_SCOPE)
     );
-    if scope_is_auto && effective_request.cwd.is_none() {
-        effective_request.cwd = Some(env::current_dir().map_err(|e| {
-            CmError::Validation(format!(
-                "failed to determine current working directory: {e}"
-            ))
-        })?);
-    }
-
     let include_resolution = effective_request
         .include_resolution
         .unwrap_or(scope_is_auto);

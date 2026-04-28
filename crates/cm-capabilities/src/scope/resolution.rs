@@ -1,6 +1,8 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    path::Path,
+    env,
+    path::{Path, PathBuf},
+    process::Command,
 };
 
 use cm_core::{CmError, ContextStore, Scope, ScopeKind, ScopePath};
@@ -80,7 +82,17 @@ fn resolve_auto_scope(
     cwd: Option<&Path>,
     scope_mode: BrowseScopeMode,
 ) -> Result<ScopeResolution, CmError> {
-    let cwd = CwdParts::from_path(cwd);
+    let env = SystemCwdEnvironment;
+    resolve_auto_scope_with_environment(scopes, cwd, scope_mode, &env)
+}
+
+fn resolve_auto_scope_with_environment(
+    scopes: &[Scope],
+    cwd: Option<&Path>,
+    scope_mode: BrowseScopeMode,
+    env: &impl CwdEnvironment,
+) -> Result<ScopeResolution, CmError> {
+    let cwd = CwdParts::from_path(cwd, env)?;
     let candidates = filter_candidates(scopes, &cwd);
 
     let Some(top) = candidates.first() else {
@@ -174,11 +186,23 @@ struct CwdParts {
 }
 
 impl CwdParts {
-    fn from_path(path: Option<&Path>) -> Self {
-        let Some(path) = path else {
-            return Self::default();
+    fn from_path(path: Option<&Path>, env: &impl CwdEnvironment) -> Result<Self, CmError> {
+        let path = match path {
+            Some(path) if path.as_os_str().is_empty() => {
+                return Err(CmError::Validation("cwd cannot be empty".to_owned()));
+            }
+            Some(path) => path.to_path_buf(),
+            None => env.current_dir()?,
         };
 
+        if let Some(metadata) = env.git_metadata(&path) {
+            return Ok(Self::from_normalized_path(metadata.scope_identity_root()));
+        };
+
+        Ok(Self::from_normalized_path(&path))
+    }
+
+    fn from_normalized_path(path: &Path) -> Self {
         let names: Vec<String> = path
             .components()
             .filter_map(|component| match component {
@@ -193,6 +217,93 @@ impl CwdParts {
             parent_basename: names.iter().rev().nth(1).cloned(),
         }
     }
+}
+
+trait CwdEnvironment {
+    fn current_dir(&self) -> Result<PathBuf, CmError>;
+
+    fn git_metadata(&self, cwd: &Path) -> Option<GitMetadata>;
+}
+
+struct SystemCwdEnvironment;
+
+impl CwdEnvironment for SystemCwdEnvironment {
+    fn current_dir(&self) -> Result<PathBuf, CmError> {
+        env::current_dir().map_err(|e| {
+            CmError::Validation(format!(
+                "failed to determine current working directory: {e}"
+            ))
+        })
+    }
+
+    fn git_metadata(&self, cwd: &Path) -> Option<GitMetadata> {
+        let worktree_root = git_path(cwd, &["rev-parse", "--show-toplevel"])?;
+        let git_dir = git_path(cwd, &["rev-parse", "--git-dir"])?;
+        let git_common_dir = git_path(cwd, &["rev-parse", "--git-common-dir"])?;
+
+        Some(GitMetadata {
+            worktree_root: absolutize(cwd, worktree_root),
+            git_dir: absolutize(cwd, git_dir),
+            git_common_dir: absolutize(cwd, git_common_dir),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct GitMetadata {
+    worktree_root: PathBuf,
+    git_dir: PathBuf,
+    git_common_dir: PathBuf,
+}
+
+impl GitMetadata {
+    fn scope_identity_root(&self) -> &Path {
+        if self.is_linked_worktree()
+            && self
+                .git_common_dir
+                .file_name()
+                .is_some_and(|name| name == ".git")
+            && let Some(source_root) = self.git_common_dir.parent()
+        {
+            return source_root;
+        }
+
+        &self.worktree_root
+    }
+
+    fn is_linked_worktree(&self) -> bool {
+        self.git_dir != self.git_common_dir
+    }
+}
+
+fn git_path(cwd: &Path, args: &[&str]) -> Option<PathBuf> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(args)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let path = String::from_utf8(output.stdout).ok()?;
+    let path = path.trim();
+    if path.is_empty() {
+        return None;
+    }
+
+    Some(PathBuf::from(path))
+}
+
+fn absolutize(base: &Path, path: PathBuf) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        base.join(path)
+    };
+    std::fs::canonicalize(&absolute).unwrap_or(absolute)
 }
 
 #[derive(Debug, Default)]
@@ -230,15 +341,21 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
     let segments = scope_segments(&scope);
 
     if cwd.has_cwd {
-        if segments.repo.as_deref() == cwd.basename.as_deref() {
+        if let Some(repo) = &cwd.basename
+            && segments.repo.as_ref() == Some(repo)
+        {
             score += AUTO_SCOPE_EXACT_MATCH_SCORE;
             matched.push("repo".to_owned());
         }
 
-        if segments.project.as_deref() == cwd.basename.as_deref() {
+        if let Some(project) = &cwd.basename
+            && segments.project.as_ref() == Some(project)
+        {
             score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
             matched.push("project_cwd".to_owned());
-        } else if segments.project.as_deref() == cwd.parent_basename.as_deref() {
+        } else if let Some(project) = &cwd.parent_basename
+            && segments.project.as_ref() == Some(project)
+        {
             score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
             matched.push("project_parent".to_owned());
         }
@@ -363,15 +480,31 @@ fn resolution_signals(cwd: &CwdParts, candidates: &[ScopeResolutionCandidate]) -
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use cm_core::ScopePath;
 
     use super::*;
 
+    #[derive(Debug)]
+    struct FakeCwdEnvironment {
+        current_dir: PathBuf,
+        git_metadata: Option<GitMetadata>,
+    }
+
+    impl CwdEnvironment for FakeCwdEnvironment {
+        fn current_dir(&self) -> Result<PathBuf, CmError> {
+            Ok(self.current_dir.clone())
+        }
+
+        fn git_metadata(&self, _cwd: &Path) -> Option<GitMetadata> {
+            self.git_metadata.clone()
+        }
+    }
+
     #[test]
     fn score_candidate_combines_repo_match_and_specificity() {
-        let cwd = CwdParts::from_path(Some(Path::new("/tmp/worktrees/context-matters")));
+        let cwd = CwdParts::from_normalized_path(Path::new("/tmp/worktrees/context-matters"));
         let scope = ScopePath::parse("global/project:alpha/repo:context-matters").unwrap();
 
         let candidate = score_candidate(scope, &cwd);
@@ -430,5 +563,40 @@ mod tests {
             confidence_score(&candidates),
             AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE
         );
+    }
+
+    #[test]
+    fn cwd_parts_uses_environment_current_dir_when_cwd_is_missing() {
+        let env = FakeCwdEnvironment {
+            current_dir: PathBuf::from("/tmp/helioy/context-matters"),
+            git_metadata: None,
+        };
+
+        let cwd = CwdParts::from_path(None, &env).unwrap();
+
+        assert!(cwd.has_cwd);
+        assert_eq!(cwd.basename.as_deref(), Some("context-matters"));
+        assert_eq!(cwd.parent_basename.as_deref(), Some("helioy"));
+    }
+
+    #[test]
+    fn cwd_parts_uses_linked_worktree_source_repo_identity() {
+        let env = FakeCwdEnvironment {
+            current_dir: PathBuf::from("/tmp/ignored"),
+            git_metadata: Some(GitMetadata {
+                worktree_root: PathBuf::from("/tmp/context-matters-worktrees/nancy-ALP-2054"),
+                git_dir: PathBuf::from("/tmp/context-matters/.git/worktrees/nancy-ALP-2054"),
+                git_common_dir: PathBuf::from("/tmp/context-matters/.git"),
+            }),
+        };
+
+        let cwd = CwdParts::from_path(
+            Some(Path::new("/tmp/context-matters-worktrees/nancy-ALP-2054")),
+            &env,
+        )
+        .unwrap();
+
+        assert_eq!(cwd.basename.as_deref(), Some("context-matters"));
+        assert_eq!(cwd.parent_basename.as_deref(), Some("tmp"));
     }
 }

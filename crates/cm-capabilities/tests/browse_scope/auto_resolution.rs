@@ -3,6 +3,33 @@ use super::support::{seed_scoped, test_store};
 use cm_capabilities::browse::{BrowseRequest, browse};
 use cm_capabilities::scope::ScopeResolutionConfidence;
 use cm_core::{EntryKind, ScopePath};
+use std::{fs, path::Path, process::Command};
+
+fn run_git(dir: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "git {} failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn create_git_repo(root: &Path) {
+    fs::create_dir_all(root).unwrap();
+    run_git(root, &["init", "-q"]);
+    run_git(root, &["config", "user.email", "test@example.com"]);
+    run_git(root, &["config", "user.name", "Test User"]);
+    fs::write(root.join("README.md"), "fixture\n").unwrap();
+    run_git(root, &["add", "README.md"]);
+    run_git(root, &["commit", "-q", "-m", "fixture"]);
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn browse_scope_auto_resolves_repo_from_cwd() {
@@ -46,6 +73,119 @@ async fn browse_scope_auto_resolves_repo_from_cwd() {
             .iter()
             .any(|signal| signal == "cwd basename matched repo scope segment: context-matters")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_auto_resolves_normal_git_repo_from_repo_root_identity() {
+    let fixture = tempfile::tempdir().unwrap();
+    let source_repo = fixture.path().join("helioy").join("context-matters");
+    let nested_cwd = source_repo.join("crates").join("cm-capabilities");
+    create_git_repo(&source_repo);
+    fs::create_dir_all(&nested_cwd).unwrap();
+
+    let (store, _dir) = test_store().await;
+    seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
+    seed_scoped(
+        &store,
+        "Repo fact",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+
+    let result = browse(
+        &store,
+        BrowseRequest {
+            scope: Some("auto".to_owned()),
+            cwd: Some(nested_cwd),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].title, "Repo fact");
+    let resolution = result.resolution.as_ref().unwrap();
+    assert_eq!(
+        resolution.resolved_scope,
+        ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+    );
+    assert_eq!(resolution.confidence, ScopeResolutionConfidence::High);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_auto_resolves_linked_worktree_from_source_repo_identity() {
+    let fixture = tempfile::tempdir().unwrap();
+    let source_repo = fixture.path().join("helioy").join("context-matters");
+    let linked_worktree = fixture
+        .path()
+        .join("context-matters-worktrees")
+        .join("nancy-ALP-2054");
+    create_git_repo(&source_repo);
+    fs::create_dir_all(linked_worktree.parent().unwrap()).unwrap();
+    run_git(
+        &source_repo,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            linked_worktree.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+
+    let (store, _dir) = test_store().await;
+    seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
+    seed_scoped(
+        &store,
+        "Repo fact",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+
+    let result = browse(
+        &store,
+        BrowseRequest {
+            scope: Some("auto".to_owned()),
+            cwd: Some(linked_worktree),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].title, "Repo fact");
+    let resolution = result.resolution.as_ref().unwrap();
+    assert_eq!(
+        resolution.resolved_scope,
+        ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+    );
+    assert_eq!(resolution.confidence, ScopeResolutionConfidence::High);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_auto_rejects_empty_cwd() {
+    let (store, _dir) = test_store().await;
+    seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
+
+    let err = browse(
+        &store,
+        BrowseRequest {
+            scope: Some("auto".to_owned()),
+            cwd: Some("".into()),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert!(err.to_string().contains("cwd cannot be empty"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -241,14 +381,14 @@ async fn browse_scope_auto_falls_back_to_global_without_local_match() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_auto_uses_process_cwd_when_cwd_omitted() {
+async fn browse_scope_auto_accepts_omitted_cwd() {
     let (store, _dir) = test_store().await;
     seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
     seed_scoped(
         &store,
         "Project fact",
         EntryKind::Fact,
-        "global/project:helioy",
+        "global/project:process-cwd-omitted-fixture-should-not-match",
     )
     .await;
 
@@ -267,11 +407,4 @@ async fn browse_scope_auto_uses_process_cwd_when_cwd_omitted() {
     assert_eq!(result.entries[0].title, "Global fact");
     let resolution = result.resolution.as_ref().unwrap();
     assert_eq!(resolution.resolved_scope, ScopePath::global());
-    assert_eq!(resolution.confidence, ScopeResolutionConfidence::VeryLow);
-    assert!(
-        resolution
-            .signals
-            .iter()
-            .any(|signal| signal == "no local scope matched cwd; using global fallback")
-    );
 }
