@@ -9,6 +9,7 @@
 //! `/api/entries/*` compatibility aliases in `entries.rs` so the two
 //! HTTP prefixes cannot drift.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
@@ -42,15 +43,85 @@ pub fn router() -> Router<Arc<AppState>> {
 pub(crate) struct RecallQuery {
     pub query: Option<String>,
     pub scope: Option<String>,
+    pub cwd: Option<String>,
     pub kinds: Vec<String>,
     pub tags: Vec<String>,
     pub limit: Option<u32>,
     pub max_tokens: Option<u32>,
 }
 
+pub(crate) fn err_scope_path_removed() -> ApiError {
+    ApiError(cm_core::CmError::Validation(
+        "scope_path has been removed; use scope".to_owned(),
+    ))
+}
+
+pub(crate) fn err_scope_mode_removed() -> ApiError {
+    ApiError(cm_core::CmError::Validation(
+        "scope_mode has been removed".to_owned(),
+    ))
+}
+
+pub(crate) fn parse_scope_query(
+    raw: Option<&str>,
+) -> Result<(Option<String>, Option<String>), ApiError> {
+    let mut scope = None;
+    let mut cwd = None;
+
+    for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
+        match key.as_ref() {
+            "scope" => scope = Some(value.into_owned()),
+            "cwd" => cwd = Some(value.into_owned()),
+            "scope_path" => return Err(err_scope_path_removed()),
+            "scope_mode" => return Err(err_scope_mode_removed()),
+            _ => {}
+        }
+    }
+
+    Ok((scope, cwd))
+}
+
+pub(crate) fn parse_scope_selector(
+    scope: Option<String>,
+    cwd: Option<String>,
+) -> Result<Option<ScopeSelector>, ApiError> {
+    if let Some(ref s) = scope {
+        check_input_size(s, "scope").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
+    if let Some(ref c) = cwd {
+        check_input_size(c, "cwd").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+    }
+
+    let cwd = parse_cwd(cwd)?;
+    let Some(scope) = scope else {
+        if cwd.is_some() {
+            return Err(ApiError(cm_core::CmError::Validation(
+                "cwd can only be supplied with scope='cwd_inferred'".to_owned(),
+            )));
+        }
+        return Ok(None);
+    };
+
+    ScopeSelector::parse(&scope)
+        .and_then(|selector| selector.with_cwd(cwd))
+        .map(Some)
+        .map_err(ApiError)
+}
+
+fn parse_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, ApiError> {
+    match cwd {
+        Some(raw) if raw.trim().is_empty() => Err(ApiError(cm_core::CmError::Validation(
+            "cwd cannot be empty".to_owned(),
+        ))),
+        Some(raw) => Ok(Some(raw.into())),
+        None => Ok(None),
+    }
+}
+
 pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiError> {
     let mut query = None;
     let mut scope = None;
+    let mut cwd = None;
     let mut kinds = Vec::new();
     let mut tags = Vec::new();
     let mut limit = None;
@@ -60,6 +131,9 @@ pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiEr
         match key.as_ref() {
             "query" => query = Some(value.into_owned()),
             "scope" => scope = Some(value.into_owned()),
+            "cwd" => cwd = Some(value.into_owned()),
+            "scope_path" => return Err(err_scope_path_removed()),
+            "scope_mode" => return Err(err_scope_mode_removed()),
             "kinds" => kinds.push(value.into_owned()),
             "tags" => tags.push(value.into_owned()),
             "limit" => {
@@ -83,6 +157,7 @@ pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiEr
     Ok(RecallQuery {
         query,
         scope,
+        cwd,
         kinds,
         tags,
         limit,
@@ -114,11 +189,7 @@ pub(crate) async fn execute_recall(
         check_input_size(q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
 
-    let scope = rq
-        .scope
-        .map(|s| ScopeSelector::parse(&s))
-        .transpose()
-        .map_err(ApiError)?;
+    let scope = parse_scope_selector(rq.scope, rq.cwd)?;
 
     let kinds: Vec<EntryKind> = rq
         .kinds
@@ -208,24 +279,12 @@ pub(crate) async fn execute_browse(
     }
 
     if bq.scope_path.is_some() {
-        return Err(ApiError(cm_core::CmError::Validation(
-            "scope_path has been removed; use scope".to_owned(),
-        )));
+        return Err(err_scope_path_removed());
     }
     if bq.scope_mode.is_some() {
-        return Err(ApiError(cm_core::CmError::Validation(
-            "scope_mode has been removed".to_owned(),
-        )));
+        return Err(err_scope_mode_removed());
     }
-    let cwd = match bq.cwd {
-        Some(raw) if raw.trim().is_empty() => {
-            return Err(ApiError(cm_core::CmError::Validation(
-                "cwd cannot be empty".to_owned(),
-            )));
-        }
-        Some(raw) => Some(raw.into()),
-        None => None,
-    };
+    let cwd = parse_cwd(bq.cwd)?;
     let scope = ScopeSelector::from_optional_scope(bq.scope.as_deref(), cwd).map_err(ApiError)?;
 
     let kind = bq

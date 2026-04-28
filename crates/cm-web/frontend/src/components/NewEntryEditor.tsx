@@ -64,7 +64,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
 
     createEntry.mutate(
       {
-        scope_path: scopePath,
+        scope: scopePath,
         kind,
         title: title.trim(),
         body: body.trim(),

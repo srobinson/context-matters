@@ -2,29 +2,31 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::{RawQuery, State};
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
-use cm_core::{ContextStore, ScopePath};
-use serde::Deserialize;
+use cm_capabilities::scope::resolve_scope_selection;
+use cm_core::ContextStore;
 
 use crate::AppState;
+use crate::api::agent;
 use crate::api::error::ApiError;
-
-#[derive(Debug, Deserialize)]
-pub struct ExportQuery {
-    scope_path: Option<String>,
-}
 
 pub async fn export(
     State(state): State<Arc<AppState>>,
-    Query(q): Query<ExportQuery>,
+    raw_query: RawQuery,
 ) -> Result<Response, ApiError> {
-    let scope_path = q
-        .scope_path
-        .map(|s| ScopePath::parse(&s))
-        .transpose()
-        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
+    let (scope, cwd) = agent::parse_scope_query(raw_query.0.as_deref())?;
+    let scope_selector = agent::parse_scope_selector(scope, cwd)?;
+    let scope_path = match scope_selector.as_ref() {
+        Some(selector) => {
+            let selection = resolve_scope_selection(&state.store, selector)
+                .await
+                .map_err(ApiError)?;
+            Some(selection.read_scope_path().map_err(ApiError)?.clone())
+        }
+        None => None,
+    };
 
     let entries = state.store.export(scope_path.as_ref()).await?;
     let json = serde_json::to_string_pretty(&entries)

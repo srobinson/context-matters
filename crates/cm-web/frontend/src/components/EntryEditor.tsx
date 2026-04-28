@@ -116,7 +116,7 @@ export function EntryEditor({ entry, onCancel, onSaved }: EntryEditorProps) {
       {
         oldId: entry.id,
         newEntry: {
-          scope_path: pendingScope,
+          scope: pendingScope,
           kind,
           title,
           body,

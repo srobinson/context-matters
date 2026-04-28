@@ -24,7 +24,7 @@ interface FeedPageProps {
 }
 
 export function FeedPage({ search }: FeedPageProps) {
-  const { mode, sort, kind, scope_path, tag, created_by, show_forgotten, q, entry_id } = search;
+  const { mode, sort, kind, scope, tag, created_by, show_forgotten, q, entry_id } = search;
 
   const navigate = useNavigate({ from: "/feed" });
   const [showNewEntry, setShowNewEntry] = useState(false);
@@ -48,6 +48,16 @@ export function FeedPage({ search }: FeedPageProps) {
   const activeMode = mode ?? "curate";
   const isRecallMode = activeMode === "recall";
   const isBrowseMode = activeMode === "browse";
+
+  useEffect(() => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        scope,
+      }),
+      replace: true,
+    });
+  }, [scope, navigate]);
 
   useEffect(() => {
     const urlQ = q ?? "";
@@ -107,7 +117,7 @@ export function FeedPage({ search }: FeedPageProps) {
   const browseQuery = useEntries({
     sort: sort ?? "recent",
     kind,
-    scope_path,
+    scope,
     tag,
     created_by,
     include_superseded: show_forgotten,
@@ -221,7 +231,7 @@ export function FeedPage({ search }: FeedPageProps) {
 
       {activeMode === "curate" && (
         <FilterBar
-          filters={{ scope_path, kind, tag, created_by, show_forgotten }}
+          filters={{ scope, kind, tag, created_by, show_forgotten }}
           onChange={handleFilterChange}
         />
       )}

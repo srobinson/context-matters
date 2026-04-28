@@ -1,9 +1,9 @@
 import type { BrowseSort } from "./generated/BrowseSort";
 import type { Entry } from "./generated/Entry";
 import type { EntryKind } from "./generated/EntryKind";
+import type { EntryMeta } from "./generated/EntryMeta";
 import type { EntryRelation } from "./generated/EntryRelation";
 import type { MutationRecord } from "./generated/MutationRecord";
-import type { NewEntry } from "./generated/NewEntry";
 import type { StoreStats } from "./generated/StoreStats";
 import type { UpdateEntry } from "./generated/UpdateEntry";
 import type { WebBrowseView } from "./generated/WebBrowseView";
@@ -129,8 +129,6 @@ export type EntryDetail = Entry & {
 
 export interface BrowseParams {
   scope?: string;
-  scope_path?: string;
-  scope_mode?: "resolved";
   cwd?: string;
   include_resolution?: boolean;
   kind?: EntryKind;
@@ -144,7 +142,8 @@ export interface BrowseParams {
 
 export interface SearchParams {
   query: string;
-  scope_path?: string;
+  scope?: string;
+  cwd?: string;
   kind?: EntryKind;
   tag?: string;
   limit?: number;
@@ -170,8 +169,6 @@ export interface RecallParams {
 
 export interface AgentBrowseParams {
   scope?: string;
-  scope_path?: string;
-  scope_mode?: "resolved";
   cwd?: string;
   include_resolution?: boolean;
   kind?: EntryKind;
@@ -183,6 +180,15 @@ export interface AgentBrowseParams {
   cursor?: string;
 }
 
+export interface NewEntryRequest {
+  scope: string;
+  kind: EntryKind;
+  title: string;
+  body: string;
+  created_by: string;
+  meta?: EntryMeta | null;
+}
+
 // --- API namespace ---
 
 export const api = {
@@ -191,8 +197,6 @@ export const api = {
       return apiFetch(
         `/entries${toSearchParams({
           scope: params.scope,
-          scope_path: params.scope_path,
-          scope_mode: params.scope_mode,
           cwd: params.cwd,
           include_resolution: params.include_resolution,
           kind: params.kind,
@@ -210,7 +214,8 @@ export const api = {
       return apiFetch(
         `/entries/search${toSearchParams({
           query: params.query,
-          scope_path: params.scope_path,
+          scope: params.scope,
+          cwd: params.cwd,
           kind: params.kind,
           tag: params.tag,
           limit: params.limit,
@@ -236,7 +241,7 @@ export const api = {
       return apiFetch(`/entries/${encodeURIComponent(id)}`);
     },
 
-    create(entry: NewEntry): Promise<Entry> {
+    create(entry: NewEntryRequest): Promise<Entry> {
       return apiFetch("/entries", {
         method: "POST",
         body: JSON.stringify(entry),
@@ -256,7 +261,7 @@ export const api = {
       });
     },
 
-    merge(oldId: string, newEntry: NewEntry): Promise<Entry> {
+    merge(oldId: string, newEntry: NewEntryRequest): Promise<Entry> {
       return apiFetch("/entries/merge", {
         method: "POST",
         body: JSON.stringify({ old_id: oldId, new_entry: newEntry }),
@@ -282,8 +287,6 @@ export const api = {
       return apiFetch(
         `/agent/browse${toSearchParams({
           scope: params.scope,
-          scope_path: params.scope_path,
-          scope_mode: params.scope_mode,
           cwd: params.cwd,
           include_resolution: params.include_resolution,
           kind: params.kind,
@@ -318,8 +321,8 @@ export const api = {
     },
   },
 
-  export(scopePath?: string): Promise<Blob> {
-    const params = scopePath ? `?scope_path=${encodeURIComponent(scopePath)}` : "";
+  export(scope?: string): Promise<Blob> {
+    const params = scope ? `?scope=${encodeURIComponent(scope)}` : "";
     return fetch(`${API_BASE}/export${params}`).then((res) => {
       if (!res.ok) throw new ApiError(res.status, null);
       return res.blob();

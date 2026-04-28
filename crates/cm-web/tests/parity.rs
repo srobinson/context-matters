@@ -15,5 +15,7 @@ mod headers;
 mod pagination;
 #[path = "parity/recall.rs"]
 mod recall;
+#[path = "parity/scope_migration.rs"]
+mod scope_migration;
 #[path = "parity/support.rs"]
 mod support;

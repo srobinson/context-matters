@@ -16,7 +16,7 @@ const ALL_KINDS: EntryKind[] = [
 ];
 
 export type FilterState = {
-  scope_path?: string;
+  scope?: string;
   kind?: EntryKind;
   tag?: string;
   created_by?: string;
@@ -24,7 +24,7 @@ export type FilterState = {
 };
 
 const CHIP_LABELS: Record<string, string> = {
-  scope_path: "scope",
+  scope: "scope",
   kind: "kind",
   created_by: "by",
   tag: "tag",
@@ -43,7 +43,7 @@ export function FilterBar({
   const facets = useMemo(() => buildFacets(stats), [stats]);
 
   const values: Record<string, string | boolean | undefined> = {
-    scope_path: filters.scope_path,
+    scope: filters.scope,
     kind: filters.kind,
     created_by: filters.created_by,
     tag: filters.tag,
@@ -59,7 +59,7 @@ export function FilterBar({
 
   const handleClearAll = useCallback(() => {
     onChange({
-      scope_path: undefined,
+      scope: undefined,
       kind: undefined,
       tag: undefined,
       created_by: undefined,
@@ -116,7 +116,7 @@ function buildFacets(stats: Stats | undefined): FacetDefinition[] {
     : [];
 
   return [
-    { key: "scope_path", placeholder: "Scope", options: scopeOptions },
+    { key: "scope", placeholder: "Scope", options: scopeOptions },
     { key: "kind", placeholder: "Kind", options: kindOptions },
     { key: "created_by", placeholder: "Agent", options: agentOptions },
     { key: "tag", placeholder: "Tag", options: tagOptions },

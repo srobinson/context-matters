@@ -37,7 +37,7 @@ function buildAlerts(stats: Stats): QualityAlert[] {
       label: "at global scope",
       count: q.global_scope_count,
       to: "/feed",
-      search: { scope_path: "global" },
+      search: { scope: "global" },
     });
   }
 

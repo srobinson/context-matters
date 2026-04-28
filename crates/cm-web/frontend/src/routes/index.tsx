@@ -42,7 +42,7 @@ function buildReviewSignals(stats: Stats): ReviewSignal[] {
       label: "global scope",
       count: q.global_scope_count,
       to: "/feed",
-      search: { scope_path: "global" },
+      search: { scope: "global" },
       description: "Entries still living at the broadest scope",
     });
   }
@@ -361,7 +361,7 @@ function ReviewPanel({
               <Link
                 key={scope.path}
                 to="/feed"
-                search={{ scope_path: scope.path }}
+                search={{ scope: scope.path }}
                 className="flex items-center justify-between rounded-control border border-border/60 bg-background/35 px-3 py-2 font-mono text-xs transition-colors hover:bg-accent/20"
               >
                 <span className="truncate text-foreground">{scope.path}</span>
