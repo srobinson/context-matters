@@ -49,3 +49,19 @@ fn frontend_api_contract_keeps_scope_path_as_rejected_input_only() {
         "frontend contract should keep type-level rejection coverage"
     );
 }
+
+#[test]
+fn frontend_api_contract_exercises_cwd_inferred_recall_and_export() {
+    let source = frontend_source("api/scope-contract.test.ts");
+
+    assert!(
+        source.contains("api.entries.recall({")
+            && source.contains("api.agent.recall({")
+            && source.contains("api.export({ scope: \"cwd_inferred\"")
+            && source
+                .matches("cwd: \"/tmp/helioy/context-matters\"")
+                .count()
+                >= 3,
+        "frontend request contracts should exercise cwd_inferred recall and export with cwd"
+    );
+}

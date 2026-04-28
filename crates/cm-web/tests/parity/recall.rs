@@ -60,6 +60,68 @@ async fn recall_with_scope_and_tags_parity() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn recall_agent_cwd_inferred_scope_parity() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let expected = capability_recall(
+        &store,
+        RecallRequest {
+            query: Some("Smart".to_owned()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
+            limit: clamp_limit(None),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let app = test_app(store);
+    let web = get_json(
+        app,
+        "/api/agent/recall?query=Smart&scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
+    )
+    .await;
+
+    assert_eq!(
+        expected, web,
+        "Agent cwd_inferred recall must match capability layer"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_entries_cwd_inferred_scope_parity() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let expected = capability_recall(
+        &store,
+        RecallRequest {
+            query: Some("Smart".to_owned()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
+            limit: clamp_limit(None),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let app = test_app(store);
+    let web = get_json(
+        app,
+        "/api/entries/recall?query=Smart&scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
+    )
+    .await;
+
+    assert_eq!(
+        expected, web,
+        "Entries cwd_inferred recall must match capability layer"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn recall_entries_compat_matches_agent() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
