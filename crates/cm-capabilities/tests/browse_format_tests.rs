@@ -17,7 +17,8 @@ use uuid::Uuid;
 use cm_capabilities::browse::{BrowseRequest, BrowseResult};
 use cm_capabilities::projection::format_browse_view_at;
 use cm_capabilities::scope::{
-    BrowseScopeMode, ScopeResolution, ScopeResolutionCandidate, ScopeResolutionConfidence,
+    BrowseScopeMode, CWD_INFERRED_SCOPE, ScopeResolution, ScopeResolutionCandidate,
+    ScopeResolutionConfidence, ScopeSelector,
 };
 use cm_core::{BrowseSort, Entry, EntryKind, EntryMeta, ScopePath};
 
@@ -124,7 +125,7 @@ fn session_log_fixture() -> (BrowseResult, BrowseRequest, DateTime<Utc>) {
 
 fn smart_scope_resolution_fixture() -> ScopeResolution {
     ScopeResolution {
-        requested_scope: "auto".to_owned(),
+        requested_scope: CWD_INFERRED_SCOPE.to_owned(),
         resolved_scope: ScopePath::parse("global/project:helioy/repo:context-matters")
             .expect("test fixture scope parses"),
         scope_mode: BrowseScopeMode::Resolved,
@@ -176,22 +177,22 @@ fn format_browse_view_omits_resolution_for_legacy_fixture() {
 }
 
 #[test]
-fn format_browse_view_renders_auto_scope_resolution() {
+fn format_browse_view_renders_cwd_inferred_scope_resolution() {
     let (mut result, mut request, now) = session_log_fixture();
     result.resolution = Some(smart_scope_resolution_fixture());
-    result.scope_used = Some("auto".to_owned());
+    result.scope_used = Some(CWD_INFERRED_SCOPE.to_owned());
     result.include_resolution = true;
-    request.scope = Some("auto".to_owned());
+    request.scope = Some(ScopeSelector::cwd_inferred(None));
     request.include_resolution = Some(true);
 
     let rendered = format_browse_view_at(&result, &request, now);
 
     assert!(
-        rendered.contains("query: scope=auto tag=session-log\n"),
-        "auto scope should be visible in the query header:\n{rendered}",
+        rendered.contains("query: scope=cwd_inferred tag=session-log\n"),
+        "cwd_inferred scope should be visible in the query header:\n{rendered}",
     );
     assert!(
-        rendered.contains("requested_scope: auto\n"),
+        rendered.contains("requested_scope: cwd_inferred\n"),
         "requested scope missing from YAML resolution block:\n{rendered}",
     );
     assert!(

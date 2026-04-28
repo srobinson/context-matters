@@ -8,97 +8,62 @@ use std::{
 use cm_core::{CmError, ContextStore, Scope, ScopeKind, ScopePath};
 
 use super::{
-    BrowseScopeInput, BrowseScopeMode, ResolvedBrowseScope, ScopeResolution,
-    ScopeResolutionCandidate, ScopeResolutionConfidence,
+    BrowseScopeMode, CWD_INFERRED_SCOPE, ResolvedScopeSelection, ScopeResolution,
+    ScopeResolutionCandidate, ScopeResolutionConfidence, ScopeSelector,
 };
 
-const AUTO_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
-const AUTO_SCOPE_STRONG_SIGNAL_SCORE: i32 = 100;
-const AUTO_SCOPE_WEAK_SIGNAL_SCORE: i32 = 30;
-const AUTO_SCOPE_FALLBACK_FLOOR_SCORE: i32 = 10;
-const AUTO_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
+const INFERRED_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
+const INFERRED_SCOPE_STRONG_SIGNAL_SCORE: i32 = 100;
+const INFERRED_SCOPE_WEAK_SIGNAL_SCORE: i32 = 30;
+const INFERRED_SCOPE_FALLBACK_FLOOR_SCORE: i32 = 10;
+const INFERRED_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
 
-const AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_EXACT_MATCH_SCORE;
-const AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_STRONG_SIGNAL_SCORE;
-const AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE: i32 = AUTO_SCOPE_NO_SIGNAL_SCORE + 1;
+const INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE: i32 = INFERRED_SCOPE_EXACT_MATCH_SCORE;
+const INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE: i32 = INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
+const INFERRED_SCOPE_LOW_CONFIDENCE_MIN_SCORE: i32 = INFERRED_SCOPE_NO_SIGNAL_SCORE + 1;
 
 pub async fn resolve_browse_scope(
     store: &impl ContextStore,
-    request: &crate::browse::BrowseRequest,
-) -> Result<ResolvedBrowseScope, CmError> {
-    match normalize_browse_scope(request.scope.as_deref(), request.scope_path.as_ref())? {
-        None => Ok(ResolvedBrowseScope {
-            scope_path: None,
+    selector: &ScopeSelector,
+) -> Result<ResolvedScopeSelection, CmError> {
+    match selector {
+        ScopeSelector::Path(scope_path) => Ok(ResolvedScopeSelection {
+            scope_path: Some(scope_path.clone()),
             resolution: None,
+            requested_scope: selector.requested_scope(),
         }),
-        Some(BrowseScopeInput::Exact(scope_path)) => Ok(ResolvedBrowseScope {
-            scope_path: Some(scope_path),
-            resolution: None,
-        }),
-        Some(BrowseScopeInput::Auto) => {
+        ScopeSelector::CwdInferred { cwd } => {
             let scopes = store.list_scopes(None).await?;
-            let resolution =
-                resolve_auto_scope(&scopes, request.cwd.as_deref(), request.scope_mode)?;
-            Ok(ResolvedBrowseScope {
+            let resolution = resolve_cwd_inferred_scope(&scopes, cwd.as_deref())?;
+            Ok(ResolvedScopeSelection {
                 scope_path: Some(resolution.resolved_scope.clone()),
                 resolution: Some(resolution),
+                requested_scope: selector.requested_scope(),
             })
         }
     }
 }
 
-fn normalize_browse_scope(
-    scope: Option<&str>,
-    scope_path: Option<&ScopePath>,
-) -> Result<Option<BrowseScopeInput>, CmError> {
-    let scope = scope.map(str::trim);
-    if matches!(scope, Some("")) {
-        return Err(CmError::Validation("scope cannot be empty".to_owned()));
-    }
-
-    match (scope, scope_path) {
-        (None, None) => Ok(None),
-        (None, Some(scope_path)) => Ok(Some(BrowseScopeInput::Exact(scope_path.clone()))),
-        (Some("auto"), None) => Ok(Some(BrowseScopeInput::Auto)),
-        (Some("auto"), Some(_)) => Err(CmError::Validation(
-            "scope='auto' cannot be combined with scope_path".to_owned(),
-        )),
-        (Some(scope), None) => Ok(Some(BrowseScopeInput::Exact(ScopePath::parse(scope)?))),
-        (Some(scope), Some(scope_path)) => {
-            let explicit = ScopePath::parse(scope)?;
-            if explicit == *scope_path {
-                Ok(Some(BrowseScopeInput::Exact(scope_path.clone())))
-            } else {
-                Err(CmError::Validation(format!(
-                    "scope conflicts with scope_path: scope='{explicit}', scope_path='{scope_path}'"
-                )))
-            }
-        }
-    }
-}
-
-fn resolve_auto_scope(
+fn resolve_cwd_inferred_scope(
     scopes: &[Scope],
     cwd: Option<&Path>,
-    scope_mode: BrowseScopeMode,
 ) -> Result<ScopeResolution, CmError> {
     let env = SystemCwdEnvironment;
-    resolve_auto_scope_with_environment(scopes, cwd, scope_mode, &env)
+    resolve_cwd_inferred_scope_with_environment(scopes, cwd, &env)
 }
 
-fn resolve_auto_scope_with_environment(
+fn resolve_cwd_inferred_scope_with_environment(
     scopes: &[Scope],
     cwd: Option<&Path>,
-    scope_mode: BrowseScopeMode,
     env: &impl CwdEnvironment,
 ) -> Result<ScopeResolution, CmError> {
     let cwd = CwdParts::from_path(cwd, env)?;
     let candidates = filter_candidates(scopes, &cwd);
 
     let Some(top) = candidates.first() else {
-        return Err(CmError::Validation(
-            "no candidate scope could be resolved for scope='auto'".to_owned(),
-        ));
+        return Err(CmError::Validation(format!(
+            "no candidate scope could be resolved for scope='{CWD_INFERRED_SCOPE}'"
+        )));
     };
 
     let resolved_scope = top.scope.clone();
@@ -106,9 +71,9 @@ fn resolve_auto_scope_with_environment(
     let signals = resolution_signals(&cwd, &candidates);
 
     Ok(ScopeResolution {
-        requested_scope: "auto".to_owned(),
+        requested_scope: CWD_INFERRED_SCOPE.to_owned(),
         resolved_scope,
-        scope_mode,
+        scope_mode: BrowseScopeMode::Resolved,
         confidence,
         candidates,
         signals,
@@ -164,7 +129,7 @@ fn filter_candidates(scopes: &[Scope], cwd: &CwdParts) -> Vec<ScopeResolutionCan
         .map(|scope| score_candidate(scope, cwd))
         .filter(|candidate| {
             candidate.scope.leaf_kind() == ScopeKind::Global
-                || candidate.score >= AUTO_SCOPE_FALLBACK_FLOOR_SCORE
+                || candidate.score >= INFERRED_SCOPE_FALLBACK_FLOOR_SCORE
         })
         .collect();
 
@@ -344,30 +309,30 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
         if let Some(repo) = &cwd.basename
             && segments.repo.as_ref() == Some(repo)
         {
-            score += AUTO_SCOPE_EXACT_MATCH_SCORE;
+            score += INFERRED_SCOPE_EXACT_MATCH_SCORE;
             matched.push("repo".to_owned());
         }
 
         if let Some(project) = &cwd.basename
             && segments.project.as_ref() == Some(project)
         {
-            score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
+            score += INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
             matched.push("project_cwd".to_owned());
         } else if let Some(project) = &cwd.parent_basename
             && segments.project.as_ref() == Some(project)
         {
-            score += AUTO_SCOPE_STRONG_SIGNAL_SCORE;
+            score += INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
             matched.push("project_parent".to_owned());
         }
     }
 
     match scope.leaf_kind() {
         ScopeKind::Repo => {
-            score += AUTO_SCOPE_WEAK_SIGNAL_SCORE;
+            score += INFERRED_SCOPE_WEAK_SIGNAL_SCORE;
             matched.push("specificity".to_owned());
         }
         ScopeKind::Project => {
-            score += AUTO_SCOPE_FALLBACK_FLOOR_SCORE;
+            score += INFERRED_SCOPE_FALLBACK_FLOOR_SCORE;
             matched.push("project".to_owned());
         }
         ScopeKind::Global => {
@@ -385,10 +350,10 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
 
 fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
     let Some(top) = candidates.first() else {
-        return AUTO_SCOPE_NO_SIGNAL_SCORE;
+        return INFERRED_SCOPE_NO_SIGNAL_SCORE;
     };
 
-    if top.score >= AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
+    if top.score >= INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
         let repo_ties = candidates
             .iter()
             .filter(|candidate| {
@@ -396,7 +361,7 @@ fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
             })
             .count();
         if repo_ties > 1 {
-            return AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE;
+            return INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE;
         }
     }
 
@@ -404,11 +369,11 @@ fn confidence_score(candidates: &[ScopeResolutionCandidate]) -> i32 {
 }
 
 fn rate_confidence(score: i32) -> ScopeResolutionConfidence {
-    if score >= AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
+    if score >= INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE {
         ScopeResolutionConfidence::High
-    } else if score >= AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE {
+    } else if score >= INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE {
         ScopeResolutionConfidence::Medium
-    } else if score >= AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE {
+    } else if score >= INFERRED_SCOPE_LOW_CONFIDENCE_MIN_SCORE {
         ScopeResolutionConfidence::Low
     } else {
         ScopeResolutionConfidence::VeryLow
@@ -511,7 +476,7 @@ mod tests {
 
         assert_eq!(
             candidate.score,
-            AUTO_SCOPE_EXACT_MATCH_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE
+            INFERRED_SCOPE_EXACT_MATCH_SCORE + INFERRED_SCOPE_WEAK_SIGNAL_SCORE
         );
         assert_eq!(candidate.matched, vec!["repo", "specificity"]);
     }
@@ -519,27 +484,27 @@ mod tests {
     #[test]
     fn rate_confidence_maps_score_bands() {
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE),
+            rate_confidence(INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE),
             ScopeResolutionConfidence::High
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE - 1),
+            rate_confidence(INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE - 1),
             ScopeResolutionConfidence::Medium
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE),
+            rate_confidence(INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE),
             ScopeResolutionConfidence::Medium
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE - 1),
+            rate_confidence(INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE - 1),
             ScopeResolutionConfidence::Low
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_LOW_CONFIDENCE_MIN_SCORE),
+            rate_confidence(INFERRED_SCOPE_LOW_CONFIDENCE_MIN_SCORE),
             ScopeResolutionConfidence::Low
         );
         assert_eq!(
-            rate_confidence(AUTO_SCOPE_NO_SIGNAL_SCORE),
+            rate_confidence(INFERRED_SCOPE_NO_SIGNAL_SCORE),
             ScopeResolutionConfidence::VeryLow
         );
     }
@@ -549,19 +514,19 @@ mod tests {
         let candidates = vec![
             ScopeResolutionCandidate {
                 scope: ScopePath::parse("global/project:alpha/repo:context").unwrap(),
-                score: AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE,
+                score: INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + INFERRED_SCOPE_WEAK_SIGNAL_SCORE,
                 matched: vec![],
             },
             ScopeResolutionCandidate {
                 scope: ScopePath::parse("global/project:beta/repo:context").unwrap(),
-                score: AUTO_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + AUTO_SCOPE_WEAK_SIGNAL_SCORE,
+                score: INFERRED_SCOPE_HIGH_CONFIDENCE_MIN_SCORE + INFERRED_SCOPE_WEAK_SIGNAL_SCORE,
                 matched: vec![],
             },
         ];
 
         assert_eq!(
             confidence_score(&candidates),
-            AUTO_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE
+            INFERRED_SCOPE_MEDIUM_CONFIDENCE_MIN_SCORE
         );
     }
 

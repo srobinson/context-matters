@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use cm_capabilities::browse::BrowseRequest;
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{BrowseSort, ScopePath};
 use cm_store::{CmStore, schema};
 
@@ -18,7 +17,9 @@ async fn browse_pagination_parity() {
     let cap_page1 = capability_browse(
         &store,
         BrowseRequest {
-            scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: Some(1),
             sort: BrowseSort::Recent,
             ..Default::default()
@@ -27,11 +28,7 @@ async fn browse_pagination_parity() {
     .await;
 
     let app = test_app(store);
-    let web_page1 = get_json(
-        app,
-        "/api/agent/browse?scope_path=global/project:helioy&limit=1",
-    )
-    .await;
+    let web_page1 = get_json(app, "/api/agent/browse?scope=global/project:helioy&limit=1").await;
 
     assert_eq!(cap_page1, web_page1, "Page 1 must match capability layer");
     assert!(
@@ -54,7 +51,9 @@ async fn browse_pagination_parity() {
     let cap_page2 = capability_browse(
         &store2,
         BrowseRequest {
-            scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: Some(1),
             sort: BrowseSort::Recent,
             cursor: Some(cursor.to_owned()),
@@ -68,7 +67,7 @@ async fn browse_pagination_parity() {
     let app2 = test_app(store3);
     let web_page2 = get_json(
         app2,
-        &format!("/api/agent/browse?scope_path=global/project:helioy&limit=1&cursor={cursor}"),
+        &format!("/api/agent/browse?scope=global/project:helioy&limit=1&cursor={cursor}"),
     )
     .await;
 
@@ -77,7 +76,7 @@ async fn browse_pagination_parity() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_auto_scope_pagination_parity() {
+async fn browse_cwd_inferred_scope_pagination_parity() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let (write_pool, read_pool) = schema::create_pools(&db_path).await.unwrap();
@@ -88,8 +87,9 @@ async fn browse_auto_scope_pagination_parity() {
     let cap_page1 = capability_browse(
         &store,
         BrowseRequest {
-            scope: Some("auto".to_owned()),
-            cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
             include_resolution: Some(true),
             limit: Some(1),
             sort: BrowseSort::Recent,
@@ -101,17 +101,17 @@ async fn browse_auto_scope_pagination_parity() {
     let app = test_app(store);
     let web_page1 = get_json(
         app,
-        "/api/agent/browse?scope=auto&cwd=/tmp/helioy/context-matters&limit=1",
+        "/api/agent/browse?scope=cwd_inferred&cwd=/tmp/helioy/context-matters&limit=1",
     )
     .await;
 
     assert_eq!(
         cap_page1, web_page1,
-        "Auto browse page 1 must match capability layer"
+        "cwd_inferred browse page 1 must match capability layer"
     );
     assert!(
         cap_page1["has_more"].as_bool().unwrap(),
-        "Auto browse should have a second page"
+        "cwd_inferred browse should have a second page"
     );
 
     let cursor = web_page1["next_cursor"].as_str().unwrap();
@@ -121,8 +121,9 @@ async fn browse_auto_scope_pagination_parity() {
     let cap_page2 = capability_browse(
         &store2,
         BrowseRequest {
-            scope: Some("auto".to_owned()),
-            cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
             include_resolution: Some(true),
             limit: Some(1),
             sort: BrowseSort::Recent,
@@ -138,14 +139,14 @@ async fn browse_auto_scope_pagination_parity() {
     let web_page2 = get_json(
         app2,
         &format!(
-            "/api/agent/browse?scope=auto&cwd=/tmp/helioy/context-matters&limit=1&cursor={cursor}"
+            "/api/agent/browse?scope=cwd_inferred&cwd=/tmp/helioy/context-matters&limit=1&cursor={cursor}"
         ),
     )
     .await;
 
     assert_eq!(
         cap_page2, web_page2,
-        "Auto browse page 2 must match capability layer"
+        "cwd_inferred browse page 2 must match capability layer"
     );
     assert_eq!(cap_page2["entries"].as_array().unwrap().len(), 1);
 }

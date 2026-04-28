@@ -2,9 +2,9 @@
 
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
-use cm_capabilities::scope::BrowseScopeMode;
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::parse_kind;
-use cm_core::{ContextStore, ScopePath};
+use cm_core::ContextStore;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -12,8 +12,8 @@ use crate::mcp::{ToolResult, cm_err_to_string, dual_response, parse_params};
 
 #[derive(Debug, Deserialize)]
 struct CxBrowseParams {
-    /// Preferred scope input. Accepts "auto" for local scope inference
-    /// or an explicit scope path for exact filtering.
+    /// Preferred scope input. Accepts "cwd_inferred" for local scope
+    /// inference or an explicit scope path for exact filtering.
     #[serde(default)]
     scope: Option<String>,
 
@@ -25,7 +25,7 @@ struct CxBrowseParams {
     #[serde(default)]
     scope_mode: Option<String>,
 
-    /// Filesystem cwd used for scope="auto" inference.
+    /// Filesystem cwd used for scope="cwd_inferred" inference.
     #[serde(default)]
     cwd: Option<String>,
 
@@ -61,15 +61,12 @@ struct CxBrowseParams {
 pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let params: CxBrowseParams = parse_params(args)?;
 
-    let scope_path = match &params.scope_path {
-        Some(s) => Some(ScopePath::parse(s).map_err(|e| cm_err_to_string(e.into()))?),
-        None => None,
-    };
-
-    let scope_mode = match &params.scope_mode {
-        Some(mode) => mode.parse::<BrowseScopeMode>().map_err(cm_err_to_string)?,
-        None => BrowseScopeMode::default(),
-    };
+    if params.scope_path.is_some() {
+        return Err("Invalid parameters: scope_path has been removed; use scope".to_owned());
+    }
+    if params.scope_mode.is_some() {
+        return Err("Invalid parameters: scope_mode has been removed".to_owned());
+    }
 
     let cwd = match params.cwd {
         Some(raw) if raw.trim().is_empty() => {
@@ -78,6 +75,8 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         Some(raw) => Some(raw.into()),
         None => None,
     };
+    let scope = ScopeSelector::from_optional_scope(params.scope.as_deref(), cwd)
+        .map_err(cm_err_to_string)?;
 
     let kind = match &params.kind {
         Some(k) => Some(parse_kind(k)?),
@@ -85,10 +84,7 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolRe
     };
 
     let request = BrowseRequest {
-        scope: params.scope,
-        scope_path,
-        scope_mode,
-        cwd,
+        scope,
         include_resolution: params.include_resolution,
         kind,
         tag: params.tag,

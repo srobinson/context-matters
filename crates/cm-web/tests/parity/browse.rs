@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use cm_capabilities::browse::BrowseRequest;
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{BrowseSort, EntryKind, ScopePath};
 use serde_json::json;
 
@@ -83,15 +82,16 @@ async fn browse_agent_sort_matches_entries_parity() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_agent_auto_scope_parity() {
+async fn browse_agent_cwd_inferred_scope_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
     let expected = capability_browse(
         &store,
         BrowseRequest {
-            scope: Some("auto".to_owned()),
-            cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
             include_resolution: Some(true),
             limit: None,
             sort: BrowseSort::Recent,
@@ -103,11 +103,14 @@ async fn browse_agent_auto_scope_parity() {
     let app = test_app(store);
     let web = get_json(
         app,
-        "/api/agent/browse?scope=auto&cwd=/tmp/helioy/context-matters",
+        "/api/agent/browse?scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
     )
     .await;
 
-    assert_eq!(expected, web, "Agent auto browse must match capability");
+    assert_eq!(
+        expected, web,
+        "Agent cwd_inferred browse must match capability"
+    );
     assert_eq!(
         web["resolution"]["resolved_scope"],
         json!("global/project:helioy/repo:context-matters")
@@ -116,15 +119,16 @@ async fn browse_agent_auto_scope_parity() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_entries_auto_scope_parity() {
+async fn browse_entries_cwd_inferred_scope_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
     let expected = capability_browse(
         &store,
         BrowseRequest {
-            scope: Some("auto".to_owned()),
-            cwd: Some(PathBuf::from("/tmp/helioy/context-matters")),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
             include_resolution: Some(true),
             limit: None,
             sort: BrowseSort::Recent,
@@ -136,22 +140,27 @@ async fn browse_entries_auto_scope_parity() {
     let app = test_app(store);
     let web = get_json(
         app,
-        "/api/entries?scope=auto&cwd=/tmp/helioy/context-matters",
+        "/api/entries?scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
     )
     .await;
 
-    assert_eq!(expected, web, "Entries auto browse must match capability");
+    assert_eq!(
+        expected, web,
+        "Entries cwd_inferred browse must match capability"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_path_exact_parity() {
+async fn browse_scope_exact_parity() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
     let expected = capability_browse(
         &store,
         BrowseRequest {
-            scope_path: Some(ScopePath::parse("global/project:helioy").unwrap()),
+            scope: Some(ScopeSelector::Path(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
             limit: None,
             sort: BrowseSort::Recent,
             ..Default::default()
@@ -160,11 +169,11 @@ async fn browse_scope_path_exact_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(app, "/api/agent/browse?scope_path=global/project:helioy").await;
+    let web = get_json(app, "/api/agent/browse?scope=global/project:helioy").await;
 
-    assert_eq!(expected, web, "scope_path browse must stay exact");
+    assert_eq!(expected, web, "scope browse must stay exact");
     assert!(
         web.get("resolution").is_none(),
-        "Explicit scope_path should not expose auto resolution"
+        "Explicit scope should not expose resolution"
     );
 }

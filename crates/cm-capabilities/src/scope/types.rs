@@ -19,11 +19,42 @@ impl ScopeSelector {
         Self::CwdInferred { cwd }
     }
 
+    pub fn from_optional_scope(
+        scope: Option<&str>,
+        cwd: Option<PathBuf>,
+    ) -> Result<Option<Self>, CmError> {
+        match scope {
+            Some(scope) => Ok(Some(Self::parse(scope)?.with_cwd(cwd)?)),
+            None => Ok(validate_cwd(cwd)?.map(|cwd| Self::CwdInferred { cwd: Some(cwd) })),
+        }
+    }
+
+    pub fn with_cwd(self, cwd: Option<PathBuf>) -> Result<Self, CmError> {
+        match (self, cwd) {
+            (Self::CwdInferred { .. }, cwd) => Ok(Self::CwdInferred {
+                cwd: validate_cwd(cwd)?,
+            }),
+            (Self::Path(scope_path), Some(_)) => Err(CmError::Validation(format!(
+                "cwd can only be supplied with scope='{CWD_INFERRED_SCOPE}', not scope='{scope_path}'"
+            ))),
+            (selector, None) => Ok(selector),
+        }
+    }
+
     pub fn requested_scope(&self) -> String {
         match self {
             Self::Path(scope_path) => scope_path.as_str().to_owned(),
             Self::CwdInferred { .. } => CWD_INFERRED_SCOPE.to_owned(),
         }
+    }
+}
+
+fn validate_cwd(cwd: Option<PathBuf>) -> Result<Option<PathBuf>, CmError> {
+    match cwd {
+        Some(cwd) if cwd.as_os_str().is_empty() => {
+            Err(CmError::Validation("cwd cannot be empty".to_owned()))
+        }
+        cwd => Ok(cwd),
     }
 }
 
@@ -44,12 +75,6 @@ impl FromStr for ScopeSelector {
             exact => Ok(Self::Path(ScopePath::parse(exact)?)),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BrowseScopeInput {
-    Auto,
-    Exact(ScopePath),
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -188,10 +213,4 @@ fn require_unique_high_confidence_resolution(resolution: &ScopeResolution) -> Re
             resolution.requested_scope
         )))
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedBrowseScope {
-    pub scope_path: Option<ScopePath>,
-    pub resolution: Option<ScopeResolution>,
 }

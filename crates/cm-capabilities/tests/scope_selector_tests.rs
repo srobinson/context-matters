@@ -77,6 +77,42 @@ fn scope_selector_requested_scope_matches_variant() {
 }
 
 #[test]
+fn scope_selector_optional_scope_attaches_cwd_to_inferred_only() {
+    let cwd = PathBuf::from("/tmp/helioy/context-matters");
+
+    let omitted_without_cwd = ScopeSelector::from_optional_scope(None, None).unwrap();
+    let inferred_without_cwd = ScopeSelector::from_optional_scope(Some("cwd_inferred"), None)
+        .unwrap()
+        .unwrap();
+    let exact_without_cwd = ScopeSelector::from_optional_scope(Some(repo_scope().as_str()), None)
+        .unwrap()
+        .unwrap();
+    let inferred = ScopeSelector::from_optional_scope(Some("cwd_inferred"), Some(cwd.clone()))
+        .unwrap()
+        .unwrap();
+    let omitted = ScopeSelector::from_optional_scope(None, Some(cwd.clone()))
+        .unwrap()
+        .unwrap();
+    let exact_err =
+        ScopeSelector::from_optional_scope(Some(repo_scope().as_str()), Some(cwd.clone()))
+            .unwrap_err();
+
+    assert_eq!(omitted_without_cwd, None);
+    assert_eq!(inferred_without_cwd, ScopeSelector::cwd_inferred(None));
+    assert_eq!(exact_without_cwd, ScopeSelector::Path(repo_scope()));
+    assert_eq!(inferred, ScopeSelector::cwd_inferred(Some(cwd.clone())));
+    assert_eq!(omitted, ScopeSelector::cwd_inferred(Some(cwd)));
+    assert!(exact_err.to_string().contains("cwd can only be supplied"));
+}
+
+#[test]
+fn scope_selector_optional_scope_rejects_empty_cwd() {
+    let err = ScopeSelector::from_optional_scope(None, Some(PathBuf::from(""))).unwrap_err();
+
+    assert!(err.to_string().contains("cwd cannot be empty"));
+}
+
+#[test]
 fn scope_selection_policy_allows_exact_write() {
     let scope = repo_scope();
     let selection = ResolvedScopeSelection {

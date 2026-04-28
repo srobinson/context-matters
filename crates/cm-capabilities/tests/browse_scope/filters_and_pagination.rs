@@ -1,10 +1,11 @@
 use super::support::{seed_scoped_with_details, test_store, wctx};
 
 use cm_capabilities::browse::{BrowseRequest, browse};
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{BrowseSort, ContextStore, EntryKind, EntryMeta, NewEntry, ScopePath};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_auto_preserves_other_filters_and_pagination() {
+async fn browse_scope_cwd_inferred_preserves_other_filters_and_pagination() {
     let (store, _dir) = test_store().await;
     let repo_scope = "global/project:helioy/repo:context-matters";
 
@@ -88,8 +89,9 @@ async fn browse_scope_auto_preserves_other_filters_and_pagination() {
     let page1 = browse(
         &store,
         BrowseRequest {
-            scope: Some("auto".to_owned()),
-            cwd: Some("/tmp/helioy/context-matters".into()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
             kind: Some(EntryKind::Fact),
             tag: Some("keep".to_owned()),
             created_by: Some("agent:auto".to_owned()),
@@ -115,8 +117,9 @@ async fn browse_scope_auto_preserves_other_filters_and_pagination() {
     let page2 = browse(
         &store,
         BrowseRequest {
-            scope: Some("auto".to_owned()),
-            cwd: Some("/tmp/helioy/context-matters".into()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
             kind: Some(EntryKind::Fact),
             tag: Some("keep".to_owned()),
             created_by: Some("agent:auto".to_owned()),

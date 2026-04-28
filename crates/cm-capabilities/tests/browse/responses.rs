@@ -1,6 +1,7 @@
 use super::support::{create_global, seed_entry, test_store};
 
 use cm_capabilities::browse::{BROWSE_SCOPE_DEFAULT_ADVISORY, BrowseRequest, browse};
+use cm_capabilities::scope::CWD_INFERRED_SCOPE;
 use cm_core::EntryKind;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -24,7 +25,7 @@ async fn browse_returns_all_entries_with_defaults() {
     assert_eq!(result.total, 2);
     assert!(!result.has_more);
     assert!(result.next_cursor.is_none());
-    assert_eq!(result.scope_used.as_deref(), Some("auto"));
+    assert_eq!(result.scope_used.as_deref(), Some(CWD_INFERRED_SCOPE));
     assert!(result.include_resolution);
     assert_eq!(result.limit_used, 20);
     assert_eq!(

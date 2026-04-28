@@ -14,9 +14,9 @@
 use anyhow::Result;
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
-use cm_capabilities::scope::BrowseScopeMode;
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::parse_kind;
-use cm_core::{ContextStore, ScopePath};
+use cm_core::ContextStore;
 
 use crate::cli::errors::{capability_error, string_error};
 use crate::cli::scope::print_advisory;
@@ -42,15 +42,16 @@ pub async fn run(
     cursor: Option<String>,
     json: bool,
 ) -> Result<()> {
-    let scope_path = match scope_path {
-        Some(s) => Some(ScopePath::parse(&s).map_err(capability_error)?),
-        None => None,
-    };
-
-    let scope_mode = match scope_mode {
-        Some(mode) => mode.parse::<BrowseScopeMode>().map_err(capability_error)?,
-        None => BrowseScopeMode::default(),
-    };
+    if scope_path.is_some() {
+        return Err(string_error(
+            "Invalid parameters: scope_path has been removed; use scope",
+        ));
+    }
+    if scope_mode.is_some() {
+        return Err(string_error(
+            "Invalid parameters: scope_mode has been removed",
+        ));
+    }
 
     let cwd = match cwd {
         Some(raw) if raw.trim().is_empty() => {
@@ -59,6 +60,8 @@ pub async fn run(
         Some(raw) => Some(raw.into()),
         None => None,
     };
+    let scope =
+        ScopeSelector::from_optional_scope(scope.as_deref(), cwd).map_err(capability_error)?;
 
     let kind = match kind {
         Some(k) => Some(parse_kind(&k).map_err(string_error)?),
@@ -67,9 +70,6 @@ pub async fn run(
 
     let request = BrowseRequest {
         scope,
-        scope_path,
-        scope_mode,
-        cwd,
         include_resolution: include_resolution.then_some(true),
         kind,
         tag,

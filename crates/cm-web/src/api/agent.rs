@@ -20,7 +20,7 @@ use cm_capabilities::projection::{
     WebBrowseView, WebRecallView, project_web_browse, project_web_recall,
 };
 use cm_capabilities::recall::{self, RecallRequest, RecallResult};
-use cm_capabilities::scope::BrowseScopeMode;
+use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{BrowseSort, EntryKind, ScopePath};
 use cm_store::CmStore;
@@ -207,18 +207,16 @@ pub(crate) async fn execute_browse(
         check_input_size(c, "cwd").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
 
-    let scope_path = bq
-        .scope_path
-        .map(|s| ScopePath::parse(&s))
-        .transpose()
-        .map_err(|e| ApiError(cm_core::CmError::InvalidScopePath(e)))?;
-
-    let scope_mode = bq
-        .scope_mode
-        .as_deref()
-        .map(|mode| mode.parse::<BrowseScopeMode>().map_err(ApiError))
-        .transpose()?
-        .unwrap_or_default();
+    if bq.scope_path.is_some() {
+        return Err(ApiError(cm_core::CmError::Validation(
+            "scope_path has been removed; use scope".to_owned(),
+        )));
+    }
+    if bq.scope_mode.is_some() {
+        return Err(ApiError(cm_core::CmError::Validation(
+            "scope_mode has been removed".to_owned(),
+        )));
+    }
     let cwd = match bq.cwd {
         Some(raw) if raw.trim().is_empty() => {
             return Err(ApiError(cm_core::CmError::Validation(
@@ -228,6 +226,7 @@ pub(crate) async fn execute_browse(
         Some(raw) => Some(raw.into()),
         None => None,
     };
+    let scope = ScopeSelector::from_optional_scope(bq.scope.as_deref(), cwd).map_err(ApiError)?;
 
     let kind = bq
         .kind
@@ -247,10 +246,7 @@ pub(crate) async fn execute_browse(
     let result = browse::browse(
         store,
         BrowseRequest {
-            scope: bq.scope,
-            scope_path,
-            scope_mode,
-            cwd,
+            scope,
             include_resolution: bq.include_resolution,
             kind,
             tag: bq.tag,
