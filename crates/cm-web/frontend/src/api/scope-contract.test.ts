@@ -11,8 +11,19 @@ const entry = {
 
 void api.entries.browse({ scope });
 void api.entries.search({ query: "Scope", scope });
+void api.entries.recall({
+  query: "Scope",
+  scope: "cwd_inferred",
+  cwd: "/tmp/helioy/context-matters",
+});
+void api.agent.recall({
+  query: "Scope",
+  scope: "cwd_inferred",
+  cwd: "/tmp/helioy/context-matters",
+});
 void api.agent.browse({ scope: "cwd_inferred", cwd: "/tmp/helioy/context-matters" });
 void api.export(scope);
+void api.export({ scope: "cwd_inferred", cwd: "/tmp/helioy/context-matters" });
 void api.entries.create(entry);
 void api.entries.merge("019dd3ad-8ea2-7751-ad87-1bd49e8bc242", entry);
 

@@ -161,10 +161,16 @@ export interface MutationListParams {
 export interface RecallParams {
   query?: string;
   scope?: string;
+  cwd?: string;
   kinds?: EntryKind[];
   tags?: string[];
   limit?: number;
   max_tokens?: number;
+}
+
+export interface ExportParams {
+  scope?: string;
+  cwd?: string;
 }
 
 export interface AgentBrowseParams {
@@ -229,6 +235,7 @@ export const api = {
         `/entries/recall${toSearchParams({
           query: params.query,
           scope: params.scope,
+          cwd: params.cwd,
           kinds: params.kinds,
           tags: params.tags,
           limit: params.limit,
@@ -275,6 +282,7 @@ export const api = {
         `/agent/recall${toSearchParams({
           query: params.query,
           scope: params.scope,
+          cwd: params.cwd,
           kinds: params.kinds,
           tags: params.tags,
           limit: params.limit,
@@ -321,9 +329,12 @@ export const api = {
     },
   },
 
-  export(scope?: string): Promise<Blob> {
-    const params = scope ? `?scope=${encodeURIComponent(scope)}` : "";
-    return fetch(`${API_BASE}/export${params}`).then((res) => {
+  export(params?: string | ExportParams): Promise<Blob> {
+    const query =
+      typeof params === "string"
+        ? toSearchParams({ scope: params })
+        : toSearchParams({ scope: params?.scope, cwd: params?.cwd });
+    return fetch(`${API_BASE}/export${query}`).then((res) => {
       if (!res.ok) throw new ApiError(res.status, null);
       return res.blob();
     });
