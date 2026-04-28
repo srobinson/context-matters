@@ -5,8 +5,8 @@
 //! metadata, confidence enum validation) for a workflow that has no real CLI
 //! customer. The clap surface in [`super::cli_def`] is registered with the
 //! generated `STORE_*` help constants so `cm store --help` and
-//! `cm --markdown-help` document every flag, but invocation prints a short
-//! pointer to the Curator UI and exits 0.
+//! `cm --markdown-help` document every flag. Valid invocations print a short
+//! pointer to the Curator UI and exit 0.
 //!
 //! Accepted flags parse and are dropped after scope selector validation. If a
 //! real handler is ever needed, this file is the hook point.
