@@ -8,10 +8,13 @@ use cm_core::{ContextStore, EntryKind};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{ToolResult, cm_err_to_string, dual_response, parse_params};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
+};
 
 /// Parameters for the `cx_recall` tool.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CxRecallParams {
     #[serde(default)]
     query: Option<String>,
@@ -33,6 +36,7 @@ struct CxRecallParams {
 }
 
 pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
+    reject_removed_scope_inputs(args)?;
     let params: CxRecallParams = parse_params(args)?;
 
     // Validate query size if provided

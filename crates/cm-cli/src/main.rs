@@ -67,8 +67,6 @@ async fn run() -> Result<()> {
         }
         Some(Commands::Browse {
             scope,
-            scope_path,
-            scope_mode,
             cwd,
             include_resolution,
             kind,
@@ -83,8 +81,6 @@ async fn run() -> Result<()> {
             cli::browse::run(
                 &store,
                 scope,
-                scope_path,
-                scope_mode,
                 cwd,
                 include_resolution,
                 kind,
@@ -138,12 +134,12 @@ async fn run() -> Result<()> {
         Some(Commands::Deposit {
             exchanges,
             summary,
-            scope_path,
+            scope,
             created_by,
             json,
         }) => {
             let store = cli::open_store().await?;
-            cli::deposit::run(&store, exchanges, summary, scope_path, created_by, json).await?;
+            cli::deposit::run(&store, exchanges, summary, scope, created_by, json).await?;
             if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
                 tracing::debug!(error = %e, "WAL checkpoint failed");
             }
@@ -161,9 +157,9 @@ async fn run() -> Result<()> {
         // ---------------- ADMIN ----------------
         Some(Commands::Init { global, force }) => cli::cmd_init(global, force),
         Some(Commands::Serve) => cli::cmd_serve().await,
-        Some(Commands::Export { scope_path, format }) => {
+        Some(Commands::Export { scope, format }) => {
             let store = cli::open_store().await?;
-            cli::export::run(&store, scope_path, format).await?;
+            cli::export::run(&store, scope, format).await?;
             if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
                 tracing::debug!(error = %e, "WAL checkpoint failed");
             }

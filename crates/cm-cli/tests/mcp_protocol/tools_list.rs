@@ -58,27 +58,55 @@ fn protocol_tools_list() {
     let browse_props = browse_tool["inputSchema"]["properties"]
         .as_object()
         .expect("cx_browse inputSchema properties");
-    for expected in [
-        "scope",
-        "scope_mode",
-        "cwd",
-        "include_resolution",
-        "scope_path",
-    ] {
+    for expected in ["scope", "cwd", "include_resolution"] {
         assert!(
             browse_props.contains_key(expected),
             "cx_browse inputSchema missing {expected}"
         );
     }
-    assert_eq!(
-        browse_props["scope_mode"]["enum"],
-        json!(["resolved"]),
-        "scope_mode should reserve only the implemented first-pass mode"
-    );
+    for removed in ["scope_path", "scope_mode"] {
+        assert!(
+            !browse_props.contains_key(removed),
+            "cx_browse inputSchema still exposes removed input {removed}"
+        );
+    }
     assert!(
         browse_tool["outputSchema"]["properties"]["resolution"].is_object(),
         "cx_browse outputSchema must document optional resolution metadata"
     );
+
+    for migrated in [
+        "cx_browse",
+        "cx_recall",
+        "cx_store",
+        "cx_deposit",
+        "cx_export",
+    ] {
+        let tool = tools
+            .iter()
+            .find(|tool| tool["name"] == migrated)
+            .unwrap_or_else(|| panic!("{migrated} tool is advertised"));
+        let props = tool["inputSchema"]["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{migrated} inputSchema properties"));
+        assert!(
+            props.contains_key("scope"),
+            "{migrated} inputSchema must expose scope"
+        );
+        for removed in ["scope_path", "scope_mode"] {
+            assert!(
+                !props.contains_key(removed),
+                "{migrated} inputSchema still exposes removed input {removed}"
+            );
+        }
+        assert!(
+            !tool["description"]
+                .as_str()
+                .expect("tool description")
+                .contains("scope_path"),
+            "{migrated} description should not mention public scope_path input"
+        );
+    }
 
     for tool in tools {
         assert!(tool["name"].is_string(), "tool missing name");

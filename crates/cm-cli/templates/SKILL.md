@@ -19,12 +19,12 @@ This project has a structured context store available via the **`cm` MCP server*
 | `cx_recall` | Search and retrieve context relevant to the current task | `cx_recall(query: "auth decisions", scope: "global/project:helioy")` |
 | `cx_store` | Persist a fact, decision, preference, or lesson | `cx_store(title: "Use UUIDv7", body: "...", kind: "decision")` |
 | `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{user: "...", assistant: "..."}])` |
-| `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope_path: "global/project:helioy")` |
+| `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: "global/project:helioy")` |
 | `cx_get` | Fetch full content for specific entry IDs | `cx_get(ids: ["uuid1", "uuid2"])` |
 | `cx_update` | Partially update an existing entry | `cx_update(id: "uuid", title: "Updated title")` |
 | `cx_forget` | Soft-delete entries no longer relevant | `cx_forget(ids: ["uuid"])` |
 | `cx_stats` | View store statistics and scope breakdown | `cx_stats()` |
-| `cx_export` | Export entries as JSON for backup | `cx_export(scope_path: "global/project:helioy")` |
+| `cx_export` | Export entries as JSON for backup | `cx_export(scope: "global/project:helioy")` |
 
 ## Context Management Workflow
 
@@ -43,7 +43,7 @@ This project has a structured context store available via the **`cm` MCP server*
 2. cx_recall(query: "summary of task", scope: "global/project:helioy/repo:nancyr")
    → retrieve facts, decisions, preferences, feedback relevant to THIS task
 3. Work on the task
-4. cx_store(title: "...", body: "...", kind: "decision", scope_path: "global/project:helioy")
+4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
    → persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
    → preserve conversation at session end for continuity
@@ -82,7 +82,7 @@ Search and retrieve context entries relevant to the current task. Primary retrie
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phra... |
-| `scope` | string | no | Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:heli... |
+| `scope` | string | no | Scope selector to search within. Pass an exact scope path or 'cwd_inferred'. Exact scopes retrieve entries from that ... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -97,7 +97,7 @@ Store a single context entry with structured metadata. Scopes are auto-created i
 | `title` | string | yes | Short summary of the entry. Displayed in search results and browse listings. |
 | `body` | string | yes | Full content body in markdown. |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | yes | Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rat... |
-| `scope_path` | string | no | Target scope path. Auto-created with ancestor chain if it does not exist. Default: 'global'. Format: 'global', 'globa... |
+| `scope` | string | no | Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. De... |
 | `created_by` | string | no | Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolid... |
 | `tags` | array<string> | no | Freeform tags for categorization and filtering. Pass a JSON array: ["tag1", "tag2"]. |
 | `confidence` | enum: high \| medium \| low | no | Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level. |
@@ -114,20 +114,18 @@ Batch-store conversation exchanges for future context. Each exchange (user/assis
 |-----------|------|----------|-------------|
 | `exchanges` | array<object> | yes | Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optio... |
 | `summary` | string | no | Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates'... |
-| `scope_path` | string | no | Target scope path. Auto-created if missing. Default: 'global'. |
+| `scope` | string | no | Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. De... |
 | `created_by` | string | no | Attribution string. Default: 'agent:claude-code'. |
 
 ### `cx_browse`
 
-List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to inferred local scope when scope_path is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.
+List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to cwd_inferred when scope is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | no | Preferred browse scope. Use "auto" to infer the most plausible existing local scope from cwd, or pass an explicit sco... |
-| `scope_path` | string | no | Compatibility exact scope filter. When supplied, browse filters to this exact scope path and does not infer a local s... |
-| `scope_mode` | enum: resolved | no | Scope resolution mode. Only "resolved" is implemented in this first pass. |
-| `cwd` | string | no | Filesystem working directory used for scope="auto" inference. The capability defaults this from the process current d... |
-| `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="auto". |
+| `scope` | string | no | Preferred browse scope. Use "cwd_inferred" to infer the most plausible existing local scope from cwd, or pass an exac... |
+| `cwd` | string | no | Filesystem working directory used for scope="cwd_inferred" resolution. The capability defaults this from the process ... |
+| `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="cwd_inferred". |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | no | Filter by entry kind. |
 | `tag` | string | no | Filter by tag. Entries must have at least one matching tag. |
 | `created_by` | string | no | Filter by creator attribution string. |
@@ -173,11 +171,11 @@ View aggregate statistics about the context store. Returns active/superseded ent
 
 ### `cx_export`
 
-Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree.
+Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter with a scope selector.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope_path` | string | no | Filter export to a specific scope path and its descendants. Omit to export everything. |
+| `scope` | string | no | Filter export to a scope selector. Pass an exact scope path or 'cwd_inferred'. Omit to export everything. |
 | `format` | enum: json | no | Export format. Currently only 'json' is supported. Default: 'json'. |
 
 ## Rules

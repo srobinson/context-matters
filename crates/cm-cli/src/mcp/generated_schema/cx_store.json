@@ -41,8 +41,8 @@
         "description": "Numeric priority for manual ordering. Higher values surface first in recall results.",
         "type": "integer"
       },
-      "scope_path": {
-        "description": "Target scope path. Auto-created with ancestor chain if it does not exist. Default: 'global'. Format: 'global', 'global/project:<id>', 'global/project:<id>/repo:<id>', 'global/project:<id>/repo:<id>/session:<id>'.",
+      "scope": {
+        "description": "Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. Default: 'global'.",
         "type": "string"
       },
       "source": {

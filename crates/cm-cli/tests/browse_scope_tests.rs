@@ -67,7 +67,7 @@ async fn browse_cwd_inferred_scope_resolves_repo_and_returns_resolution() {
             "title": "Repo fact",
             "body": "Repo-local fact.",
             "kind": "fact",
-            "scope_path": repo_scope
+            "scope": repo_scope
         }),
     )
     .await
@@ -142,7 +142,7 @@ async fn browse_scope_stays_exact_without_resolution() {
             "title": "Project fact",
             "body": "Project-local fact.",
             "kind": "fact",
-            "scope_path": "global/project:helioy"
+            "scope": "global/project:helioy"
         }),
     )
     .await

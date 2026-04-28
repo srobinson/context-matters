@@ -8,22 +8,17 @@ use cm_core::ContextStore;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{ToolResult, cm_err_to_string, dual_response, parse_params};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
+};
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CxBrowseParams {
     /// Preferred scope input. Accepts "cwd_inferred" for local scope
     /// inference or an explicit scope path for exact filtering.
     #[serde(default)]
     scope: Option<String>,
-
-    /// Filter to entries at this exact scope path (no ancestor walk).
-    #[serde(default)]
-    scope_path: Option<String>,
-
-    /// Browse scope resolution mode. Only "resolved" is supported.
-    #[serde(default)]
-    scope_mode: Option<String>,
 
     /// Filesystem cwd used for scope="cwd_inferred" inference.
     #[serde(default)]
@@ -59,14 +54,8 @@ struct CxBrowseParams {
 }
 
 pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
+    reject_removed_scope_inputs(args)?;
     let params: CxBrowseParams = parse_params(args)?;
-
-    if params.scope_path.is_some() {
-        return Err("Invalid parameters: scope_path has been removed; use scope".to_owned());
-    }
-    if params.scope_mode.is_some() {
-        return Err("Invalid parameters: scope_mode has been removed".to_owned());
-    }
 
     let cwd = match params.cwd {
         Some(raw) if raw.trim().is_empty() => {

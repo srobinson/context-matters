@@ -95,7 +95,7 @@ async fn recall_without_query_uses_scope_resolution() {
             "title": "Project fact",
             "body": "Helioy uses monorepo structure.",
             "kind": "fact",
-            "scope_path": "global/project:helioy"
+            "scope": "global/project:helioy"
         }),
     )
     .await

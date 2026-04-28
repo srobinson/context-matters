@@ -37,7 +37,7 @@ pub async fn run(
     store: &impl ContextStore,
     exchanges: String,
     summary: Option<String>,
-    scope_path: Option<String>,
+    scope: Option<String>,
     created_by: Option<String>,
     json: bool,
 ) -> Result<()> {
@@ -58,12 +58,12 @@ pub async fn run(
     let exchanges: Vec<Exchange> = serde_json::from_str(&exchanges_json)
         .context("--exchanges must be a JSON array of {user, assistant, title?}")?;
 
-    let scope_path = resolve_scope(scope_path.as_deref());
+    let scope = resolve_scope(scope.as_deref());
 
     let request = DepositRequest {
         exchanges,
         summary,
-        scope: Some(ScopeSelector::parse(&scope_path).map_err(capability_error)?),
+        scope: Some(ScopeSelector::parse(&scope).map_err(capability_error)?),
         created_by: created_by.unwrap_or_else(|| DEFAULT_CREATED_BY.to_owned()),
     };
 

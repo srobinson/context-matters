@@ -14,11 +14,14 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::mcp::{ToolResult, cm_err_to_string, parse_params, yaml_response};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, yaml_response,
+};
 
 use super::{default_created_by, default_scope};
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CxDepositParams {
     /// Conversation exchanges to store.
     exchanges: Vec<Exchange>,
@@ -27,9 +30,9 @@ struct CxDepositParams {
     #[serde(default)]
     summary: Option<String>,
 
-    /// Target scope path. Default: "global".
+    /// Target scope selector. Default: "global".
     #[serde(default = "default_scope")]
-    scope_path: String,
+    scope: String,
 
     /// Attribution. Default: "agent:claude-code".
     #[serde(default = "default_created_by")]
@@ -38,12 +41,13 @@ struct CxDepositParams {
 
 pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     let ctx = WriteContext::new(MutationSource::Mcp);
+    reject_removed_scope_inputs(args)?;
     let params: CxDepositParams = parse_params(args)?;
 
     let request = DepositRequest {
         exchanges: params.exchanges,
         summary: params.summary,
-        scope: Some(ScopeSelector::parse(&params.scope_path).map_err(cm_err_to_string)?),
+        scope: Some(ScopeSelector::parse(&params.scope).map_err(cm_err_to_string)?),
         created_by: params.created_by,
     };
 

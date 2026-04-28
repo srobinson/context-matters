@@ -58,7 +58,7 @@ async fn store_creates_entry_at_global_scope() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn store_auto_creates_scope_chain() {
+async fn store_scope_auto_creates_scope_chain() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
@@ -68,7 +68,7 @@ async fn store_auto_creates_scope_chain() {
             "title": "Repo-level decision",
             "body": "Use sqlx for database access.",
             "kind": "decision",
-            "scope_path": "global/project:helioy/repo:nancyr"
+            "scope": "global/project:helioy/repo:nancyr"
         }),
     )
     .await;
@@ -170,7 +170,7 @@ async fn store_and_update_share_invalid_metadata_errors() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn store_rejects_invalid_scope_path() {
+async fn store_rejects_invalid_scope() {
     let (store, _dir) = test_store().await;
 
     let result = tools::cx_store(
@@ -179,12 +179,12 @@ async fn store_rejects_invalid_scope_path() {
             "title": "Test",
             "body": "Test body",
             "kind": "fact",
-            "scope_path": "not/valid"
+            "scope": "not/valid"
         }),
     )
     .await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Invalid scope_path"));
+    assert!(result.unwrap_err().contains("Invalid scope"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

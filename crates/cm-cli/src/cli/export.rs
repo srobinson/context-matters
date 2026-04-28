@@ -31,10 +31,10 @@ use crate::cli::errors::capability_error;
 /// `main.rs`; this keeps the handler decoupled from the clap surface.
 pub async fn run(
     store: &impl ContextStore,
-    scope_path: Option<String>,
+    scope: Option<String>,
     format: Option<String>,
 ) -> Result<()> {
-    let scope = scope_path
+    let scope = scope
         .as_deref()
         .map(ScopeSelector::parse)
         .transpose()

@@ -104,9 +104,36 @@ pub fn parse_params<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, S
     })
 }
 
+/// Reject public scope selection inputs removed by ALP-2054.
+pub fn reject_removed_scope_inputs(args: &Value) -> Result<(), String> {
+    let Some(object) = args.as_object() else {
+        return Ok(());
+    };
+    if object.contains_key("scope_path") {
+        return Err("Invalid parameters: scope_path has been removed; use scope".to_owned());
+    }
+    if object.contains_key("scope_mode") {
+        return Err("Invalid parameters: scope_mode has been removed".to_owned());
+    }
+    Ok(())
+}
+
+/// Reject unknown fields when a param struct cannot use deny_unknown_fields.
+pub fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), String> {
+    let Some(object) = args.as_object() else {
+        return Ok(());
+    };
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(format!("Invalid parameters: unknown field `{key}`"));
+        }
+    }
+    Ok(())
+}
+
 // ── Serde Defaults ────────────────────────────────────────────────
 
-/// Serde default for scope_path fields.
+/// Serde default for scope fields.
 pub fn default_scope() -> String {
     "global".to_owned()
 }

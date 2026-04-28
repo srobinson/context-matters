@@ -13,13 +13,16 @@ use cm_core::ContextStore;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::mcp::{ToolResult, cm_err_to_string, json_response, parse_params};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, json_response, parse_params, reject_removed_scope_inputs,
+};
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CxExportParams {
-    /// Filter to a specific scope path.
+    /// Filter to a scope selector.
     #[serde(default)]
-    scope_path: Option<String>,
+    scope: Option<String>,
 
     /// Export format. Only "json" supported.
     #[serde(default = "default_format")]
@@ -31,9 +34,10 @@ fn default_format() -> String {
 }
 
 pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
+    reject_removed_scope_inputs(args)?;
     let params: CxExportParams = parse_params(args)?;
     let scope = params
-        .scope_path
+        .scope
         .as_deref()
         .map(ScopeSelector::parse)
         .transpose()

@@ -1,5 +1,5 @@
 {
-  "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter to a specific scope subtree.",
+  "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter with a scope selector.",
   "inputSchema": {
     "properties": {
       "format": {
@@ -9,8 +9,8 @@
         ],
         "type": "string"
       },
-      "scope_path": {
-        "description": "Filter export to a specific scope path and its descendants. Omit to export everything.",
+      "scope": {
+        "description": "Filter export to a scope selector. Pass an exact scope path or 'cwd_inferred'. Omit to export everything.",
         "type": "string"
       }
     },

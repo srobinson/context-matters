@@ -25,8 +25,8 @@
         },
         "type": "array"
       },
-      "scope_path": {
-        "description": "Target scope path. Auto-created if missing. Default: 'global'.",
+      "scope": {
+        "description": "Target scope selector. Pass an exact scope path or 'cwd_inferred'. Exact scope chains are auto-created if missing. Default: 'global'.",
         "type": "string"
       },
       "summary": {

@@ -30,8 +30,6 @@ use crate::cli::scope::print_advisory;
 pub async fn run(
     store: &impl ContextStore,
     scope: Option<String>,
-    scope_path: Option<String>,
-    scope_mode: Option<String>,
     cwd: Option<String>,
     include_resolution: bool,
     kind: Option<String>,
@@ -42,17 +40,6 @@ pub async fn run(
     cursor: Option<String>,
     json: bool,
 ) -> Result<()> {
-    if scope_path.is_some() {
-        return Err(string_error(
-            "Invalid parameters: scope_path has been removed; use scope",
-        ));
-    }
-    if scope_mode.is_some() {
-        return Err(string_error(
-            "Invalid parameters: scope_mode has been removed",
-        ));
-    }
-
     let cwd = match cwd {
         Some(raw) if raw.trim().is_empty() => {
             return Err(string_error("Invalid parameters: cwd cannot be empty"));

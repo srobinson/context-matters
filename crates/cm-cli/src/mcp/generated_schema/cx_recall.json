@@ -22,7 +22,7 @@
         "type": "string"
       },
       "scope": {
-        "description": "Scope path to search within. Retrieves entries from this scope and all ancestor scopes. Example: 'global/project:helioy/repo:nancyr' also searches 'global/project:helioy' and 'global'. Default: 'global'.",
+        "description": "Scope selector to search within. Pass an exact scope path or 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'.",
         "type": "string"
       },
       "tags": {
