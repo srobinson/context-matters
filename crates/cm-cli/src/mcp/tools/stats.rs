@@ -6,10 +6,14 @@ use cm_capabilities::validation::parse_tag_sort;
 use cm_core::ContextStore;
 use serde_json::Value;
 
-use crate::mcp::{ToolResult, cm_err_to_string, dual_response, reject_removed_scope_inputs};
+use crate::mcp::{
+    ToolResult, cm_err_to_string, dual_response, reject_removed_scope_inputs, reject_unknown_fields,
+};
 
 pub async fn cx_stats(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     reject_removed_scope_inputs(args)?;
+    reject_unknown_fields(args, &["tag_sort"])?;
+
     let tag_sort_str = args
         .get("tag_sort")
         .and_then(Value::as_str)

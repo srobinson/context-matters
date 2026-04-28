@@ -204,6 +204,31 @@ fn protocol_non_scope_tools_reject_removed_scope_inputs() {
 }
 
 #[test]
+fn protocol_stats_rejects_unknown_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let (child, mut stdin, mut stdout) = spawn_server(&dir);
+
+    send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+
+    let resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &call_tool(json!({"bogus_field": "x"}), "cx_stats", 2),
+    );
+    let message = tool_error_message(&resp);
+    assert!(
+        message.contains("unknown field `bogus_field`"),
+        "cx_stats should reject unknown field, got {message:?}"
+    );
+
+    shutdown(child, stdin);
+}
+
+#[test]
 fn protocol_migrated_scope_tools_accept_exact_scope() {
     let dir = tempfile::tempdir().unwrap();
     let (child, mut stdin, mut stdout) = spawn_server(&dir);

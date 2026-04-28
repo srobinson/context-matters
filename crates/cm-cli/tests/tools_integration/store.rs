@@ -58,7 +58,7 @@ async fn store_creates_entry_at_global_scope() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn store_scope_auto_creates_scope_chain() {
+async fn store_exact_scope_creates_scope_chain() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 

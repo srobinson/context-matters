@@ -21,7 +21,8 @@ use crate::cli::colors::Colors;
 use crate::cli::errors::capability_error;
 
 /// `cm store` handler. Synchronous because it touches no I/O beyond
-/// `println!`. Returns `Ok(())` after printing; the binary exits 0.
+/// `println!`. Validates the optional scope selector before printing so
+/// removed public inputs fail the same way as MCP `cx_store`.
 pub fn run(scope: Option<String>) -> Result<()> {
     if let Some(scope) = scope {
         ScopeSelector::parse(&scope).map_err(capability_error)?;
@@ -64,9 +65,8 @@ pub fn run(scope: Option<String>) -> Result<()> {
 mod tests {
     use super::*;
 
-    /// `run` must always return `Ok(())`. The stub is by definition
-    /// infallible — if this regresses, callers in `main.rs` would start
-    /// propagating errors that should never have existed.
+    /// Without a scope selector, `run` prints the stub message and exits
+    /// successfully.
     #[test]
     fn run_returns_ok() {
         assert!(run(None).is_ok());

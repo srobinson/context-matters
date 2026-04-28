@@ -12,6 +12,17 @@ fn frontend_source(relative: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read frontend source {relative}: {e}"))
 }
 
+fn source_between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+    let start_index = source
+        .find(start)
+        .unwrap_or_else(|| panic!("missing source marker {start:?}"));
+    let tail = &source[start_index..];
+    let end_index = tail
+        .find(end)
+        .unwrap_or_else(|| panic!("missing source marker {end:?} after {start:?}"));
+    &tail[..end_index]
+}
+
 #[test]
 fn feed_search_migrates_scope_path_url_state_to_scope() {
     let source = frontend_source("routes/feed/search.ts");
@@ -63,5 +74,37 @@ fn frontend_api_contract_exercises_cwd_inferred_recall_and_export() {
                 .count()
                 >= 3,
         "frontend request contracts should exercise cwd_inferred recall and export with cwd"
+    );
+}
+
+#[test]
+fn frontend_api_client_serializes_cwd_query_params() {
+    let source = frontend_source("api/client.ts");
+
+    let entries_recall = source_between(
+        &source,
+        "recall(params: RecallParams): Promise<RecallView>",
+        "get(id: string): Promise<EntryDetail>",
+    );
+    assert!(
+        entries_recall.contains("scope: params.scope,")
+            && entries_recall.contains("cwd: params.cwd,"),
+        "entries.recall should serialize scope and cwd query params"
+    );
+
+    let agent_recall = source_between(
+        &source,
+        "agent: {\n    recall(params: RecallParams): Promise<RecallView>",
+        "browse(params: AgentBrowseParams = {}): Promise<BrowseView>",
+    );
+    assert!(
+        agent_recall.contains("scope: params.scope,") && agent_recall.contains("cwd: params.cwd,"),
+        "agent.recall should serialize scope and cwd query params"
+    );
+
+    let export_call = source_between(&source, "export(params?: string | ExportParams)", "};");
+    assert!(
+        export_call.contains("toSearchParams({ scope: params?.scope, cwd: params?.cwd })"),
+        "export should serialize scope and cwd query params"
     );
 }
