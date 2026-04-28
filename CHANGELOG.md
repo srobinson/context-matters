@@ -12,6 +12,13 @@
 
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.11](https://github.com/srobinson/context-matters/compare/v0.2.10...v0.2.11) (2026-04-28)
+
+
+### Bug Fixes
+
+* align scope selector contract across cm surfaces ([#50](https://github.com/srobinson/context-matters/issues/50)) ([69bd557](https://github.com/srobinson/context-matters/commit/69bd5574452d32772e1f86b2d1a8ba4fa7c2ece3))
+
 ## [0.2.10](https://github.com/srobinson/context-matters/compare/v0.2.9...v0.2.10) (2026-04-22)
 
 
