@@ -1,6 +1,7 @@
 {
   "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter with a scope selector.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "format": {
         "description": "Export format. Currently only 'json' is supported. Default: 'json'.",

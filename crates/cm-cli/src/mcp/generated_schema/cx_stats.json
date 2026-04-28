@@ -1,6 +1,7 @@
 {
   "description": "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "tag_sort": {
         "description": "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first.",

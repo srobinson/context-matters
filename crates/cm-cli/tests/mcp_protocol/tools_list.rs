@@ -118,6 +118,12 @@ fn protocol_tools_list() {
         assert!(tool["name"].is_string(), "tool missing name");
         assert!(tool["description"].is_string(), "tool missing description");
         assert!(tool["inputSchema"].is_object(), "tool missing inputSchema");
+        assert_eq!(
+            tool["inputSchema"]["additionalProperties"],
+            false,
+            "{} inputSchema must reject stale or unknown public request fields",
+            tool["name"].as_str().expect("tool name")
+        );
     }
 
     // ALP-1759: read tools advertise outputSchema so MCP 2025-06-18 clients can
@@ -198,6 +204,10 @@ fn assert_generated_scope_schema_inputs_are_current() {
         let schema: serde_json::Value = serde_json::from_str(&content)
             .unwrap_or_else(|e| panic!("{relative} should be valid JSON: {e}"));
         let input = &schema["inputSchema"];
+        assert_eq!(
+            input["additionalProperties"], false,
+            "{relative} inputSchema must reject stale or unknown public request fields"
+        );
         let input_text = serde_json::to_string(input).expect("input schema serializes");
         for removed in ["scope_path", "scope_mode"] {
             assert!(

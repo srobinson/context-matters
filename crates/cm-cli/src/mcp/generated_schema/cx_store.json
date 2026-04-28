@@ -1,6 +1,7 @@
 {
   "description": "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "body": {
         "description": "Full content body in markdown.",

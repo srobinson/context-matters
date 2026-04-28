@@ -1,6 +1,7 @@
 {
   "description": "List entries with filtering and cursor-based pagination. For inventory and exploration, not semantic search. Defaults to cwd_inferred when scope is omitted. Returns metadata + snippet (two-phase retrieval). Filters combine with AND semantics. Results ordered by updated_at DESC.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "created_by": {
         "description": "Filter by creator attribution string.",

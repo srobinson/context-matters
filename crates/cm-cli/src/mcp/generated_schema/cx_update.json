@@ -1,6 +1,7 @@
 {
   "description": "Partially update an existing entry. Only provided fields are modified. Changing body or kind recomputes content_hash and checks for duplicates. Scope migration is excluded; use cx_store with supersedes to move entries across scopes. At least one field must be provided.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "body": {
         "description": "New body content in markdown. Changing body recomputes content_hash and checks for duplicates. Omit to keep existing.",

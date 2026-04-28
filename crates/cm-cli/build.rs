@@ -210,6 +210,7 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(Strin
         }
 
         let mut input_schema = serde_json::json!({
+            "additionalProperties": false,
             "type": "object",
             "properties": properties
         });

@@ -1,6 +1,7 @@
 {
   "description": "Batch-store conversation exchanges for future context. Each exchange (user/assistant pair) becomes an observation entry. Optional summary creates a linked observation with 'elaborates' relations to each exchange. All entries created in a single transaction. Maximum 50 exchanges per deposit.",
   "inputSchema": {
+    "additionalProperties": false,
     "properties": {
       "created_by": {
         "description": "Attribution string. Default: 'agent:claude-code'.",
