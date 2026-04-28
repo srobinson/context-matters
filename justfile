@@ -28,8 +28,8 @@ install-local: build-local
         echo "Installed $dest"; \
     fi
 
-test:
-    cargo nextest run --workspace
+test *ARGS:
+    cargo nextest run --workspace {{ARGS}}
 
 # Run doctests (nextest doesn't support doctests)
 test-doc:

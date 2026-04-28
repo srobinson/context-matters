@@ -106,6 +106,29 @@ fn store_stub_points_users_to_curator_ui() {
         .stdout(contains("cm serve --web"));
 }
 
+#[test]
+fn store_stub_rejects_removed_auto_scope_selector() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["store", "--scope", "auto"])
+        .assert()
+        .failure()
+        .stderr(contains("scope='auto' has been removed"));
+}
+
+#[test]
+fn store_stub_accepts_current_scope_selectors() {
+    for scope in ["cwd_inferred", "global/project:helioy"] {
+        let dir = tempdir().unwrap();
+        cm_with_data_dir(dir.path())
+            .args(["store", "--scope", scope])
+            .assert()
+            .success()
+            .stdout(contains("Curator"))
+            .stdout(contains("cm serve --web"));
+    }
+}
+
 // ---------------- Init ----------------
 
 #[test]

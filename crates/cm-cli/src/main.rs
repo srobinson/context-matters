@@ -115,7 +115,7 @@ async fn run() -> Result<()> {
         }
 
         // ---------------- WRITE ----------------
-        Some(Commands::Store { .. }) => cli::store::run(),
+        Some(Commands::Store { scope, .. }) => cli::store::run(scope),
         Some(Commands::Update {
             id,
             title,
