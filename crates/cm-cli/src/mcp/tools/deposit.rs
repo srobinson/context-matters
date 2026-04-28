@@ -8,6 +8,7 @@
 
 use cm_capabilities::deposit::{self, DepositRequest, Exchange};
 use cm_capabilities::projection::format_deposit_ack;
+use cm_capabilities::scope::ScopeSelector;
 use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
@@ -42,7 +43,7 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolR
     let request = DepositRequest {
         exchanges: params.exchanges,
         summary: params.summary,
-        scope_path: params.scope_path,
+        scope: Some(ScopeSelector::parse(&params.scope_path).map_err(cm_err_to_string)?),
         created_by: params.created_by,
     };
 

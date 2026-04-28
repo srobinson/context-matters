@@ -1,6 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use cm_core::{CmError, ScopePath};
+use serde::Deserialize;
 
 pub const CWD_INFERRED_SCOPE: &str = "cwd_inferred";
 
@@ -74,6 +75,16 @@ impl FromStr for ScopeSelector {
             ))),
             exact => Ok(Self::Path(ScopePath::parse(exact)?)),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for ScopeSelector {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let scope = String::deserialize(deserializer)?;
+        Self::parse(&scope).map_err(serde::de::Error::custom)
     }
 }
 
