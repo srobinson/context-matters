@@ -60,6 +60,23 @@ fn scope_selector_rejects_removed_auto_value() {
 }
 
 #[test]
+fn scope_selector_rejects_empty_input() {
+    let err = ScopeSelector::parse("   ").unwrap_err();
+
+    assert!(err.to_string().contains("empty"));
+}
+
+#[test]
+fn scope_selector_requested_scope_matches_variant() {
+    let scope = repo_scope();
+    let exact = ScopeSelector::Path(scope.clone());
+    let inferred = ScopeSelector::cwd_inferred(None);
+
+    assert_eq!(exact.requested_scope(), scope.as_str());
+    assert_eq!(inferred.requested_scope(), "cwd_inferred");
+}
+
+#[test]
 fn scope_selection_policy_allows_exact_write() {
     let scope = repo_scope();
     let selection = ResolvedScopeSelection {
@@ -117,6 +134,35 @@ fn scope_selection_policy_rejects_low_confidence_write() {
     let err = selection.write_scope_path().unwrap_err();
 
     assert!(err.to_string().contains("high confidence"));
+}
+
+#[test]
+fn scope_selection_policy_rejects_unresolved_read_and_write() {
+    let selection = ResolvedScopeSelection {
+        scope_path: None,
+        resolution: None,
+        requested_scope: "cwd_inferred".to_owned(),
+    };
+
+    let read_err = selection.read_scope_path().unwrap_err();
+    let write_err = selection.write_scope_path().unwrap_err();
+
+    assert!(read_err.to_string().contains("did not resolve"));
+    assert!(write_err.to_string().contains("did not resolve"));
+}
+
+#[test]
+fn scope_selection_policy_rejects_high_confidence_without_candidates() {
+    let scope = repo_scope();
+    let selection = ResolvedScopeSelection {
+        scope_path: Some(scope.clone()),
+        resolution: Some(resolution(ScopeResolutionConfidence::High, vec![])),
+        requested_scope: "cwd_inferred".to_owned(),
+    };
+
+    let err = selection.write_scope_path().unwrap_err();
+
+    assert!(err.to_string().contains("unique"));
 }
 
 #[test]
