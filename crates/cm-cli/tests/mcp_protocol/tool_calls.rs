@@ -291,6 +291,55 @@ fn protocol_browse_rejects_scope_mode_input() {
 }
 
 #[test]
+fn protocol_migrated_scope_tools_reject_unknown_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let (child, mut stdin, mut stdout) = spawn_server(&dir);
+
+    send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+
+    let cases = [
+        ("cx_browse", json!({"bogus_field": "x"})),
+        ("cx_recall", json!({"bogus_field": "x"})),
+        (
+            "cx_store",
+            json!({
+                "title": "Bad",
+                "body": "Body.",
+                "kind": "fact",
+                "bogus_field": "x"
+            }),
+        ),
+        (
+            "cx_deposit",
+            json!({
+                "exchanges": [{"user": "u", "assistant": "a"}],
+                "bogus_field": "x"
+            }),
+        ),
+        ("cx_export", json!({"bogus_field": "x"})),
+    ];
+
+    for (index, (tool, args)) in cases.into_iter().enumerate() {
+        let resp = send_request(
+            &mut stdin,
+            &mut stdout,
+            &call_tool(args, tool, 30 + index as u64),
+        );
+        let message = tool_error_message(&resp);
+        assert!(
+            message.contains("unknown field `bogus_field`"),
+            "{tool} should reject unknown field, got {message:?}"
+        );
+    }
+
+    shutdown(child, stdin);
+}
+
+#[test]
 fn protocol_store_and_recall_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
     let (child, mut stdin, mut stdout) = spawn_server(&dir);
