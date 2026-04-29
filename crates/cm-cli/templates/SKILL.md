@@ -64,13 +64,16 @@ global/project:helioy/repo:nancyr               — codebase-specific facts
 global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
 
-Public request inputs use `scope` only. Pass an exact scope path through `scope`, or pass `cwd_inferred`.
+Public requests select scope through the `scope` field. Two forms:
 
-For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`.
+```
+{ "scope": "global/project:helioy/repo:nancyr" }   exact path
+{ "scope": "cwd_inferred" }                        infer from cwd
+```
 
-`cwd_inferred` is the reserved value for cwd based scope resolution. It replaces the old public `auto` selector and normalizes linked git worktrees to the source repository identity.
+For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
 
-Do not send `scope_path`, `scope_mode`, or `scope="auto"` in public requests. Migrated MCP, CLI, and cm-web request surfaces reject those inputs. `scope_path` may still appear in persisted entries, export rows, and response data because those values identify exact stored data.
+Persisted entries, export rows, and response payloads include a `scope_path` field that identifies the exact stored scope of each row.
 
 ### Two-Phase Retrieval
 
@@ -89,7 +92,7 @@ Search and retrieve context entries relevant to the current task. Primary retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phra... |
+| `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix que... |
 | `scope` | string | no | Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |

@@ -52,15 +52,24 @@ pub(crate) struct RecallQuery {
 
 pub(crate) fn err_scope_path_removed() -> ApiError {
     ApiError(cm_core::CmError::Validation(
-        "scope_path has been removed; use scope".to_owned(),
+        "use 'scope' instead of 'scope_path'".to_owned(),
     ))
 }
 
 pub(crate) fn err_scope_mode_removed() -> ApiError {
     ApiError(cm_core::CmError::Validation(
-        "scope_mode has been removed".to_owned(),
+        "use 'scope' instead of 'scope_mode'".to_owned(),
     ))
 }
+
+pub(crate) fn err_unknown_query_key(key: &str, allowed: &[&str]) -> ApiError {
+    ApiError(cm_core::CmError::Validation(format!(
+        "unknown query parameter '{key}' (allowed: {})",
+        allowed.join(", ")
+    )))
+}
+
+const SCOPE_QUERY_KEYS: &[&str] = &["scope", "cwd"];
 
 pub(crate) fn parse_scope_query(
     raw: Option<&str>,
@@ -74,7 +83,7 @@ pub(crate) fn parse_scope_query(
             "cwd" => cwd = Some(value.into_owned()),
             "scope_path" => return Err(err_scope_path_removed()),
             "scope_mode" => return Err(err_scope_mode_removed()),
-            _ => {}
+            other => return Err(err_unknown_query_key(other, SCOPE_QUERY_KEYS)),
         }
     }
 
@@ -118,6 +127,16 @@ fn parse_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, ApiError> {
     }
 }
 
+const RECALL_QUERY_KEYS: &[&str] = &[
+    "query",
+    "scope",
+    "cwd",
+    "kinds",
+    "tags",
+    "limit",
+    "max_tokens",
+];
+
 pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiError> {
     let mut query = None;
     let mut scope = None;
@@ -150,7 +169,7 @@ pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiEr
                     )))
                 })?)
             }
-            _ => {}
+            other => return Err(err_unknown_query_key(other, RECALL_QUERY_KEYS)),
         }
     }
 
@@ -229,6 +248,7 @@ async fn recall_handler(
 // ── Shared browse parsing + execution ────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct BrowseQuery {
     pub scope: Option<String>,
     pub scope_path: Option<String>,

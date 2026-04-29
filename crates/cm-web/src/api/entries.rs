@@ -113,6 +113,8 @@ async fn search(
     Ok(Json(project_web_recall(&result, &request)))
 }
 
+const SEARCH_QUERY_KEYS: &[&str] = &["query", "scope", "cwd", "kind", "tag", "limit"];
+
 fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
     let mut q = None;
     let mut scope = None;
@@ -137,7 +139,7 @@ fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
                     )))
                 })?)
             }
-            _ => {}
+            other => return Err(agent::err_unknown_query_key(other, SEARCH_QUERY_KEYS)),
         }
     }
 

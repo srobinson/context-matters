@@ -71,7 +71,7 @@ impl FromStr for ScopeSelector {
         match scope {
             CWD_INFERRED_SCOPE => Ok(Self::CwdInferred { cwd: None }),
             "auto" => Err(CmError::Validation(format!(
-                "scope='auto' has been removed; use scope='{CWD_INFERRED_SCOPE}'"
+                "use scope='{CWD_INFERRED_SCOPE}' instead of scope='auto'"
             ))),
             exact => Ok(Self::Path(ScopePath::parse(exact)?)),
         }

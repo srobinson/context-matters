@@ -185,7 +185,7 @@ async fn browse_rejects_removed_scope_path() {
         .unwrap_err();
 
     assert!(
-        err.contains("scope_path has been removed"),
+        err.contains("use 'scope' instead of 'scope_path'"),
         "unexpected error: {err}",
     );
 }
@@ -200,7 +200,7 @@ async fn browse_rejects_removed_auto_scope() {
         .unwrap_err();
 
     assert!(
-        err.contains("scope='auto' has been removed"),
+        err.contains("instead of scope='auto'"),
         "unexpected error: {err}",
     );
 }

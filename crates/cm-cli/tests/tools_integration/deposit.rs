@@ -79,21 +79,21 @@ async fn deposit_rejects_removed_scope_inputs_before_writing() {
                 "exchanges": [{"user": "u", "assistant": "a"}],
                 "scope_path": "global"
             }),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
         (
             json!({
                 "exchanges": [{"user": "u", "assistant": "a"}],
                 "scope": "auto"
             }),
-            "scope='auto' has been removed",
+            "instead of scope='auto'",
         ),
         (
             json!({
                 "exchanges": [{"user": "u", "assistant": "a"}],
                 "scope_mode": "resolved"
             }),
-            "scope_mode has been removed",
+            "use 'scope' instead of 'scope_mode'",
         ),
     ] {
         let err = tools::cx_deposit(&store, &args).await.unwrap_err();

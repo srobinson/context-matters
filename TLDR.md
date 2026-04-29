@@ -16,9 +16,9 @@ AI agents lose all context between sessions. context-matters solves this by prov
 
 **Scope hierarchy**: `global > project > repo > session`. Queries at a narrow scope automatically walk up to ancestors, so project-level decisions are visible from any repo within that project.
 
-**Scope selection**: Public requests use `scope`. Pass an exact path, or pass `cwd_inferred` to infer from cwd. `cwd_inferred` replaces the old public `auto` selector and normalizes linked git worktrees to the source repo identity.
+**Scope selection**: Public requests use `scope`. Pass an exact path, or pass `cwd_inferred` to infer from cwd. `cwd_inferred` normalizes linked git worktrees to the source repo identity.
 
-**Compatibility boundary**: Migrated request surfaces reject `scope_path`, but persisted entries, exports, response data, and internal exact path models may still expose `scope_path`.
+**Persisted scope path**: stored entries, exports, response payloads, and internal exact path models include a `scope_path` field that identifies where each row lives.
 
 **Two-phase retrieval**: `cx_recall` and `cx_browse` return metadata + snippet. `cx_get` fetches full body content. This keeps initial responses compact.
 
