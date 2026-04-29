@@ -114,12 +114,12 @@ fn protocol_migrated_scope_tools_reject_scope_path() {
         (
             "cx_browse",
             json!({"scope_path": "global"}),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
         (
             "cx_recall",
             json!({"scope_path": "global"}),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
         (
             "cx_store",
@@ -129,7 +129,7 @@ fn protocol_migrated_scope_tools_reject_scope_path() {
                 "kind": "fact",
                 "scope_path": "global"
             }),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
         (
             "cx_deposit",
@@ -137,12 +137,12 @@ fn protocol_migrated_scope_tools_reject_scope_path() {
                 "exchanges": [{"user": "u", "assistant": "a"}],
                 "scope_path": "global"
             }),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
         (
             "cx_export",
             json!({"scope_path": "global"}),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
     ];
 
@@ -195,8 +195,8 @@ fn protocol_non_scope_tools_reject_removed_scope_inputs() {
         );
         let message = tool_error_message(&resp);
         assert!(
-            message.contains("has been removed"),
-            "{tool} should reject removed scope inputs, got {message:?}"
+            message.contains("use 'scope' instead of"),
+            "{tool} should redirect legacy scope inputs, got {message:?}"
         );
     }
 
@@ -323,7 +323,7 @@ fn protocol_migrated_scope_tools_reject_auto_scope() {
         );
         let message = tool_error_message(&resp);
         assert!(
-            message.contains("scope='auto' has been removed"),
+            message.contains("instead of scope='auto'"),
             "{tool} error should reject auto, got {message:?}"
         );
     }
@@ -349,7 +349,7 @@ fn protocol_browse_rejects_scope_mode_input() {
     );
     let message = tool_error_message(&resp);
     assert!(
-        message.contains("scope_mode has been removed"),
+        message.contains("use 'scope' instead of 'scope_mode'"),
         "unexpected error: {message}"
     );
 

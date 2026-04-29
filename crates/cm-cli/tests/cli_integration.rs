@@ -113,7 +113,7 @@ fn store_stub_rejects_removed_auto_scope_selector() {
         .args(["store", "--scope", "auto"])
         .assert()
         .failure()
-        .stderr(contains("scope='auto' has been removed"));
+        .stderr(contains("instead of scope='auto'"));
 }
 
 #[test]

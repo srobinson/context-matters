@@ -200,7 +200,7 @@ async fn store_rejects_removed_scope_inputs_before_writing() {
                 "kind": "fact",
                 "scope_path": "global"
             }),
-            "scope_path has been removed",
+            "use 'scope' instead of 'scope_path'",
         ),
         (
             json!({
@@ -209,7 +209,7 @@ async fn store_rejects_removed_scope_inputs_before_writing() {
                 "kind": "fact",
                 "scope": "auto"
             }),
-            "scope='auto' has been removed",
+            "instead of scope='auto'",
         ),
         (
             json!({
@@ -218,7 +218,7 @@ async fn store_rejects_removed_scope_inputs_before_writing() {
                 "kind": "fact",
                 "scope_mode": "resolved"
             }),
-            "scope_mode has been removed",
+            "use 'scope' instead of 'scope_mode'",
         ),
     ] {
         let err = tools::cx_store(&store, &args).await.unwrap_err();

@@ -57,9 +57,9 @@ Public request inputs select scope with `scope` only:
 { "scope": "cwd_inferred" }
 ```
 
-`cwd_inferred` is the reserved value for cwd based resolution. It uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory. Previous `auto` selectors should migrate to `cwd_inferred`.
+`cwd_inferred` is the reserved value for cwd based resolution. It uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory.
 
-`scope_path` is no longer accepted as a public request input on migrated MCP, CLI, and web request surfaces. It can still appear in persisted entries, export rows, response data, and internal exact path types because those values identify where data is stored.
+Persisted entries, export rows, response payloads, and internal exact path types include a `scope_path` field that identifies the exact stored scope of each row.
 
 ## Architecture
 

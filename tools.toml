@@ -44,13 +44,16 @@ global/project:helioy/repo:nancyr               — codebase-specific facts
 global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
 
-Public request inputs use `scope` only. Pass an exact scope path through `scope`, or pass `cwd_inferred`.
+Public requests select scope through the `scope` field. Two forms:
 
-For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`.
+```
+{ "scope": "global/project:helioy/repo:nancyr" }   exact path
+{ "scope": "cwd_inferred" }                        infer from cwd
+```
 
-`cwd_inferred` is the reserved value for cwd based scope resolution. It replaces the old public `auto` selector and normalizes linked git worktrees to the source repository identity.
+For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
 
-Do not send `scope_path`, `scope_mode`, or `scope="auto"` in public requests. Migrated MCP, CLI, and cm-web request surfaces reject those inputs. `scope_path` may still appear in persisted entries, export rows, and response data because those values identify exact stored data.
+Persisted entries, export rows, and response payloads include a `scope_path` field that identifies the exact stored scope of each row.
 
 ### Two-Phase Retrieval
 
@@ -121,7 +124,7 @@ output_schema   = '''
 [[tools.cx_recall.params]]
 name            = "query"
 type            = "string"
-mcp_description = "FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Use OR between synonyms: 'auth OR authentication'. Omit to return all entries at the target scope via ancestor walk."
+mcp_description = "FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Use OR between synonyms: 'auth OR authentication'. Omit to return all entries at the target scope via ancestor walk."
 cli_help        = "FTS5 search query (prefix: rust*, phrase: \"scope path\", boolean: AND/OR/NOT)"
 cli_flag        = "query"
 

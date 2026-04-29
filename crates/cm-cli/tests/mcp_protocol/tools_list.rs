@@ -250,10 +250,10 @@ fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
     let content = fs::read_to_string(manifest.join("templates/SKILL.md"))
         .expect("generated skill doc should be readable");
     for required in [
-        "Public request inputs use `scope` only.",
+        "Public requests select scope through the `scope` field.",
         r#"cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")"#,
-        "`cwd_inferred` is the reserved value for cwd based scope resolution.",
-        "`scope_path` may still appear in persisted entries, export rows, and response data",
+        "`cwd_inferred` resolves linked git worktrees to the source repository identity.",
+        "Persisted entries, export rows, and response payloads include a `scope_path` field",
     ] {
         assert!(
             content.contains(required),

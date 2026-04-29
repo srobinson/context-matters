@@ -19,7 +19,7 @@
         "type": "integer"
       },
       "query": {
-        "description": "FTS5 search query. Use 1-3 keywords (implicit AND). Do NOT pass full sentences. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Use OR between synonyms: 'auth OR authentication'. Omit to return all entries at the target scope via ancestor walk.",
+        "description": "FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT). Use OR between synonyms: 'auth OR authentication'. Omit to return all entries at the target scope via ancestor walk.",
         "type": "string"
       },
       "scope": {

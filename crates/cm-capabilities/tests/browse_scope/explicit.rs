@@ -68,7 +68,7 @@ fn browse_selector_rejects_removed_auto_value() {
     let err = ScopeSelector::parse("auto").unwrap_err();
 
     assert!(
-        err.to_string().contains("scope='auto' has been removed"),
+        err.to_string().contains("instead of scope='auto'"),
         "unexpected error: {err}",
     );
 }
