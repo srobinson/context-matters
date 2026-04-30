@@ -8,20 +8,21 @@
 workflow = """
 ## Context Management Workflow
 
-1. **Recall** — `cx_recall(query: "topic")` — search and retrieve context relevant to the current task.
-2. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
-3. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
-4. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
-5. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
-6. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
-7. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
+1. **Recall** — `cx_recall(query: "topic")` — priority context for one known scope by walking ancestors.
+2. **Search** — `cx_search(query: "topic", scope: {"kind":"all"})` — content search across wide or unknown scopes.
+3. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
+4. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
+5. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
+6. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
+7. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
+8. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
 
 ### Task Workflow
 
 ```
 1. Receive task from user or orchestrator
-2. cx_recall(query: "summary of task", scope: "global/project:helioy/repo:nancyr")
-   → retrieve facts, decisions, preferences, feedback relevant to THIS task
+2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
+   → retrieve priority context for THIS known scope and its ancestors
 3. Work on the task
 4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
    → persist reusable knowledge when discovered
@@ -29,7 +30,7 @@ workflow = """
    → preserve conversation at session end for continuity
 ```
 
-Key: cx_recall is useful at ANY point during a session, not only after receiving the initial task.
+Key: use cx_recall for a single known scope. Use cx_search when the right scope is unknown, broad, or cross-repo.
 When the user corrects you, store it immediately as kind: "feedback" (highest recall priority).
 
 ### Scope Model
@@ -47,8 +48,13 @@ global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 Public requests select scope through the `scope` field. Two forms:
 
 ```
-{ "scope": "global/project:helioy/repo:nancyr" }   exact path
-{ "scope": "cwd_inferred" }                        infer from cwd
+{ "scope": "global/project:helioy/repo:nancyr" }   exact path for legacy tools
+{ "scope": "cwd_inferred" }                        infer from cwd for legacy tools
+{ "scope": {"kind":"path","path":"global"} }       structured exact path
+{ "scope": {"kind":"cwd_inferred","cwd":"/repo"} } structured cwd inference
+{ "scope": {"kind":"subtree","path":"global/project:helioy"} } subtree match
+{ "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set
+{ "scope": {"kind":"all"} }                        no scope filter
 ```
 
 For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
@@ -57,7 +63,7 @@ Persisted entries, export rows, and response payloads include a `scope_path` fie
 
 ### Two-Phase Retrieval
 
-cx_recall and cx_browse return metadata + snippet (first 200 chars of body).
+cx_recall, cx_search, and cx_browse return metadata + snippet (first 200 chars of body).
 Use cx_get with returned IDs to fetch full body content.
 This keeps initial responses compact while allowing selective deep reads.
 """
@@ -164,6 +170,98 @@ type            = "integer"
 mcp_description = "Maximum token budget for the response. Results are trimmed to fit within this budget, prioritizing higher-relevance entries. Uses ~4 chars/token estimation."
 cli_help        = "Maximum token budget for response (trims results to fit)"
 cli_flag        = "--max-tokens"
+
+[tools.cx_search]
+cli_name        = "search"
+mcp_description = "Search cm entries by content across scopes. Returns FTS5 BM25-ranked hits. Use cx_search when you have a query and want results from multiple scopes, an unknown scope, or all scopes. Use cx_recall when you want priority-ordered context for a single known scope, walking ancestors. Recall is sharper but narrower."
+cli_about       = "Search cm entries by content across scopes.\n\nReturns FTS5 BM25-ranked hits. Use for multiple scopes, unknown scope, subtree, set, or all-scope searches."
+output_schema   = '''
+{
+  "type": "object",
+  "description": "Search response: content-ranked rows and cursor pagination metadata.",
+  "required": ["header", "entries"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "description": "Search query envelope.",
+      "required": ["query", "returned", "scope_hits", "kinds_histogram", "tags_histogram", "tokens"],
+      "properties": {
+        "query": {"type": "string", "description": "FTS5 query supplied by the caller."},
+        "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in this page."},
+        "next_cursor": {"type": "string", "description": "Opaque cursor for the next page. Omitted when there are no more rows."},
+        "scope_hits": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-scope hit counts for this page."},
+        "kinds_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-kind counts for this page."},
+        "tags_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "description": "Per-tag counts for this page."},
+        "tokens": {"type": "integer", "minimum": 0, "description": "Estimated token total of the full bodies in this page."}
+      }
+    },
+    "entries": {
+      "type": "array",
+      "description": "FTS5-ranked search rows. Order is significant.",
+      "items": {
+        "type": "object",
+        "required": ["id", "score", "title", "snippet", "age", "scope", "kind", "tags"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid", "description": "Full UUID v7."},
+          "score": {"type": "number", "description": "Normalised relevance score in [0, 1]."},
+          "title": {"type": "string"},
+          "snippet": {"type": "string", "description": "Smart snippet of the entry body, with matched query terms bracketed."},
+          "age": {"type": "string", "description": "Relative age string."},
+          "scope": {"type": "string"},
+          "kind": {"type": "string", "enum": ["fact", "decision", "preference", "lesson", "reference", "feedback", "pattern", "observation"]},
+          "tags": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}
+'''
+
+[[tools.cx_search.params]]
+name            = "query"
+type            = "string"
+required        = true
+mcp_description = "Required FTS5 search query. Use 1-3 keywords. Supports prefix queries (rust*), phrase queries (\"scope path\"), and boolean operators (AND, OR, NOT)."
+cli_help        = "Required FTS5 search query"
+cli_flag        = "query"
+
+[[tools.cx_search.params]]
+name            = "scope"
+type            = "object"
+required        = true
+mcp_description = "Structured ScopeSelector JSON. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"}, {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}, {\"kind\":\"subtree\",\"path\":\"global/project:helioy\"}, {\"kind\":\"set\",\"paths\":[\"global\",\"global/project:helioy\"]}, or {\"kind\":\"all\"}. Plain strings and top-level cwd are not accepted."
+cli_help        = "Structured ScopeSelector JSON"
+cli_flag        = "--scope"
+
+[[tools.cx_search.params]]
+name            = "kinds"
+type            = "array"
+items_type      = "string"
+mcp_description = "Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pattern, observation."
+cli_help        = "Filter by entry kind"
+cli_flag        = "--kinds"
+
+[[tools.cx_search.params]]
+name            = "tags"
+type            = "array"
+items_type      = "string"
+mcp_description = "Filter to entries with any of these tags (OR logic). Pass a JSON array: [\"tag1\", \"tag2\"]."
+cli_help        = "Filter by tag"
+cli_flag        = "--tags"
+
+[[tools.cx_search.params]]
+name            = "limit"
+type            = "integer"
+mcp_description = "Maximum number of entries to return. Default: 20, max: 200."
+cli_help        = "Maximum number of results"
+cli_flag        = "--limit"
+
+[[tools.cx_search.params]]
+name            = "cursor"
+type            = "string"
+mcp_description = "Opaque pagination cursor from a previous cx_search response. Pass next_cursor to fetch the next page."
+cli_help        = "Pagination cursor from previous cx_search response"
+cli_flag        = "--cursor"
 
 [tools.cx_store]
 cli_name        = "store"

@@ -16,7 +16,8 @@ This project has a structured context store available via the **`cm` MCP server*
 
 | Tool | Purpose | Example |
 |------|---------|--------|
-| `cx_recall` | Search and retrieve context relevant to the current task | `cx_recall(query: "auth decisions", scope: "global/project:helioy")` |
+| `cx_recall` | Priority context for one known scope | `cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})` |
+| `cx_search` | Content search across wide or unknown scopes | `cx_search(query: "auth decisions", scope: {"kind":"all"})` |
 | `cx_store` | Persist a fact, decision, preference, or lesson | `cx_store(title: "Use UUIDv7", body: "...", kind: "decision")` |
 | `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{user: "...", assistant: "..."}])` |
 | `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: "global/project:helioy")` |
@@ -28,20 +29,21 @@ This project has a structured context store available via the **`cm` MCP server*
 
 ## Context Management Workflow
 
-1. **Recall** — `cx_recall(query: "topic")` — search and retrieve context relevant to the current task.
-2. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
-3. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
-4. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
-5. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
-6. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
-7. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
+1. **Recall** — `cx_recall(query: "topic")` — priority context for one known scope by walking ancestors.
+2. **Search** — `cx_search(query: "topic", scope: {"kind":"all"})` — content search across wide or unknown scopes.
+3. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
+4. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
+5. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
+6. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
+7. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
+8. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
 
 ### Task Workflow
 
 ```
 1. Receive task from user or orchestrator
-2. cx_recall(query: "summary of task", scope: "global/project:helioy/repo:nancyr")
-   → retrieve facts, decisions, preferences, feedback relevant to THIS task
+2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
+   → retrieve priority context for THIS known scope and its ancestors
 3. Work on the task
 4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
    → persist reusable knowledge when discovered
@@ -49,7 +51,7 @@ This project has a structured context store available via the **`cm` MCP server*
    → preserve conversation at session end for continuity
 ```
 
-Key: cx_recall is useful at ANY point during a session, not only after receiving the initial task.
+Key: use cx_recall for a single known scope. Use cx_search when the right scope is unknown, broad, or cross-repo.
 When the user corrects you, store it immediately as kind: "feedback" (highest recall priority).
 
 ### Scope Model
@@ -67,8 +69,13 @@ global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 Public requests select scope through the `scope` field. Two forms:
 
 ```
-{ "scope": "global/project:helioy/repo:nancyr" }   exact path
-{ "scope": "cwd_inferred" }                        infer from cwd
+{ "scope": "global/project:helioy/repo:nancyr" }   exact path for legacy tools
+{ "scope": "cwd_inferred" }                        infer from cwd for legacy tools
+{ "scope": {"kind":"path","path":"global"} }       structured exact path
+{ "scope": {"kind":"cwd_inferred","cwd":"/repo"} } structured cwd inference
+{ "scope": {"kind":"subtree","path":"global/project:helioy"} } subtree match
+{ "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set
+{ "scope": {"kind":"all"} }                        no scope filter
 ```
 
 For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
@@ -77,7 +84,7 @@ Persisted entries, export rows, and response payloads include a `scope_path` fie
 
 ### Two-Phase Retrieval
 
-cx_recall and cx_browse return metadata + snippet (first 200 chars of body).
+cx_recall, cx_search, and cx_browse return metadata + snippet (first 200 chars of body).
 Use cx_get with returned IDs to fetch full body content.
 This keeps initial responses compact while allowing selective deep reads.
 
@@ -98,6 +105,19 @@ Search and retrieve context entries relevant to the current task. Primary retrie
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
 | `max_tokens` | integer | no | Maximum token budget for the response. Results are trimmed to fit within this budget, prioritizing higher-relevance e... |
+
+### `cx_search`
+
+Search cm entries by content across scopes. Returns FTS5 BM25-ranked hits. Use cx_search when you have a query and want results from multiple scopes, an unknown scope, or all scopes. Use cx_recall when you want priority-ordered context for a single known scope, walking ancestors. Recall is sharper but narrower.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Required FTS5 search query. Use 1-3 keywords. Supports prefix queries (rust*), phrase queries ("scope path"), and boo... |
+| `scope` | object | yes | Structured ScopeSelector JSON. Accepted variants: {"kind":"path","path":"global/project:helioy"}, {"kind":"cwd_inferr... |
+| `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
+| `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
+| `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
+| `cursor` | string | no | Opaque pagination cursor from a previous cx_search response. Pass next_cursor to fetch the next page. |
 
 ### `cx_store`
 

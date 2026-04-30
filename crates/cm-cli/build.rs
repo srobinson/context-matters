@@ -356,8 +356,13 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
     let use_cases = [
         (
             "cx_recall",
-            "Search and retrieve context relevant to the current task",
-            r#"`cx_recall(query: "auth decisions", scope: "global/project:helioy")`"#,
+            "Priority context for one known scope",
+            r#"`cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})`"#,
+        ),
+        (
+            "cx_search",
+            "Content search across wide or unknown scopes",
+            r#"`cx_search(query: "auth decisions", scope: {"kind":"all"})`"#,
         ),
         (
             "cx_store",

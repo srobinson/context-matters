@@ -16,6 +16,21 @@ pub const RECALL_LIMIT_HELP: &str = "Maximum number of results (default: 20, max
 pub const RECALL_MAX_TOKENS_HELP: &str = "Maximum token budget for response (trims results to fit)";
 
 #[rustfmt::skip]
+pub const SEARCH_ABOUT: &str = "Search cm entries by content across scopes.\n\nReturns FTS5 BM25-ranked hits. Use for multiple scopes, unknown scope, subtree, set, or all-scope searches.";
+#[rustfmt::skip]
+pub const SEARCH_QUERY_HELP: &str = "Required FTS5 search query";
+#[rustfmt::skip]
+pub const SEARCH_SCOPE_HELP: &str = "Structured ScopeSelector JSON";
+#[rustfmt::skip]
+pub const SEARCH_KINDS_HELP: &str = "Filter by entry kind";
+#[rustfmt::skip]
+pub const SEARCH_TAGS_HELP: &str = "Filter by tag";
+#[rustfmt::skip]
+pub const SEARCH_LIMIT_HELP: &str = "Maximum number of results";
+#[rustfmt::skip]
+pub const SEARCH_CURSOR_HELP: &str = "Pagination cursor from previous cx_search response";
+
+#[rustfmt::skip]
 pub const STORE_ABOUT: &str = "Store a context entry.\n\nCreates a new entry with title, body, kind, and optional metadata. Scope chain is auto-created if missing. Use --supersedes to replace an existing entry.";
 #[rustfmt::skip]
 pub const STORE_TITLE_HELP: &str = "Entry title (short summary)";

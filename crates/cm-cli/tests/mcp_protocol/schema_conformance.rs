@@ -51,8 +51,8 @@ fn protocol_structuredcontent_conforms_to_outputschema() {
         })
         .collect();
 
-    // Seed one entry so cx_recall returns a populated `entries` array
-    // and cx_get has a real id to fetch. cx_browse and cx_stats both
+    // Seed one entry so cx_recall and cx_search return populated
+    // `entries` arrays and cx_get has a real id to fetch. cx_browse and cx_stats both
     // tolerate empty stores, but exercising the populated path catches
     // shape regressions where empty arrays mask field-level breakage.
     let store_resp = send_request(
@@ -66,7 +66,7 @@ fn protocol_structuredcontent_conforms_to_outputschema() {
                 "name": "cx_store",
                 "arguments": {
                     "title": "Schema conformance fact",
-                    "body": "Seed row so cx_recall and cx_get exercise the populated path.",
+                    "body": "Seed row so cx_recall, cx_search, and cx_get exercise the populated path.",
                     "kind": "fact"
                 }
             }
@@ -81,8 +81,12 @@ fn protocol_structuredcontent_conforms_to_outputschema() {
     // structuredContent against the schema loaded from tools/list.
     // The `id` field starts at 10 and increments per call so a flaky
     // failure points at exactly which tool tripped the assertion.
-    let cases: [(&str, Value); 4] = [
+    let cases: [(&str, Value); 5] = [
         ("cx_recall", json!({"query": "schema conformance"})),
+        (
+            "cx_search",
+            json!({"query": "schema conformance", "scope": {"kind": "all"}}),
+        ),
         ("cx_browse", json!({})),
         ("cx_get", json!({"ids": [stored_id]})),
         ("cx_stats", json!({})),
