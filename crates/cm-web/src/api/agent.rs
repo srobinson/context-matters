@@ -201,9 +201,6 @@ pub(crate) async fn execute_browse(
         check_input_size(c, "created_by")
             .map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
-    if let Some(ref s) = bq.scope {
-        check_input_size(s, "scope").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-    }
 
     if bq.scope_path.is_some() {
         return Err(scope_query::err_scope_path_removed());

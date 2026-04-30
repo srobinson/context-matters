@@ -153,20 +153,22 @@ async fn cm_web_reports_invalid_structured_scope_json() {
     seed_entries(&store).await;
     let app = test_app(store);
 
-    let (status, body) = request_json(
-        app,
-        Method::GET,
+    for uri in [
         "/api/agent/recall?query=Smart&scope=%7Bbad",
-        None,
-    )
-    .await;
-
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(
-        body.to_string()
-            .contains("scope must be structured JSON with a kind field"),
-        "{body:?}"
-    );
+        "/api/agent/browse?scope=%7Bbad",
+        "/api/entries/recall?query=Smart&scope=%7Bbad",
+        "/api/entries/search?query=Smart&scope=%7Bbad",
+        "/api/entries?scope=%7Bbad",
+        "/api/export?scope=%7Bbad",
+    ] {
+        let (status, body) = request_json(app.clone(), Method::GET, uri, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri} returned {body:?}");
+        assert!(
+            body.to_string()
+                .contains("scope must be structured JSON with a kind field"),
+            "{uri} returned {body:?}"
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
