@@ -14,7 +14,7 @@ import { FeedSearchInput } from "./FeedSearchInput";
 import { FeedToolbar } from "./FeedToolbar";
 import { MergeStatus } from "./MergeStatus";
 import { RecallResults } from "./RecallResults";
-import { type FeedSearch, scopeSelectorFromFeedScope } from "./search";
+import { type FeedSearch, feedScopeFromScopeSelector, scopeSelectorFromFeedScope } from "./search";
 import { useEntryFocus } from "./useEntryFocus";
 import { useMergeSelection } from "./useMergeSelection";
 import { useRecallControls } from "./useRecallControls";
@@ -102,8 +102,13 @@ export function FeedPage({ search }: FeedPageProps) {
 
   const handleFilterChange = useCallback(
     (update: Partial<FilterState>) => {
+      const { scope: nextScope, ...rest } = update;
+      const nextSearch: Partial<FeedSearch> = { ...rest };
+      if ("scope" in update) {
+        nextSearch.scope = feedScopeFromScopeSelector(nextScope);
+      }
       navigate({
-        search: (prev) => ({ ...prev, ...update }),
+        search: (prev) => ({ ...prev, ...nextSearch }),
       });
     },
     [navigate],
@@ -127,7 +132,7 @@ export function FeedPage({ search }: FeedPageProps) {
   const recallQuery = useAgentRecall(
     {
       query: debouncedQuery || undefined,
-      scope: scopeSelectorFromFeedScope(recallScope),
+      scope: recallScope,
       kinds: recallKinds,
       tags: recallTags,
       limit: recallLimit,
@@ -231,7 +236,13 @@ export function FeedPage({ search }: FeedPageProps) {
 
       {activeMode === "curate" && (
         <FilterBar
-          filters={{ scope, kind, tag, created_by, show_forgotten }}
+          filters={{
+            scope: scopeSelectorFromFeedScope(scope),
+            kind,
+            tag,
+            created_by,
+            show_forgotten,
+          }}
           onChange={handleFilterChange}
         />
       )}

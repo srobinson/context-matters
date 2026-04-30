@@ -2,6 +2,11 @@ import { useCallback, useMemo } from "react";
 import type { Stats } from "@/api/client";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useStats } from "@/api/hooks";
+import {
+  ScopeSelector as ScopeSelectorControl,
+  type ScopeSelectorValue,
+} from "@/components/domain/ScopeSelector";
+import { useScopeSelectorState } from "@/hooks/useScopeSelectorState";
 import { FilterBar as ComposedFilterBar, type FacetDefinition } from "./composed/FilterBar";
 
 const ALL_KINDS: EntryKind[] = [
@@ -16,7 +21,7 @@ const ALL_KINDS: EntryKind[] = [
 ];
 
 export type FilterState = {
-  scope?: string;
+  scope?: ScopeSelectorValue;
   kind?: EntryKind;
   tag?: string;
   created_by?: string;
@@ -40,10 +45,17 @@ export function FilterBar({
 }) {
   const { data: stats } = useStats();
 
-  const facets = useMemo(() => buildFacets(stats), [stats]);
+  const handleScopeChange = useCallback(
+    (nextScope: ScopeSelectorValue | undefined) => {
+      onChange({ scope: nextScope });
+    },
+    [onChange],
+  );
+  const [scopeValue, setScopeValue] = useScopeSelectorState(filters.scope, handleScopeChange);
+  const facets = useMemo(() => buildNonScopeFacets(stats), [stats]);
 
   const values: Record<string, string | boolean | undefined> = {
-    scope: filters.scope,
+    scope: scopeChipValue(scopeValue),
     kind: filters.kind,
     created_by: filters.created_by,
     tag: filters.tag,
@@ -52,9 +64,13 @@ export function FilterBar({
 
   const handleChange = useCallback(
     (key: string, value: string | boolean | undefined) => {
+      if (key === "scope") {
+        setScopeValue(undefined);
+        return;
+      }
       onChange({ [key]: value });
     },
-    [onChange],
+    [onChange, setScopeValue],
   );
 
   const handleClearAll = useCallback(() => {
@@ -69,30 +85,26 @@ export function FilterBar({
 
   const chipLabel = useCallback((key: string, value: string | boolean) => {
     if (typeof value === "boolean") return CHIP_LABELS[key] ?? key;
+    if (key === "scope") return value;
     return `${CHIP_LABELS[key] ?? key}:${value}`;
   }, []);
 
   return (
-    <ComposedFilterBar
-      facets={facets}
-      toggles={[{ key: "show_forgotten", label: "forgotten" }]}
-      values={values}
-      onChange={handleChange}
-      onClearAll={handleClearAll}
-      chipLabel={chipLabel}
-    />
+    <div className="space-y-2">
+      <ScopeSelectorControl value={scopeValue} onChange={setScopeValue} />
+      <ComposedFilterBar
+        facets={facets}
+        toggles={[{ key: "show_forgotten", label: "forgotten" }]}
+        values={values}
+        onChange={handleChange}
+        onClearAll={handleClearAll}
+        chipLabel={chipLabel}
+      />
+    </div>
   );
 }
 
-function buildFacets(stats: Stats | undefined): FacetDefinition[] {
-  const scopeOptions = stats?.scope_tree
-    ? stats.scope_tree.map((node) => ({
-        value: node.path,
-        label: node.path,
-        count: node.entry_count,
-      }))
-    : [];
-
+function buildNonScopeFacets(stats: Stats | undefined): FacetDefinition[] {
   const kindOptions = ALL_KINDS.map((k) => ({
     value: k,
     label: k,
@@ -116,9 +128,17 @@ function buildFacets(stats: Stats | undefined): FacetDefinition[] {
     : [];
 
   return [
-    { key: "scope", placeholder: "Scope", options: scopeOptions },
     { key: "kind", placeholder: "Kind", options: kindOptions },
     { key: "created_by", placeholder: "Agent", options: agentOptions },
     { key: "tag", placeholder: "Tag", options: tagOptions },
   ];
+}
+
+function scopeChipValue(scope: ScopeSelectorValue | undefined): string | undefined {
+  if (scope?.kind === "path") return `scope:${scope.path}`;
+  if (scope?.kind === "cwd_inferred") return scope.cwd ? `scope:cwd:${scope.cwd}` : "scope:cwd";
+  if (scope?.kind === "subtree") return `scope:subtree:${scope.path}`;
+  if (scope?.kind === "set") return `scope:set:${scope.paths.join(",")}`;
+  if (scope?.kind === "all") return "scope:all";
+  return undefined;
 }

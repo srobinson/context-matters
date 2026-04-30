@@ -58,6 +58,17 @@ export function scopeSelectorFromFeedScope(scope: string | undefined): ScopeSele
   return { kind: "path", path: scope };
 }
 
+export function feedScopeFromScopeSelector(scope: ScopeSelector | undefined): string | undefined {
+  if (scope?.kind === "path") return `path:${scope.path}`;
+  if (scope?.kind === "cwd_inferred") return `cwd:${scope.cwd ?? ""}`;
+  if (scope?.kind === "subtree") return `subtree:${scope.path}`;
+  if (scope?.kind === "set") {
+    return scope.paths.length > 0 ? `set:${scope.paths.join(",")}` : undefined;
+  }
+  if (scope?.kind === "all") return "all";
+  return undefined;
+}
+
 const ENTRY_KINDS: ReadonlySet<string> = new Set([
   "fact",
   "decision",

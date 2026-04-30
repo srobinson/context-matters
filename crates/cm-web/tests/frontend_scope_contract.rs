@@ -122,3 +122,110 @@ fn frontend_api_client_serializes_structured_scope_query_params() {
         "export should serialize one structured scope query param"
     );
 }
+
+#[test]
+fn feed_search_scope_url_state_maps_to_all_selector_variants() {
+    let source = frontend_source("routes/feed/search.ts");
+
+    let converter = source_between(
+        &source,
+        "export function scopeSelectorFromFeedScope",
+        "const ENTRY_KINDS",
+    );
+
+    assert!(
+        converter.contains("scope === \"all\"")
+            && converter.contains("scope.startsWith(\"path:\")")
+            && converter.contains("scope.startsWith(\"subtree:\")")
+            && converter.contains("scope.startsWith(\"set:\")")
+            && converter.contains("scope.startsWith(\"cwd:\")"),
+        "feed scope URL state should preserve every ScopeSelector prefix"
+    );
+    assert!(
+        converter.contains(".filter(Boolean)")
+            && converter.contains("paths.length > 0 ? { kind: \"set\", paths } : undefined"),
+        "empty set URL state should not produce an empty set selector"
+    );
+    assert!(
+        converter.contains("cwd ? { kind: \"cwd_inferred\", cwd } : { kind: \"cwd_inferred\" }")
+            && converter.contains("return { kind: \"path\", path: scope };"),
+        "cwd and unprefixed legacy URL state should keep their migration paths"
+    );
+}
+
+#[test]
+fn frontend_scope_controls_share_scope_selector_primitives() {
+    let controls = frontend_source("components/domain/ScopeSelector.tsx");
+    let hook = frontend_source("hooks/useScopeSelectorState.ts");
+    let recall_bar = frontend_source("components/RecallBar.tsx");
+    let filter_bar = frontend_source("components/FilterBar.tsx");
+    let browse_pane = frontend_source("components/BrowsePane.tsx");
+
+    assert!(
+        controls.contains("import type { ScopeSelector as ScopeSelectorValue } from \"@/lib/scope\"")
+            && controls.contains(
+                "export type SingularScopeSelector = Extract<ScopeSelectorValue, { kind: \"path\" | \"cwd_inferred\" }>",
+            ),
+        "scope controls should share the value type from lib/scope and expose a singular type"
+    );
+
+    let scope_picker = source_between(
+        &controls,
+        "export function ScopePicker",
+        "interface ScopeSelectorProps",
+    );
+    assert!(
+        controls.contains("onChange: (scope: SingularScopeSelector | undefined) => void")
+            && scope_picker.contains("{ kind: \"path\", path: nextValue }")
+            && !scope_picker.contains("{ kind: \"subtree\"")
+            && !scope_picker.contains("{ kind: \"set\"")
+            && !scope_picker.contains("{ kind: \"all\""),
+        "ScopePicker should emit only singular scope selectors"
+    );
+
+    let scope_selector = source_between(
+        &controls,
+        "export function ScopeSelector",
+        "function modeFromScope",
+    );
+    assert!(
+        scope_selector.contains("{ kind: \"path\", path }")
+            && scope_selector.contains("{ kind: \"subtree\", path }")
+            && scope_selector.contains("{ kind: \"path\", path: nextPath }")
+            && scope_selector.contains("{ kind: \"subtree\", path: nextPath }")
+            && scope_selector.contains("{ kind: \"set\", paths")
+            && scope_selector.contains("{ kind: \"all\" }"),
+        "ScopeSelector should produce every ScopeSelector variant"
+    );
+    assert!(
+        scope_selector.contains(
+            "nextPaths.length === 0 ? { kind: \"all\" } : { kind: \"set\", paths: nextPaths }"
+        ) && scope_selector.contains("disabled={mode === \"all\"}"),
+        "set mode should collapse empty selections to all and all mode should disable path selection"
+    );
+
+    assert!(
+        hook.contains("useState<ScopeSelector | undefined>")
+            && hook.contains("return [value, setValue]"),
+        "useScopeSelectorState should be the shared ScopeSelector state hook"
+    );
+
+    assert!(
+        recall_bar.contains("ScopePicker")
+            && recall_bar.contains("useScopeSelectorState")
+            && !recall_bar.contains("buildScopeOptions"),
+        "RecallBar should use ScopePicker and stop building local scope options"
+    );
+    assert!(
+        filter_bar.contains("ScopeSelector")
+            && filter_bar.contains("useScopeSelectorState")
+            && !filter_bar.contains("buildFacets(stats)")
+            && !filter_bar.contains("{ key: \"scope\", placeholder: \"Scope\""),
+        "FilterBar should use the full ScopeSelector primitive instead of a scope facet"
+    );
+    assert!(
+        browse_pane.contains("useScopeSelectorState")
+            && !browse_pane.contains("scope ? { kind: \"path\", path: scope } : undefined"),
+        "BrowsePane should keep ScopeSelector state directly"
+    );
+}

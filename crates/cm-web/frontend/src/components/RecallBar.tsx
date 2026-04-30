@@ -1,16 +1,14 @@
-import { useMemo } from "react";
-import type { Stats } from "@/api/client";
+import { useCallback, useMemo } from "react";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useStats } from "@/api/hooks";
 import { TagInput } from "@/components/composed/TagInput";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ScopePicker,
+  type ScopeSelectorValue,
+  type SingularScopeSelector,
+} from "@/components/domain/ScopeSelector";
+import { Input } from "@/components/ui/input";
+import { useScopeSelectorState } from "@/hooks/useScopeSelectorState";
 import { cn } from "@/lib/utils";
 
 const ALL_KINDS: EntryKind[] = [
@@ -25,12 +23,12 @@ const ALL_KINDS: EntryKind[] = [
 ];
 
 interface RecallBarProps {
-  scope?: string;
+  scope?: SingularScopeSelector;
   kinds: EntryKind[];
   tags: string[];
   limit: number;
   maxTokens?: number;
-  onScopeChange: (scope?: string) => void;
+  onScopeChange: (scope?: SingularScopeSelector) => void;
   onKindsChange: (kinds: EntryKind[]) => void;
   onTagsChange: (tags: string[]) => void;
   onLimitChange: (limit: number) => void;
@@ -52,8 +50,18 @@ export function RecallBar({
   onClear,
 }: RecallBarProps) {
   const { data: stats } = useStats();
+  const handleScopeChange = useCallback(
+    (nextScope: ScopeSelectorValue | undefined) => {
+      if (nextScope == null || nextScope.kind === "path" || nextScope.kind === "cwd_inferred") {
+        onScopeChange(nextScope);
+      }
+    },
+    [onScopeChange],
+  );
+  const [scopeValue, setScopeValue] = useScopeSelectorState(scope, handleScopeChange);
+  const singularScope =
+    scopeValue?.kind === "path" || scopeValue?.kind === "cwd_inferred" ? scopeValue : undefined;
 
-  const scopeOptions = useMemo(() => buildScopeOptions(stats), [stats]);
   const tagSuggestions = useMemo(
     () =>
       stats?.entries_by_tag.map((entry) => ({
@@ -84,24 +92,12 @@ export function RecallBar({
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_8rem_8rem]">
-        <label className="block space-y-1">
+        <div className="block space-y-1">
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
             scope
           </span>
-          <Select value={scope} onValueChange={(value) => onScopeChange(value ?? undefined)}>
-            <SelectTrigger className="w-full font-mono text-xs">
-              <SelectValue placeholder="Any scope" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Any scope</SelectItem>
-              {scopeOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
+          <ScopePicker value={singularScope} onChange={setScopeValue} />
+        </div>
 
         <label className="block space-y-1">
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
@@ -190,14 +186,5 @@ export function RecallBar({
         </div>
       </div>
     </section>
-  );
-}
-
-function buildScopeOptions(stats: Stats | undefined) {
-  return (
-    stats?.scope_tree.map((node) => ({
-      value: node.path,
-      label: node.path,
-    })) ?? []
   );
 }
