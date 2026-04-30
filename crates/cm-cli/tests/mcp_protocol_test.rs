@@ -11,6 +11,8 @@ mod basics;
 mod export;
 #[path = "mcp_protocol/schema_conformance.rs"]
 mod schema_conformance;
+#[path = "mcp_protocol/scope_migration.rs"]
+mod scope_migration;
 #[path = "mcp_protocol/tool_calls.rs"]
 mod tool_calls;
 #[path = "mcp_protocol/tools_list.rs"]

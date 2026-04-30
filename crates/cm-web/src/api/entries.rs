@@ -3,9 +3,7 @@
 //! `browse`, `search`, and `recall` share their parsing and capability
 //! invocation with the `/api/agent/*` endpoints in [`super::agent`] so
 //! the two HTTP prefixes always return identical [`WebBrowseView`] /
-//! [`WebRecallView`] projections. `search` is a legacy alias that
-//! routes through the recall capability (the query is treated as a
-//! required FTS keyword and kind/tag narrow the scope walk).
+//! [`WebRecallView`] projections.
 
 use std::sync::Arc;
 
@@ -15,20 +13,17 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cm_capabilities::projection::{WebBrowseView, WebRecallView, project_web_recall};
-use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::scope::ScopeSelector;
-use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{
     ContextStore, Entry, EntryKind, EntryMeta, EntryRelation, MutationSource, NewEntry,
     UpdateEntry, WriteContext,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::api::agent::{self, BrowseQuery, ExecutedRecall};
+use crate::api::agent::{self, BrowseQuery, ExecutedRecall, ExecutedSearch};
 use crate::api::error::ApiError;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -53,104 +48,15 @@ async fn browse(
     Ok(Json(agent::project_executed_browse(&executed)))
 }
 
-// ── Search (legacy FTS alias, routed through recall) ────────────
-//
-// The historical contract of `/api/entries/search` was a required FTS
-// keyword plus optional single-value kind/tag filters. Routing it
-// through the `recall` capability preserves the wire shape while
-// upgrading callers to the full scope-chain walk and tiered fallback
-// that recall provides. The new response shape is `WebRecallView`,
-// matching the semantic intent that "search is a subset of recall".
-
-#[derive(Debug, Deserialize)]
-struct SearchQuery {
-    q: String,
-    scope: Option<String>,
-    cwd: Option<String>,
-    kind: Option<String>,
-    tag: Option<String>,
-    limit: Option<u32>,
-}
+// ── Search ──────────────────────────────────────────────────────
 
 async fn search(
     State(state): State<Arc<AppState>>,
     raw_query: RawQuery,
 ) -> Result<Json<WebRecallView>, ApiError> {
-    let sq = parse_search_query(raw_query.0.as_deref())?;
-    if sq.q.is_empty() {
-        return Err(ApiError(cm_core::CmError::Validation(
-            "query parameter is required".to_owned(),
-        )));
-    }
-    check_input_size(&sq.q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-
-    let scope = agent::parse_scope_selector(sq.scope, sq.cwd)?;
-
-    let kinds: Vec<EntryKind> = sq
-        .kind
-        .as_deref()
-        .map(|k| k.parse::<EntryKind>().map_err(ApiError))
-        .transpose()?
-        .map(|k| vec![k])
-        .unwrap_or_default();
-
-    let tags: Vec<String> = sq.tag.map(|t| vec![t]).unwrap_or_default();
-    let limit = clamp_limit(sq.limit);
-
-    let request = RecallRequest {
-        query: Some(sq.q),
-        scope,
-        kinds,
-        tags,
-        limit,
-        max_tokens: None,
-    };
-
-    let result = recall::recall(&state.store, request.clone())
-        .await
-        .map_err(ApiError)?;
-
+    let ExecutedSearch { result, request } =
+        agent::execute_search(&state.store, raw_query.0.as_deref()).await?;
     Ok(Json(project_web_recall(&result, &request)))
-}
-
-const SEARCH_QUERY_KEYS: &[&str] = &["query", "scope", "cwd", "kind", "tag", "limit"];
-
-fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
-    let mut q = None;
-    let mut scope = None;
-    let mut cwd = None;
-    let mut kind = None;
-    let mut tag = None;
-    let mut limit = None;
-
-    for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
-        match key.as_ref() {
-            "query" => q = Some(value.into_owned()),
-            "scope" => scope = Some(value.into_owned()),
-            "cwd" => cwd = Some(value.into_owned()),
-            "scope_path" => return Err(agent::err_scope_path_removed()),
-            "scope_mode" => return Err(agent::err_scope_mode_removed()),
-            "kind" => kind = Some(value.into_owned()),
-            "tag" => tag = Some(value.into_owned()),
-            "limit" => {
-                limit = Some(value.parse::<u32>().map_err(|_| {
-                    ApiError(cm_core::CmError::Validation(format!(
-                        "invalid limit: '{value}'"
-                    )))
-                })?)
-            }
-            other => return Err(agent::err_unknown_query_key(other, SEARCH_QUERY_KEYS)),
-        }
-    }
-
-    Ok(SearchQuery {
-        q: q.unwrap_or_default(),
-        scope,
-        cwd,
-        kind,
-        tag,
-        limit,
-    })
 }
 
 // ── Recall compatibility alias ──────────────────────────────────
@@ -261,6 +167,11 @@ impl TryFrom<EntryWriteRequest> for NewEntry {
             ScopeSelector::CwdInferred { .. } => {
                 return Err(ApiError(cm_core::CmError::Validation(
                     "scope='cwd_inferred' is not supported for entry write bodies".to_owned(),
+                )));
+            }
+            ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => {
+                return Err(ApiError(cm_core::CmError::Validation(
+                    "entry write bodies require scope kind 'path'".to_owned(),
                 )));
             }
         };

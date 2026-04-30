@@ -174,6 +174,7 @@ impl<S: ContextStore> McpServer<S> {
 
         let result = match tool_name {
             "cx_recall" => tools::cx_recall(&*self.store, &arguments).await,
+            "cx_search" => tools::cx_search(&*self.store, &arguments).await,
             "cx_store" => tools::cx_store(&*self.store, &arguments).await,
             "cx_deposit" => tools::cx_deposit(&*self.store, &arguments).await,
             "cx_browse" => tools::cx_browse(&*self.store, &arguments).await,

@@ -1,6 +1,7 @@
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import type { FeedMode } from "@/components/domain/FeedModeSelect";
+import type { ScopeSelector } from "@/lib/scope";
 
 export type FeedSearch = {
   mode?: FeedMode;
@@ -33,6 +34,39 @@ export function validateFeedSearch(search: Record<string, unknown>): FeedSearch 
     q: typeof search.q === "string" && search.q ? search.q : undefined,
     entry_id: typeof search.entry_id === "string" && search.entry_id ? search.entry_id : undefined,
   };
+}
+
+export function scopeSelectorFromFeedScope(scope: string | undefined): ScopeSelector | undefined {
+  if (!scope) return undefined;
+  if (scope === "all") return { kind: "all" };
+  if (scope.startsWith("path:")) return { kind: "path", path: scope.slice("path:".length) };
+  if (scope.startsWith("subtree:")) {
+    return { kind: "subtree", path: scope.slice("subtree:".length) };
+  }
+  if (scope.startsWith("set:")) {
+    const paths = scope
+      .slice("set:".length)
+      .split(",")
+      .map((path) => path.trim())
+      .filter(Boolean);
+    return paths.length > 0 ? { kind: "set", paths } : undefined;
+  }
+  if (scope.startsWith("cwd:")) {
+    const cwd = scope.slice("cwd:".length);
+    return cwd ? { kind: "cwd_inferred", cwd } : { kind: "cwd_inferred" };
+  }
+  return { kind: "path", path: scope };
+}
+
+export function feedScopeFromScopeSelector(scope: ScopeSelector | undefined): string | undefined {
+  if (scope?.kind === "path") return `path:${scope.path}`;
+  if (scope?.kind === "cwd_inferred") return `cwd:${scope.cwd ?? ""}`;
+  if (scope?.kind === "subtree") return `subtree:${scope.path}`;
+  if (scope?.kind === "set") {
+    return scope.paths.length > 0 ? `set:${scope.paths.join(",")}` : undefined;
+  }
+  if (scope?.kind === "all") return "all";
+  return undefined;
 }
 
 const ENTRY_KINDS: ReadonlySet<string> = new Set([

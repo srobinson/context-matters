@@ -1,20 +1,17 @@
-//! Read-only query operations: resolve_context, search, browse.
+//! Read-only query operations: resolve_context, ancestor search, browse.
 
-use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath, ScoredEntry};
+use cm_core::{
+    AncestorWalkRequest, CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath,
+    ScoredEntry,
+};
 use sqlx::{QueryBuilder, Row, Sqlite};
 
 use super::CmStore;
 use super::cursor::{decode_cursor, encode_cursor, order_by_clause, push_cursor_condition};
 use super::parse::{map_db_err, parse_entry};
-
-fn push_where_prefix(query: &mut QueryBuilder<'_, Sqlite>, has_where: &mut bool) {
-    if *has_where {
-        query.push(" AND ");
-    } else {
-        query.push(" WHERE ");
-        *has_where = true;
-    }
-}
+use super::predicates::{
+    push_kind_predicate, push_scope_filter, push_tag_predicate, push_where_prefix,
+};
 
 fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilter) -> bool {
     let mut has_where = false;
@@ -24,16 +21,12 @@ fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilte
         query.push("superseded_by IS NULL");
     }
 
-    if let Some(ref sp) = filter.scope_path {
-        push_where_prefix(query, &mut has_where);
-        query.push("scope_path = ");
-        query.push_bind(sp.as_str().to_owned());
+    if let Some(ref scope) = filter.scope {
+        push_scope_filter(query, &mut has_where, scope);
     }
 
     if let Some(ref kind) = filter.kind {
-        push_where_prefix(query, &mut has_where);
-        query.push("kind = ");
-        query.push_bind(kind.as_str().to_owned());
+        push_kind_predicate(query, &mut has_where, &[*kind]);
     }
 
     if let Some(ref created_by) = filter.created_by {
@@ -43,10 +36,7 @@ fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilte
     }
 
     if let Some(ref tag) = filter.tag {
-        push_where_prefix(query, &mut has_where);
-        query.push("EXISTS (SELECT 1 FROM json_each(entries.meta, '$.tags') WHERE value = ");
-        query.push_bind(tag.clone());
-        query.push(")");
+        push_tag_predicate(query, &mut has_where, std::slice::from_ref(tag));
     }
 
     has_where
@@ -111,13 +101,11 @@ impl CmStore {
         Ok(all_entries)
     }
 
-    pub(crate) async fn do_search(
+    pub(crate) async fn do_search_ancestor_walk(
         &self,
-        query: &str,
-        scope_path: Option<&ScopePath>,
-        limit: u32,
+        request: AncestorWalkRequest,
     ) -> Result<Vec<ScoredEntry>, CmError> {
-        let fts_query = cm_core::FtsQuery::new(query);
+        let fts_query = cm_core::FtsQuery::new(&request.query);
         let fts_str = fts_query.as_str().to_owned();
 
         if fts_str.is_empty() {
@@ -126,47 +114,28 @@ impl CmStore {
 
         let pool = &self.read_pool;
 
-        // Both branches select `f.rank` as the trailing column so the row
-        // decoder can pair each `Entry` with its raw BM25 score. SQLite's
-        // FTS5 `rank` is a negative float (lower = more relevant).
-        let rows = if let Some(sp) = scope_path {
-            let ancestors: Vec<&str> = sp.ancestors().collect();
-            let mut q = QueryBuilder::<Sqlite>::new(
-                "SELECT e.*, f.rank AS fts_rank FROM entries e \
-                 JOIN entries_fts f ON e.rowid = f.rowid \
-                 WHERE f.entries_fts MATCH ",
-            );
-            q.push_bind(fts_str.clone());
-            q.push(
-                " \
-                 AND e.superseded_by IS NULL \
-                 AND e.scope_path IN (",
-            );
-            {
-                let mut separated = q.separated(", ");
-                for a in &ancestors {
-                    separated.push_bind(*a);
-                }
+        let ancestors: Vec<&str> = request.scope.ancestors().collect();
+        let mut q = QueryBuilder::<Sqlite>::new(
+            "SELECT e.*, f.rank AS fts_rank FROM entries e \
+             JOIN entries_fts f ON e.rowid = f.rowid \
+             WHERE f.entries_fts MATCH ",
+        );
+        q.push_bind(fts_str);
+        q.push(
+            " \
+             AND e.superseded_by IS NULL \
+             AND e.scope_path IN (",
+        );
+        {
+            let mut separated = q.separated(", ");
+            for ancestor in &ancestors {
+                separated.push_bind(*ancestor);
             }
-            q.push(") ORDER BY f.rank LIMIT ");
-            q.push_bind(limit as i64);
+        }
+        q.push(") ORDER BY f.rank LIMIT ");
+        q.push_bind(request.limit as i64);
 
-            q.build().fetch_all(pool).await.map_err(map_db_err)?
-        } else {
-            sqlx::query(
-                "SELECT e.*, f.rank AS fts_rank FROM entries e \
-                 JOIN entries_fts f ON e.rowid = f.rowid \
-                 WHERE f.entries_fts MATCH ? \
-                 AND e.superseded_by IS NULL \
-                 ORDER BY f.rank \
-                 LIMIT ?",
-            )
-            .bind(&fts_str)
-            .bind(limit as i64)
-            .fetch_all(pool)
-            .await
-            .map_err(map_db_err)?
-        };
+        let rows = q.build().fetch_all(pool).await.map_err(map_db_err)?;
 
         rows.iter()
             .map(|row| {
@@ -194,7 +163,7 @@ impl CmStore {
             .transpose()?;
 
         // Build a separate count without cursor
-        let mut count_q = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) as cnt FROM entries");
+        let mut count_q = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) as cnt FROM entries e");
         push_browse_filters(&mut count_q, &filter);
         let (total,): (i64,) = count_q
             .build_query_as()
@@ -205,7 +174,7 @@ impl CmStore {
         // Fetch query with limit + 1 to detect next page
         let fetch_limit = filter.pagination.limit as i64 + 1;
         let order = order_by_clause(sort);
-        let mut data_q = QueryBuilder::<Sqlite>::new("SELECT * FROM entries");
+        let mut data_q = QueryBuilder::<Sqlite>::new("SELECT e.* FROM entries e");
         let mut has_where = push_browse_filters(&mut data_q, &filter);
         if let Some(ref cursor) = cursor {
             push_where_prefix(&mut data_q, &mut has_where);

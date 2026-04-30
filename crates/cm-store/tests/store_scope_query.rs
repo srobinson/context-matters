@@ -2,7 +2,7 @@
 
 mod common;
 
-use cm_core::{EntryFilter, EntryKind, NewScope};
+use cm_core::{EntryFilter, EntryKind, NewScope, ScopeFilter};
 use common::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -45,7 +45,7 @@ async fn c13_query_by_scope_returns_exact_scope_only() {
 
     let result = store
         .browse(EntryFilter {
-            scope_path: Some(project_path),
+            scope: Some(ScopeFilter::Exact(project_path)),
             ..Default::default()
         })
         .await
@@ -53,6 +53,121 @@ async fn c13_query_by_scope_returns_exact_scope_only() {
 
     assert_eq!(result.items.len(), 1);
     assert_eq!(result.items[0].title, "Project entry");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_scope_filter_supports_subtree_set_and_all() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let alpha_path = ScopePath::parse("global/project:alpha").unwrap();
+    let alpha_repo_path = ScopePath::parse("global/project:alpha/repo:api").unwrap();
+    let beta_path = ScopePath::parse("global/project:beta").unwrap();
+
+    for (path, label) in [
+        (&alpha_path, "Alpha"),
+        (&alpha_repo_path, "Alpha API"),
+        (&beta_path, "Beta"),
+    ] {
+        store
+            .create_scope(
+                NewScope {
+                    path: path.clone(),
+                    label: label.to_owned(),
+                    meta: None,
+                },
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+    }
+
+    for (scope, title) in [
+        ("global", "Global entry"),
+        ("global/project:alpha", "Alpha project entry"),
+        ("global/project:alpha/repo:api", "Alpha repo entry"),
+        ("global/project:beta", "Beta project entry"),
+    ] {
+        store
+            .create_entry(new_entry(scope, EntryKind::Fact, title, title), &test_ctx())
+            .await
+            .unwrap();
+    }
+
+    let subtree = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::Subtree(alpha_path.clone())),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        sorted_titles(&subtree.items),
+        vec!["Alpha project entry", "Alpha repo entry"]
+    );
+
+    let set = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::Set(vec![alpha_repo_path, beta_path])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        sorted_titles(&set.items),
+        vec!["Alpha repo entry", "Beta project entry"]
+    );
+
+    let all = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::All),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(all.total, 4);
+
+    let ancestor_walk = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::AncestorWalk(alpha_path)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        sorted_titles(&ancestor_walk.items),
+        vec!["Alpha project entry", "Global entry"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_scope_filter_set_with_no_paths_returns_no_rows() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    store
+        .create_entry(
+            new_entry("global", EntryKind::Fact, "Global entry", "At global"),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let result = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::Set(vec![])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.total, 0);
+    assert!(result.items.is_empty());
+}
+
+fn sorted_titles(entries: &[cm_core::Entry]) -> Vec<&str> {
+    let mut titles: Vec<&str> = entries.iter().map(|entry| entry.title.as_str()).collect();
+    titles.sort_unstable();
+    titles
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

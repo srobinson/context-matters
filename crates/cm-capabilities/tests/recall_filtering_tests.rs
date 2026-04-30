@@ -3,7 +3,8 @@
 mod common;
 
 use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
-use cm_core::EntryKind;
+use cm_capabilities::scope::ScopeSelector;
+use cm_core::{CmError, EntryKind, ScopePath};
 use common::{create_global, seed_entry, seed_entry_with_tags, test_store};
 
 #[tokio::test(flavor = "multi_thread")]
@@ -27,6 +28,39 @@ async fn default_scope_resolution_passes_single_kind_to_filter() {
     assert_eq!(result.routing, RecallRouting::ScopeResolve);
     assert_eq!(result.entries.len(), 1);
     assert_eq!(result.entries[0].entry.kind, EntryKind::Fact);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_rejects_non_singular_scope_selectors() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    let project = ScopePath::parse("global/project:helioy").unwrap();
+
+    for scope in [
+        ScopeSelector::Subtree(project.clone()),
+        ScopeSelector::Set(vec![project]),
+        ScopeSelector::All,
+    ] {
+        let err = recall(
+            &store,
+            RecallRequest {
+                scope: Some(scope),
+                limit: 10,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CmError::InvalidOperationInput {
+                op: "cx_recall",
+                ..
+            }
+        ));
+        assert!(err.to_string().contains("cx_search"));
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

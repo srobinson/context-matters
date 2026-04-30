@@ -104,7 +104,10 @@ async fn recall_without_query_uses_scope_resolution() {
     let result = tools::cx_recall(
         &store,
         &json!({
-            "scope": "global/project:helioy"
+            "scope": {
+                "kind": "path",
+                "path": "global/project:helioy"
+            }
         }),
     )
     .await

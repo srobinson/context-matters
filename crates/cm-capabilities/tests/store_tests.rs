@@ -72,7 +72,10 @@ fn store_request_deserializes_exact_scope_selector() {
         "title": "Scoped store",
         "body": "Body.",
         "kind": "fact",
-        "scope": "global/project:helioy/repo:context-matters"
+        "scope": {
+            "kind": "path",
+            "path": "global/project:helioy/repo:context-matters"
+        }
     }));
 
     assert_eq!(
@@ -169,7 +172,10 @@ async fn store_auto_creates_scope_chain_and_reports_creation() {
         "title": "Repo decision",
         "body": "Use sqlx.",
         "kind": "decision",
-        "scope": "global/project:helioy/repo:nancyr"
+        "scope": {
+            "kind": "path",
+            "path": "global/project:helioy/repo:nancyr"
+        }
     }));
 
     let result = store_entry(&store, request, &wctx()).await.unwrap();

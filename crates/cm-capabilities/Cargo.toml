@@ -13,12 +13,14 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 ts-rs = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 cm-store = { workspace = true }
 tokio = { workspace = true }
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
+tracing-subscriber = { workspace = true }
 
 # ── Benchmarks (ALP-1762) ─────────────────────────────────────────
 # Each bench file targets one cm-capabilities hot path. ALP-1763

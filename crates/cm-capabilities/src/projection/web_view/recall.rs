@@ -16,10 +16,18 @@ use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 ///
 /// Mirrors the YAML `format_recall_view` header: surfaces the query,
 /// routing branch, fallback tier, scope chain and hit counts,
-/// histograms, and the post-projection token estimate. `routing` and
+/// histograms, and the token estimate after projection. `routing` and
 /// `tier` are both strings so the frontend need not import the Rust
 /// enum shapes; the values come straight out of the shared
 /// `routing_explanation` and `search_tier_header_tag` helpers.
+///
+/// The web `cx_search` endpoint currently reuses this shape. Search
+/// rows still carry `scope`, `kind`, `tags`, snippets, scores, and
+/// histograms. Recall only fields degrade as follows: `tier` is `null`
+/// unless recall performed its ancestor walk FTS fallback, and
+/// `scope_chain` is empty for wide content search selectors
+/// (`subtree`, `set`, `all`) because those requests do not produce an
+/// ancestor walk.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct WebRecallHeader {

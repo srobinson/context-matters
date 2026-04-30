@@ -5,6 +5,8 @@ pub fn generated_tool_list() -> serde_json::Value {
     let tools: Vec<serde_json::Value> = vec![
         serde_json::from_str(include_str!("generated_schema/cx_recall.json"))
             .expect("generated schema for cx_recall is valid JSON"),
+        serde_json::from_str(include_str!("generated_schema/cx_search.json"))
+            .expect("generated schema for cx_search is valid JSON"),
         serde_json::from_str(include_str!("generated_schema/cx_store.json"))
             .expect("generated schema for cx_store is valid JSON"),
         serde_json::from_str(include_str!("generated_schema/cx_deposit.json"))

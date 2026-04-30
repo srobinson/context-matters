@@ -1,7 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use cm_core::{CmError, ScopePath};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub const CWD_INFERRED_SCOPE: &str = "cwd_inferred";
 
@@ -9,11 +9,34 @@ pub const CWD_INFERRED_SCOPE: &str = "cwd_inferred";
 pub enum ScopeSelector {
     Path(ScopePath),
     CwdInferred { cwd: Option<PathBuf> },
+    Subtree(ScopePath),
+    Set(Vec<ScopePath>),
+    All,
 }
 
 impl ScopeSelector {
     pub fn parse(scope: &str) -> Result<Self, CmError> {
-        scope.parse()
+        let scope = scope.trim();
+        if scope.is_empty() {
+            return Err(CmError::Validation("scope cannot be empty".to_owned()));
+        }
+        if scope == "auto" {
+            return Err(CmError::Validation(format!(
+                "use scope='{{\"kind\":\"{CWD_INFERRED_SCOPE}\"}}' instead of scope='auto'"
+            )));
+        }
+        let value: serde_json::Value = serde_json::from_str(scope).map_err(|err| {
+            CmError::Validation(format!(
+                "scope must be structured JSON with a kind field: {err}"
+            ))
+        })?;
+        if !value.is_object() || value.get("kind").is_none() {
+            return Err(CmError::Validation(
+                "scope must be structured JSON with a kind field".to_owned(),
+            ));
+        }
+        serde_json::from_value(value)
+            .map_err(|err| CmError::Validation(format!("Invalid scope: {err}")))
     }
 
     pub fn cwd_inferred(cwd: Option<PathBuf>) -> Self {
@@ -32,13 +55,14 @@ impl ScopeSelector {
 
     pub fn with_cwd(self, cwd: Option<PathBuf>) -> Result<Self, CmError> {
         match (self, cwd) {
-            (Self::CwdInferred { .. }, cwd) => Ok(Self::CwdInferred {
-                cwd: validate_cwd(cwd)?,
+            (Self::CwdInferred { cwd: existing }, cwd) => Ok(Self::CwdInferred {
+                cwd: validate_cwd(cwd)?.or(existing),
             }),
-            (Self::Path(scope_path), Some(_)) => Err(CmError::Validation(format!(
-                "cwd can only be supplied with scope='{CWD_INFERRED_SCOPE}', not scope='{scope_path}'"
-            ))),
             (selector, None) => Ok(selector),
+            (selector, Some(_)) => Err(CmError::Validation(format!(
+                "cwd can only be supplied with scope kind '{CWD_INFERRED_SCOPE}', not scope='{}'",
+                selector.requested_scope()
+            ))),
         }
     }
 
@@ -46,6 +70,13 @@ impl ScopeSelector {
         match self {
             Self::Path(scope_path) => scope_path.as_str().to_owned(),
             Self::CwdInferred { .. } => CWD_INFERRED_SCOPE.to_owned(),
+            Self::Subtree(scope_path) => scope_path.as_str().to_owned(),
+            Self::Set(scope_paths) => scope_paths
+                .iter()
+                .map(|scope_path| scope_path.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+            Self::All => "all".to_owned(),
         }
     }
 }
@@ -63,18 +94,61 @@ impl FromStr for ScopeSelector {
     type Err = CmError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let scope = s.trim();
-        if scope.is_empty() {
-            return Err(CmError::Validation("scope cannot be empty".to_owned()));
-        }
+        Self::parse(s)
+    }
+}
 
-        match scope {
-            CWD_INFERRED_SCOPE => Ok(Self::CwdInferred { cwd: None }),
-            "auto" => Err(CmError::Validation(format!(
-                "use scope='{CWD_INFERRED_SCOPE}' instead of scope='auto'"
-            ))),
-            exact => Ok(Self::Path(ScopePath::parse(exact)?)),
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum ScopeSelectorWire {
+    Path {
+        path: ScopePath,
+    },
+    CwdInferred {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<PathBuf>,
+    },
+    Subtree {
+        path: ScopePath,
+    },
+    Set {
+        paths: Vec<ScopePath>,
+    },
+    All,
+}
+
+impl From<ScopeSelectorWire> for ScopeSelector {
+    fn from(value: ScopeSelectorWire) -> Self {
+        match value {
+            ScopeSelectorWire::Path { path } => Self::Path(path),
+            ScopeSelectorWire::CwdInferred { cwd } => Self::CwdInferred { cwd },
+            ScopeSelectorWire::Subtree { path } => Self::Subtree(path),
+            ScopeSelectorWire::Set { paths } => Self::Set(paths),
+            ScopeSelectorWire::All => Self::All,
         }
+    }
+}
+
+impl From<&ScopeSelector> for ScopeSelectorWire {
+    fn from(value: &ScopeSelector) -> Self {
+        match value {
+            ScopeSelector::Path(path) => Self::Path { path: path.clone() },
+            ScopeSelector::CwdInferred { cwd } => Self::CwdInferred { cwd: cwd.clone() },
+            ScopeSelector::Subtree(path) => Self::Subtree { path: path.clone() },
+            ScopeSelector::Set(paths) => Self::Set {
+                paths: paths.clone(),
+            },
+            ScopeSelector::All => Self::All,
+        }
+    }
+}
+
+impl Serialize for ScopeSelector {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        ScopeSelectorWire::from(self).serialize(serializer)
     }
 }
 
@@ -83,8 +157,7 @@ impl<'de> Deserialize<'de> for ScopeSelector {
     where
         D: serde::Deserializer<'de>,
     {
-        let scope = String::deserialize(deserializer)?;
-        Self::parse(&scope).map_err(serde::de::Error::custom)
+        ScopeSelectorWire::deserialize(deserializer).map(Into::into)
     }
 }
 

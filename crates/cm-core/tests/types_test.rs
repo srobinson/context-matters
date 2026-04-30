@@ -362,7 +362,7 @@ fn pagination_defaults() {
 #[test]
 fn entry_filter_defaults() {
     let f = EntryFilter::default();
-    assert!(f.scope_path.is_none());
+    assert!(f.scope.is_none());
     assert!(f.kind.is_none());
     assert!(!f.include_superseded);
     assert_eq!(f.pagination.limit, 50);

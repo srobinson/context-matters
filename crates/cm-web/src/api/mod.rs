@@ -5,6 +5,7 @@ mod entries;
 mod error;
 mod export;
 mod mutations;
+mod scope_query;
 mod stats;
 
 use std::sync::Arc;

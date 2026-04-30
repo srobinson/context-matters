@@ -2,7 +2,7 @@
 import type { BrowseSort } from "./BrowseSort";
 import type { EntryKind } from "./EntryKind";
 import type { Pagination } from "./Pagination";
-import type { ScopePath } from "./ScopePath";
+import type { ScopeFilter } from "./ScopeFilter";
 
 /**
  * Query parameters for browsing and filtering entries.
@@ -13,9 +13,9 @@ import type { ScopePath } from "./ScopePath";
  */
 export type EntryFilter = { 
 /**
- * Filter to a specific scope path (exact match, no ancestor walk).
+ * Filter by scope predicate.
  */
-scope_path?: ScopePath | null, 
+scope?: ScopeFilter | null, 
 /**
  * Filter by entry kind.
  */

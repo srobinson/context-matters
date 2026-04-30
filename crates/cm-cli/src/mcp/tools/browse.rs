@@ -2,7 +2,6 @@
 
 use cm_capabilities::browse::{self, BrowseRequest};
 use cm_capabilities::projection::{format_browse_view, project_web_browse};
-use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::parse_kind;
 use cm_core::ContextStore;
 use serde::Deserialize;
@@ -11,18 +10,15 @@ use serde_json::Value;
 use crate::mcp::{
     ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
 };
+use crate::shared::parse_structured_scope_selector;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CxBrowseParams {
-    /// Preferred scope input. Accepts "cwd_inferred" for local scope
-    /// inference or an explicit scope path for exact filtering.
+    /// Structured scope selector. Cwd inference carries cwd inside the
+    /// selector object.
     #[serde(default)]
-    scope: Option<String>,
-
-    /// Filesystem cwd used for scope="cwd_inferred" inference.
-    #[serde(default)]
-    cwd: Option<String>,
+    scope: Option<Value>,
 
     /// Include resolution metadata in projected responses.
     #[serde(default)]
@@ -56,16 +52,7 @@ struct CxBrowseParams {
 pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
     reject_removed_scope_inputs(args)?;
     let params: CxBrowseParams = parse_params(args)?;
-
-    let cwd = match params.cwd {
-        Some(raw) if raw.trim().is_empty() => {
-            return Err("Invalid parameters: cwd cannot be empty".to_owned());
-        }
-        Some(raw) => Some(raw.into()),
-        None => None,
-    };
-    let scope = ScopeSelector::from_optional_scope(params.scope.as_deref(), cwd)
-        .map_err(cm_err_to_string)?;
+    let scope = parse_structured_scope_selector(params.scope)?;
 
     let kind = match &params.kind {
         Some(k) => Some(parse_kind(k)?),

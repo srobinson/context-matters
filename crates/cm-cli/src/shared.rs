@@ -1,5 +1,6 @@
 //! Helpers specific to the cm-cli MCP adapter layer.
 
+use cm_capabilities::scope::ScopeSelector;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -104,6 +105,19 @@ pub fn parse_params<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, S
     })
 }
 
+pub fn parse_structured_scope_selector(
+    scope: Option<Value>,
+) -> Result<Option<ScopeSelector>, String> {
+    scope.map(parse_scope_selector_value).transpose()
+}
+
+fn parse_scope_selector_value(value: Value) -> Result<ScopeSelector, String> {
+    if value.is_object() {
+        return serde_json::from_value(value).map_err(|e| format!("Invalid scope: {e}"));
+    }
+    serde_json::from_value(value).map_err(|e| format!("Invalid parameters: {e}"))
+}
+
 /// Redirect callers using legacy scope keys to the current `scope` field.
 pub fn reject_removed_scope_inputs(args: &Value) -> Result<(), String> {
     let Some(object) = args.as_object() else {
@@ -135,10 +149,27 @@ pub fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), Strin
 
 /// Serde default for scope fields.
 pub fn default_scope() -> String {
-    "global".to_owned()
+    normalize_scope_selector_input("global")
 }
 
 /// Serde default for created_by fields.
 pub fn default_created_by() -> String {
     "agent:claude-code".to_owned()
+}
+
+/// Convert public CLI/MCP scope shorthand into the structured selector JSON
+/// consumed by `ScopeSelector::parse`.
+pub fn normalize_scope_selector_input(scope: &str) -> String {
+    let scope = scope.trim();
+    if scope.starts_with('{') || scope == "auto" {
+        return scope.to_owned();
+    }
+    if scope == "cwd_inferred" {
+        return r#"{"kind":"cwd_inferred"}"#.to_owned();
+    }
+    serde_json::json!({
+        "kind": "path",
+        "path": scope,
+    })
+    .to_string()
 }

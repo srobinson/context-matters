@@ -23,6 +23,7 @@ use cm_capabilities::scope::ScopeSelector;
 use cm_core::ContextStore;
 
 use crate::cli::errors::capability_error;
+use crate::shared::normalize_scope_selector_input;
 
 /// `cm export` handler. Read path: no [`WriteContext`] needed.
 ///
@@ -35,6 +36,8 @@ pub async fn run(
     format: Option<String>,
 ) -> Result<()> {
     let scope = scope
+        .as_deref()
+        .map(normalize_scope_selector_input)
         .as_deref()
         .map(ScopeSelector::parse)
         .transpose()

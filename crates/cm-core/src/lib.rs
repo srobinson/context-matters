@@ -11,9 +11,12 @@ mod types;
 
 pub use error::{CmError, ScopePathError};
 pub use query::{FtsQuery, QueryBuilder};
-pub use store::{ContextStore, ScoredEntry};
+pub use store::{
+    AncestorWalkRequest, ContentSearchPage, ContentSearchRequest, ContextStore, ScoredEntry,
+};
 pub use types::{
     BrowseSort, Confidence, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation,
     MutationAction, MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, Pagination,
-    RelationKind, Scope, ScopeKind, ScopePath, StoreStats, TagCount, UpdateEntry, WriteContext,
+    RelationKind, Scope, ScopeFilter, ScopeKind, ScopePath, StoreStats, TagCount, UpdateEntry,
+    WriteContext,
 };

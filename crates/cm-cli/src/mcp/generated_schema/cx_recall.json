@@ -1,5 +1,5 @@
 {
-  "description": "Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.",
+  "description": "Recall priority context for a single known scope by walking that scope and its ancestors. Call after receiving a task with a summary of what you are working on. With a query, uses FTS5 inside the ancestor walk. Without a query, returns all entries visible at the target scope. Use cx_search when you need content search across subtree, set, or all scopes. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -23,8 +23,8 @@
         "type": "string"
       },
       "scope": {
-        "description": "Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve entries from that scope and all ancestor scopes. Default: 'global'.",
-        "type": "string"
+        "description": "Structured ScopeSelector object for recall. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"} or {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}. cx_recall rejects subtree, set, and all selectors; use cx_search for broad scope queries. Default: {\"kind\":\"path\",\"path\":\"global\"}. Plain strings are not accepted by MCP.",
+        "type": "object"
       },
       "tags": {
         "description": "Filter to entries with any of these tags (OR logic). Pass a JSON array: [\"tag1\", \"tag2\"].",

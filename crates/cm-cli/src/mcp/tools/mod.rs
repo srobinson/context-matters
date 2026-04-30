@@ -1,4 +1,4 @@
-//! Tool handlers for the 9 `cx_*` tools.
+//! Tool handlers for the 10 `cx_*` tools.
 //!
 //! Each handler receives a reference to the store and the raw JSON arguments,
 //! validates inputs, calls the appropriate `ContextStore` trait methods, and
@@ -10,6 +10,7 @@ mod export;
 mod forget;
 mod get;
 mod recall;
+mod search;
 mod stats;
 mod store;
 mod update;
@@ -20,6 +21,7 @@ pub use export::cx_export;
 pub use forget::cx_forget;
 pub use get::cx_get;
 pub use recall::cx_recall;
+pub use search::cx_search;
 pub use stats::cx_stats;
 pub use store::cx_store;
 pub use update::cx_update;

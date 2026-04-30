@@ -5,9 +5,14 @@ use cm_capabilities::scope::{
     ScopeResolutionConfidence, ScopeSelector,
 };
 use cm_core::ScopePath;
+use serde_json::json;
 
 fn repo_scope() -> ScopePath {
     ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+}
+
+fn project_scope() -> ScopePath {
+    ScopePath::parse("global/project:helioy").unwrap()
 }
 
 fn resolution(
@@ -33,19 +38,66 @@ fn candidate(scope: ScopePath, score: i32) -> ScopeResolutionCandidate {
 }
 
 #[test]
-fn scope_selector_parses_exact_path() {
+fn scope_selector_parses_structured_path() {
     let scope = repo_scope();
 
-    let selector = ScopeSelector::parse(scope.as_str()).unwrap();
+    let selector = ScopeSelector::parse(
+        r#"{"kind":"path","path":"global/project:helioy/repo:context-matters"}"#,
+    )
+    .unwrap();
 
     assert_eq!(selector, ScopeSelector::Path(scope));
+}
+
+#[test]
+fn scope_selector_round_trips_structured_variants() {
+    let cwd = PathBuf::from("/tmp/helioy/context-matters");
+    let path = ScopeSelector::Path(repo_scope());
+    let inferred = ScopeSelector::cwd_inferred(Some(cwd.clone()));
+    let subtree = ScopeSelector::Subtree(project_scope());
+    let set = ScopeSelector::Set(vec![project_scope(), repo_scope()]);
+    let all = ScopeSelector::All;
+
+    let cases = [
+        (
+            path,
+            json!({"kind": "path", "path": "global/project:helioy/repo:context-matters"}),
+        ),
+        (
+            inferred,
+            json!({"kind": "cwd_inferred", "cwd": "/tmp/helioy/context-matters"}),
+        ),
+        (
+            subtree,
+            json!({"kind": "subtree", "path": "global/project:helioy"}),
+        ),
+        (
+            set,
+            json!({
+                "kind": "set",
+                "paths": [
+                    "global/project:helioy",
+                    "global/project:helioy/repo:context-matters"
+                ]
+            }),
+        ),
+        (all, json!({"kind": "all"})),
+    ];
+
+    for (selector, value) in cases {
+        let encoded = serde_json::to_value(&selector).unwrap();
+        assert_eq!(encoded, value);
+
+        let decoded: ScopeSelector = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, selector);
+    }
 }
 
 #[test]
 fn scope_selector_constructs_cwd_inferred() {
     let cwd = PathBuf::from("/tmp/helioy/context-matters");
 
-    let parsed = ScopeSelector::parse("cwd_inferred").unwrap();
+    let parsed = ScopeSelector::parse(r#"{"kind":"cwd_inferred"}"#).unwrap();
     let explicit = ScopeSelector::cwd_inferred(Some(cwd.clone()));
 
     assert_eq!(parsed, ScopeSelector::CwdInferred { cwd: None });
@@ -60,6 +112,21 @@ fn scope_selector_rejects_removed_auto_value() {
 }
 
 #[test]
+fn scope_selector_rejects_legacy_plain_scope_path() {
+    let err = ScopeSelector::parse(repo_scope().as_str()).unwrap_err();
+
+    assert!(err.to_string().contains("JSON"));
+}
+
+#[test]
+fn scope_selector_rejects_invalid_structured_scope_path() {
+    let err = ScopeSelector::parse(r#"{"kind":"path","path":"not/valid"}"#).unwrap_err();
+
+    assert!(err.to_string().contains("Invalid scope"));
+    assert!(err.to_string().contains("global"));
+}
+
+#[test]
 fn scope_selector_rejects_empty_input() {
     let err = ScopeSelector::parse("   ").unwrap_err();
 
@@ -71,9 +138,18 @@ fn scope_selector_requested_scope_matches_variant() {
     let scope = repo_scope();
     let exact = ScopeSelector::Path(scope.clone());
     let inferred = ScopeSelector::cwd_inferred(None);
+    let subtree = ScopeSelector::Subtree(project_scope());
+    let set = ScopeSelector::Set(vec![project_scope(), scope.clone()]);
+    let all = ScopeSelector::All;
 
     assert_eq!(exact.requested_scope(), scope.as_str());
     assert_eq!(inferred.requested_scope(), "cwd_inferred");
+    assert_eq!(subtree.requested_scope(), "global/project:helioy");
+    assert_eq!(
+        set.requested_scope(),
+        "global/project:helioy,global/project:helioy/repo:context-matters"
+    );
+    assert_eq!(all.requested_scope(), "all");
 }
 
 #[test]
@@ -81,21 +157,28 @@ fn scope_selector_optional_scope_attaches_cwd_to_inferred_only() {
     let cwd = PathBuf::from("/tmp/helioy/context-matters");
 
     let omitted_without_cwd = ScopeSelector::from_optional_scope(None, None).unwrap();
-    let inferred_without_cwd = ScopeSelector::from_optional_scope(Some("cwd_inferred"), None)
-        .unwrap()
-        .unwrap();
-    let exact_without_cwd = ScopeSelector::from_optional_scope(Some(repo_scope().as_str()), None)
-        .unwrap()
-        .unwrap();
-    let inferred = ScopeSelector::from_optional_scope(Some("cwd_inferred"), Some(cwd.clone()))
-        .unwrap()
-        .unwrap();
+    let inferred_without_cwd =
+        ScopeSelector::from_optional_scope(Some(r#"{"kind":"cwd_inferred"}"#), None)
+            .unwrap()
+            .unwrap();
+    let exact_without_cwd = ScopeSelector::from_optional_scope(
+        Some(r#"{"kind":"path","path":"global/project:helioy/repo:context-matters"}"#),
+        None,
+    )
+    .unwrap()
+    .unwrap();
+    let inferred =
+        ScopeSelector::from_optional_scope(Some(r#"{"kind":"cwd_inferred"}"#), Some(cwd.clone()))
+            .unwrap()
+            .unwrap();
     let omitted = ScopeSelector::from_optional_scope(None, Some(cwd.clone()))
         .unwrap()
         .unwrap();
-    let exact_err =
-        ScopeSelector::from_optional_scope(Some(repo_scope().as_str()), Some(cwd.clone()))
-            .unwrap_err();
+    let exact_err = ScopeSelector::from_optional_scope(
+        Some(r#"{"kind":"path","path":"global/project:helioy/repo:context-matters"}"#),
+        Some(cwd.clone()),
+    )
+    .unwrap_err();
 
     assert_eq!(omitted_without_cwd, None);
     assert_eq!(inferred_without_cwd, ScopeSelector::cwd_inferred(None));

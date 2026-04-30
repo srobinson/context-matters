@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import {
   type AgentBrowseParams,
+  type AgentSearchParams,
   api,
   type BrowseParams,
   type BrowseView,
@@ -35,6 +36,7 @@ export const queryKeys = {
   agent: {
     all: ["agent"] as const,
     recall: (params: RecallParams) => ["agent", "recall", params] as const,
+    search: (params: AgentSearchParams) => ["agent", "search", params] as const,
     browse: (params: AgentBrowseParams) => ["agent", "browse", params] as const,
   },
   stats: ["stats"] as const,
@@ -72,7 +74,7 @@ export function useStats(options?: Partial<UseQueryOptions<Stats>>) {
   });
 }
 
-export function useSearch(params: Omit<SearchParams, "cursor">) {
+export function useSearch(params: SearchParams) {
   return useQuery({
     queryKey: queryKeys.entries.search(params),
     queryFn: () => api.entries.search(params),
@@ -95,6 +97,17 @@ export function useAgentRecall(
   return useQuery({
     queryKey: queryKeys.agent.recall(params),
     queryFn: () => api.agent.recall(params),
+    ...options,
+  });
+}
+
+export function useAgentSearch(
+  params: AgentSearchParams,
+  options?: Partial<UseQueryOptions<RecallView>>,
+) {
+  return useQuery({
+    queryKey: queryKeys.agent.search(params),
+    queryFn: () => api.agent.search(params),
     ...options,
   });
 }

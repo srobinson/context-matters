@@ -31,6 +31,14 @@ fn fts_query_preserves_boolean() {
 }
 
 #[test]
+fn fts_query_operator_only_yields_empty() {
+    for input in ["AND", "OR", "NOT", "AND OR NOT"] {
+        let q = FtsQuery::new(input);
+        assert_eq!(q.as_str(), "", "{input}");
+    }
+}
+
+#[test]
 fn fts_prefix_query() {
     let q = FtsQuery::prefix_query("hel wor");
     assert_eq!(q.as_str(), "hel* wor*");

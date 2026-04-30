@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { WebBrowseRow } from "@/api/generated/WebBrowseRow";
-import { useAgentRecall, useEntries } from "@/api/hooks";
+import { useEntries } from "@/api/hooks";
 import { BrowsePane } from "@/components/BrowsePane";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
@@ -14,10 +14,11 @@ import { FeedSearchInput } from "./FeedSearchInput";
 import { FeedToolbar } from "./FeedToolbar";
 import { MergeStatus } from "./MergeStatus";
 import { RecallResults } from "./RecallResults";
-import type { FeedSearch } from "./search";
+import { type FeedSearch, feedScopeFromScopeSelector, scopeSelectorFromFeedScope } from "./search";
 import { useEntryFocus } from "./useEntryFocus";
 import { useMergeSelection } from "./useMergeSelection";
 import { useRecallControls } from "./useRecallControls";
+import { useRecallOrSearch } from "./useRecallOrSearch";
 
 interface FeedPageProps {
   search: FeedSearch;
@@ -102,8 +103,13 @@ export function FeedPage({ search }: FeedPageProps) {
 
   const handleFilterChange = useCallback(
     (update: Partial<FilterState>) => {
+      const { scope: nextScope, ...rest } = update;
+      const nextSearch: Partial<FeedSearch> = { ...rest };
+      if ("scope" in update) {
+        nextSearch.scope = feedScopeFromScopeSelector(nextScope);
+      }
       navigate({
-        search: (prev) => ({ ...prev, ...update }),
+        search: (prev) => ({ ...prev, ...nextSearch }),
       });
     },
     [navigate],
@@ -117,26 +123,22 @@ export function FeedPage({ search }: FeedPageProps) {
   const browseQuery = useEntries({
     sort: sort ?? "recent",
     kind,
-    scope,
+    scope: scopeSelectorFromFeedScope(scope),
     tag,
     created_by,
     include_superseded: show_forgotten,
     limit: 20,
   });
 
-  const recallQuery = useAgentRecall(
-    {
-      query: debouncedQuery || undefined,
-      scope: recallScope,
-      kinds: recallKinds,
-      tags: recallTags,
-      limit: recallLimit,
-      max_tokens: recallMaxTokens,
-    },
-    {
-      enabled: isRecallMode,
-    },
-  );
+  const { query: recallQuery, showQueryOrScopeHint } = useRecallOrSearch({
+    isRecallMode,
+    scope: recallScope,
+    debouncedQuery,
+    kinds: recallKinds,
+    tags: recallTags,
+    limit: recallLimit,
+    maxTokens: recallMaxTokens,
+  });
 
   const browseData = browseQuery.data;
   const browseEntries = useMemo<WebBrowseRow[]>(
@@ -231,7 +233,13 @@ export function FeedPage({ search }: FeedPageProps) {
 
       {activeMode === "curate" && (
         <FilterBar
-          filters={{ scope, kind, tag, created_by, show_forgotten }}
+          filters={{
+            scope: scopeSelectorFromFeedScope(scope),
+            kind,
+            tag,
+            created_by,
+            show_forgotten,
+          }}
           onChange={handleFilterChange}
         />
       )}
@@ -255,7 +263,13 @@ export function FeedPage({ search }: FeedPageProps) {
         />
       )}
 
-      {isRecallMode && (
+      {isRecallMode && showQueryOrScopeHint && (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Enter a query or pick a scope.</p>
+        </div>
+      )}
+
+      {isRecallMode && !showQueryOrScopeHint && (
         <RecallResults
           isLoading={recallQuery.isLoading}
           isError={recallQuery.isError}

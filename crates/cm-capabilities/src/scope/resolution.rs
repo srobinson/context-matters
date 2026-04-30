@@ -5,7 +5,7 @@ use std::{
     process::Command,
 };
 
-use cm_core::{CmError, ContextStore, Scope, ScopeKind, ScopePath};
+use cm_core::{CmError, ContextStore, Scope, ScopeFilter, ScopeKind, ScopePath};
 
 use super::{
     BrowseScopeMode, CWD_INFERRED_SCOPE, ResolvedScopeSelection, ScopeResolution,
@@ -41,6 +41,12 @@ pub async fn resolve_scope_selection(
                 requested_scope: selector.requested_scope(),
             })
         }
+        ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => {
+            Err(CmError::Validation(format!(
+                "scope kind '{}' does not resolve to a single scope path",
+                selector.requested_scope()
+            )))
+        }
     }
 }
 
@@ -49,6 +55,22 @@ pub async fn resolve_browse_scope(
     selector: &ScopeSelector,
 ) -> Result<ResolvedScopeSelection, CmError> {
     resolve_scope_selection(store, selector).await
+}
+
+pub async fn resolve_scope_filter(
+    store: &impl ContextStore,
+    selector: &ScopeSelector,
+) -> Result<ScopeFilter, CmError> {
+    match selector {
+        ScopeSelector::Path(_) | ScopeSelector::CwdInferred { .. } => {
+            let resolved = resolve_scope_selection(store, selector).await?;
+            let scope_path = resolved.read_scope_path()?.clone();
+            Ok(ScopeFilter::Exact(scope_path))
+        }
+        ScopeSelector::Subtree(scope_path) => Ok(ScopeFilter::Subtree(scope_path.clone())),
+        ScopeSelector::Set(scope_paths) => Ok(ScopeFilter::Set(scope_paths.clone())),
+        ScopeSelector::All => Ok(ScopeFilter::All),
+    }
 }
 
 fn resolve_cwd_inferred_scope(

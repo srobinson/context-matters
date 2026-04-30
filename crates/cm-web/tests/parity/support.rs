@@ -14,6 +14,7 @@ use cm_web::{AppState, api};
 use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
+use url::form_urlencoded;
 
 pub(super) async fn test_store() -> (CmStore, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
@@ -63,6 +64,35 @@ pub(super) async fn get_json(app: Router, uri: &str) -> Value {
     assert_eq!(resp.status(), 200, "GET {uri} returned {}", resp.status());
     let body = resp.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body).unwrap()
+}
+
+pub(super) fn scope_query(value: Value) -> String {
+    let encoded: String = form_urlencoded::byte_serialize(value.to_string().as_bytes()).collect();
+    format!("scope={encoded}")
+}
+
+pub(super) fn path_scope_value(path: &str) -> String {
+    serde_json::json!({ "kind": "path", "path": path }).to_string()
+}
+
+pub(super) fn path_scope_query(path: &str) -> String {
+    scope_query(serde_json::json!({ "kind": "path", "path": path }))
+}
+
+pub(super) fn cwd_inferred_scope_query(cwd: &str) -> String {
+    scope_query(serde_json::json!({ "kind": "cwd_inferred", "cwd": cwd }))
+}
+
+pub(super) fn subtree_scope_query(path: &str) -> String {
+    scope_query(serde_json::json!({ "kind": "subtree", "path": path }))
+}
+
+pub(super) fn set_scope_query(paths: &[&str]) -> String {
+    scope_query(serde_json::json!({ "kind": "set", "paths": paths }))
+}
+
+pub(super) fn all_scope_query() -> String {
+    scope_query(serde_json::json!({ "kind": "all" }))
 }
 
 pub(super) async fn request_json(

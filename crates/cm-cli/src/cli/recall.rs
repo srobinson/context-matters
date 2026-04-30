@@ -16,6 +16,7 @@ use cm_core::{ContextStore, EntryKind};
 
 use crate::cli::errors::{capability_error, string_error};
 use crate::cli::scope::print_advisory;
+use crate::shared::normalize_scope_selector_input;
 
 /// `cm recall` handler. Read-only: no `WriteContext` constructed.
 ///
@@ -38,7 +39,10 @@ pub async fn run(
     }
 
     let scope = match scope.as_deref() {
-        Some(s) => Some(ScopeSelector::parse(s).map_err(capability_error)?),
+        Some(s) => {
+            let scope = normalize_scope_selector_input(s);
+            Some(ScopeSelector::parse(&scope).map_err(capability_error)?)
+        }
         None => None,
     };
 

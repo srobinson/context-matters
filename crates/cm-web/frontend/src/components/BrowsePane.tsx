@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useAgentBrowse } from "@/api/hooks";
+import { useScopeSelectorState } from "@/hooks/useScopeSelectorState";
 import { HoistedHeader } from "./composed/HoistedHeader";
 import { FilterBar, type FilterState } from "./FilterBar";
 import { SnippetCard } from "./SnippetCard";
@@ -18,7 +19,7 @@ interface BrowsePaneProps {
  * only the cross-pane expansion state.
  */
 export function BrowsePane({ expandedIds, onToggleExpanded }: BrowsePaneProps) {
-  const [scope, setScope] = useState<string | undefined>(undefined);
+  const [scope, setScope] = useScopeSelectorState();
   const [kind, setKind] = useState<EntryKind | undefined>(undefined);
   const [tag, setTag] = useState<string | undefined>(undefined);
   const [agent, setAgent] = useState<string | undefined>(undefined);
@@ -35,14 +36,17 @@ export function BrowsePane({ expandedIds, onToggleExpanded }: BrowsePaneProps) {
     cursor,
   });
 
-  const handleFilterChange = useCallback((update: Partial<FilterState>) => {
-    if ("scope" in update) setScope(update.scope);
-    if ("kind" in update) setKind(update.kind);
-    if ("tag" in update) setTag(update.tag);
-    if ("created_by" in update) setAgent(update.created_by);
-    if ("show_forgotten" in update) setForgotten(!!update.show_forgotten);
-    setCursor(undefined);
-  }, []);
+  const handleFilterChange = useCallback(
+    (update: Partial<FilterState>) => {
+      if ("scope" in update) setScope(update.scope);
+      if ("kind" in update) setKind(update.kind);
+      if ("tag" in update) setTag(update.tag);
+      if ("created_by" in update) setAgent(update.created_by);
+      if ("show_forgotten" in update) setForgotten(!!update.show_forgotten);
+      setCursor(undefined);
+    },
+    [setScope],
+  );
 
   const handleNext = useCallback(() => {
     const next = query.data?.next_cursor;

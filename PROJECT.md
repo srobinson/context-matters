@@ -4,7 +4,7 @@ Structured context store for AI agents. Part of the helioy ecosystem.
 
 ## What It Does
 
-Provides persistent, hierarchical, scoped context storage so AI agents can recall facts, decisions, preferences, and lessons across sessions. SQLite + FTS5 backend served as an MCP server over stdio.
+Provides persistent, hierarchical, scoped context storage so AI agents can recall facts, decisions, preferences, and lessons across sessions. SQLite + FTS5 backend served as an MCP server over stdio, with separate recall and search operations.
 
 ## Architecture
 
@@ -43,15 +43,16 @@ context-matters/
 - **UUID v7** for entry IDs. Time-sortable, 1.9+ for monotonicity within the same millisecond.
 - **BLAKE3 content hashing** for deduplication. Hash input: `scope_path + \0 + kind + \0 + body`. Title excluded.
 - **Scope hierarchy**: `global > project > repo > session`. Ancestor walk provides context inheritance. Scopes auto-created by MCP tools.
-- **Public scope selector**: requests use the `scope` field. Pass an exact path or the reserved value `cwd_inferred` for cwd based resolution.
+- **Public scope selector**: read requests use structured `scope` JSON. Variants are `path`, `cwd_inferred`, `subtree`, `set`, and `all`. `cx_recall` accepts `path` and `cwd_inferred`; `cx_search` accepts the full vocabulary.
 - **Soft-delete via `superseded_by`**. Forgotten entries set `superseded_by = own ID`. Superseded entries point to replacement.
 - **FTS5** with porter + unicode61 tokenizer. Content-sync triggers keep index in lockstep with entries table.
 
-## MCP Tools (9 total, `cx_` prefix)
+## MCP Tools (10 total, `cx_` prefix)
 
 | Tool | Purpose |
 |------|---------|
-| `cx_recall` | Search + scope resolution. Primary retrieval. Two-phase (metadata + snippet). |
+| `cx_recall` | Priority retrieval for one known scope via ancestor walk. Two-phase (metadata + snippet). |
+| `cx_search` | FTS5 BM25 content search across wide or unknown scopes. |
 | `cx_store` | Create entry with auto-scope creation. Supports superseding. |
 | `cx_deposit` | Batch-store conversation exchanges. |
 | `cx_browse` | Filtered inventory with cursor pagination. |
@@ -85,17 +86,17 @@ global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 
 Scopes form a strict hierarchy. Context at broader scopes is visible at narrower scopes via ancestor walk. Intermediate levels can be omitted.
 
-Public request examples use `scope`:
+Public read request examples use `scope`:
 
 ```json
-{ "scope": "global/project:helioy/repo:nancyr" }
+{ "scope": { "kind": "path", "path": "global/project:helioy/repo:nancyr" } }
 ```
 
 ```json
-{ "scope": "cwd_inferred" }
+{ "scope": { "kind": "cwd_inferred", "cwd": "/path/to/repo" } }
 ```
 
-`cwd_inferred` resolves from the supplied `cwd` or process cwd; linked git worktrees normalize to the source repository identity. Persisted entries, exports, response DTOs, and internal domain types include a `scope_path` field that identifies the exact stored scope of each row.
+`subtree` matches a scope path and its descendants, `set` matches an explicit list, and `all` removes the scope filter. `cwd_inferred` resolves from the supplied cwd or process cwd; linked git worktrees normalize to the source repository identity. Persisted entries, exports, response DTOs, and internal domain types include a `scope_path` field that identifies the exact stored scope of each row.
 
 ## Database
 
@@ -120,5 +121,5 @@ Foundational specifications live in `~/.mdx/projects/`:
 - `context-matters-spec-core-types-and-trait.md` — All Rust types and ContextStore trait
 - `context-matters-spec-schema-and-storage.md` — DDL, scope paths, hashing, concurrency
 - `context-matters-spec-scaffold-and-integration.md` — Crate layout, dependencies, plugin registration
-- `context-matters-spec-mcp-server-and-tools.md` — MCP server struct and all 9 cx_* tools
+- `context-matters-spec-mcp-server-and-tools.md` — MCP server struct and all 10 cx_* tools
 - `context-matters-tools.toml` — Tool documentation source of truth (also at repo root)

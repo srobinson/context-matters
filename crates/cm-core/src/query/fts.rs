@@ -50,7 +50,7 @@ impl FtsQuery {
 
         for raw_word in input.split_whitespace() {
             for token in sanitize_word(raw_word).split_whitespace() {
-                if matches!(token, "AND" | "OR" | "NOT") {
+                if is_fts_operator_token(token) {
                     continue;
                 }
                 let term = if token.ends_with('*') {
@@ -94,7 +94,7 @@ impl FtsQuery {
 
         'outer: for raw_word in input.split_whitespace() {
             for token in sanitize_word(raw_word).split_whitespace() {
-                if matches!(token, "AND" | "OR" | "NOT") {
+                if is_fts_operator_token(token) {
                     continue;
                 }
                 if terms.iter().any(|t| t.eq_ignore_ascii_case(token)) {
@@ -131,6 +131,18 @@ fn sanitize_word(word: &str) -> String {
             }
         })
         .collect()
+}
+
+fn is_fts_operator_token(token: &str) -> bool {
+    matches!(token, "AND" | "OR" | "NOT")
+}
+
+fn empty_operator_only_query(query: String) -> String {
+    if query.split_whitespace().all(is_fts_operator_token) {
+        String::new()
+    } else {
+        query
+    }
 }
 
 /// Sanitize user input for FTS5 MATCH syntax.
@@ -180,10 +192,10 @@ fn sanitize_fts_input(input: &str) -> String {
                 parts.push(word);
             }
         }
-        return parts.join(" ");
+        return empty_operator_only_query(parts.join(" "));
     }
 
-    sanitize_unquoted_words(trimmed).join(" ")
+    empty_operator_only_query(sanitize_unquoted_words(trimmed).join(" "))
 }
 
 /// Return sanitized words from a non-quoted segment as individual strings.
@@ -196,7 +208,7 @@ fn sanitize_unquoted_words(segment: &str) -> Vec<String> {
         .split_whitespace()
         .flat_map(|w| {
             let stripped = w.replace('"', "");
-            if stripped == "AND" || stripped == "OR" || stripped == "NOT" {
+            if is_fts_operator_token(&stripped) {
                 vec![stripped]
             } else {
                 sanitize_word(&stripped)

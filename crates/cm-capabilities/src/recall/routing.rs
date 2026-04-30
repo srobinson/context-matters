@@ -1,5 +1,6 @@
 use cm_core::{
-    CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery, Pagination, ScopePath,
+    AncestorWalkRequest, CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery,
+    Pagination, ScopeFilter, ScopePath,
 };
 
 use crate::constants::MAX_LIMIT;
@@ -145,7 +146,17 @@ async fn try_search_tier(
     if fts.as_str().is_empty() {
         return Ok(None);
     }
-    let scored = match store.search(fts.as_str(), scope, limit).await {
+    let Some(scope) = scope else {
+        return Ok(None);
+    };
+    let scored = match store
+        .do_search_ancestor_walk(AncestorWalkRequest {
+            query: fts.as_str().to_owned(),
+            scope: scope.clone(),
+            limit,
+        })
+        .await
+    {
         Ok(rows) => rows,
         Err(err) if is_fts5_parse_error(&err) => return Ok(None),
         Err(err) => return Err(err),
@@ -201,7 +212,7 @@ async fn recall_candidates_without_query(
         loop {
             let page = store
                 .browse(EntryFilter {
-                    scope_path: scoped_path.clone(),
+                    scope: scoped_path.clone().map(ScopeFilter::Exact),
                     kind: direct_kind,
                     tag: direct_tag.clone(),
                     pagination: Pagination {

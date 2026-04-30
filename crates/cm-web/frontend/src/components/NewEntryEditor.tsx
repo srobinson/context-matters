@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { serializeScopeSelector } from "@/lib/scope";
 import { TagInput } from "./composed/TagInput";
 
 const ALL_KINDS: EntryKind[] = [
@@ -64,7 +65,7 @@ export function NewEntryEditor({ onCancel, onCreated }: NewEntryEditorProps) {
 
     createEntry.mutate(
       {
-        scope: scopePath,
+        scope: serializeScopeSelector({ kind: "path", path: scopePath }),
         kind,
         title: title.trim(),
         body: body.trim(),

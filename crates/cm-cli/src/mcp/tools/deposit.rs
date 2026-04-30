@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::mcp::{
     ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, yaml_response,
 };
+use crate::shared::normalize_scope_selector_input;
 
 use super::{default_created_by, default_scope};
 
@@ -43,11 +44,12 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolR
     let ctx = WriteContext::new(MutationSource::Mcp);
     reject_removed_scope_inputs(args)?;
     let params: CxDepositParams = parse_params(args)?;
+    let scope = normalize_scope_selector_input(&params.scope);
 
     let request = DepositRequest {
         exchanges: params.exchanges,
         summary: params.summary,
-        scope: Some(ScopeSelector::parse(&params.scope).map_err(cm_err_to_string)?),
+        scope: Some(ScopeSelector::parse(&scope).map_err(cm_err_to_string)?),
         created_by: params.created_by,
     };
 

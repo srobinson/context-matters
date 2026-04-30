@@ -45,12 +45,13 @@ fn protocol_tools_list() {
     assert!(resp["error"].is_null());
 
     let tools = resp["result"]["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 9, "expected 9 MCP tools");
+    assert_eq!(tools.len(), 10, "expected 10 MCP tools");
 
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
 
     for expected in &[
         "cx_recall",
+        "cx_search",
         "cx_store",
         "cx_deposit",
         "cx_browse",
@@ -70,13 +71,13 @@ fn protocol_tools_list() {
     let browse_props = browse_tool["inputSchema"]["properties"]
         .as_object()
         .expect("cx_browse inputSchema properties");
-    for expected in ["scope", "cwd", "include_resolution"] {
+    for expected in ["scope", "include_resolution"] {
         assert!(
             browse_props.contains_key(expected),
             "cx_browse inputSchema missing {expected}"
         );
     }
-    for removed in ["scope_path", "scope_mode"] {
+    for removed in ["scope_path", "scope_mode", "cwd"] {
         assert!(
             !browse_props.contains_key(removed),
             "cx_browse inputSchema still exposes removed input {removed}"
@@ -85,6 +86,47 @@ fn protocol_tools_list() {
     assert!(
         browse_tool["outputSchema"]["properties"]["resolution"].is_object(),
         "cx_browse outputSchema must document optional resolution metadata"
+    );
+
+    let search_tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "cx_search")
+        .expect("cx_search tool is advertised");
+    let search_description = search_tool["description"]
+        .as_str()
+        .expect("cx_search description is text");
+    for expected in ["FTS5 BM25-ranked", "Use cx_search", "Use cx_recall"] {
+        assert!(
+            search_description.contains(expected),
+            "cx_search description should disambiguate recall/search with {expected:?}"
+        );
+    }
+    let search_props = search_tool["inputSchema"]["properties"]
+        .as_object()
+        .expect("cx_search inputSchema properties");
+    assert_eq!(
+        search_tool["inputSchema"]["required"],
+        json!(["query", "scope"]),
+        "cx_search must require query and structured scope"
+    );
+    assert_eq!(
+        search_props["scope"]["type"], "object",
+        "cx_search scope input must be a structured ScopeSelector object"
+    );
+    for read_tool_name in ["cx_recall", "cx_browse"] {
+        let read_tool = tools
+            .iter()
+            .find(|tool| tool["name"] == read_tool_name)
+            .unwrap_or_else(|| panic!("{read_tool_name} tool is advertised"));
+        assert_eq!(
+            read_tool["inputSchema"]["properties"]["scope"]["type"], "object",
+            "{read_tool_name} scope input must be a structured ScopeSelector object"
+        );
+    }
+    assert!(
+        search_tool["outputSchema"]["properties"]["header"]["properties"]["next_cursor"]
+            .is_object(),
+        "cx_search outputSchema must expose next_cursor for pagination"
     );
 
     for migrated in MIGRATED_SCOPE_TOOLS {
@@ -129,7 +171,14 @@ fn protocol_tools_list() {
     // ALP-1759: read tools advertise outputSchema so MCP 2025-06-18 clients can
     // validate structuredContent. Write tools stay text-only (no structured
     // receipt payload to describe).
-    let read_tools = ["cx_recall", "cx_browse", "cx_get", "cx_stats", "cx_export"];
+    let read_tools = [
+        "cx_recall",
+        "cx_search",
+        "cx_browse",
+        "cx_get",
+        "cx_stats",
+        "cx_export",
+    ];
     let write_tools = ["cx_store", "cx_deposit", "cx_update", "cx_forget"];
     for tool in tools {
         let name = tool["name"].as_str().unwrap();
@@ -163,6 +212,7 @@ fn public_scope_artifacts_do_not_expose_removed_request_terms() {
         assert_no_public_scope_stale_terms(relative, &content);
     }
     assert_skill_doc_explains_scope_request_boundary(&manifest);
+    assert_skill_doc_explains_search_contract(&manifest);
 }
 
 fn workspace_root() -> PathBuf {
@@ -222,18 +272,38 @@ fn assert_generated_scope_schema_inputs_are_current() {
             props.contains_key("scope"),
             "{relative} missing scope input"
         );
-        let scope_description = props["scope"]["description"]
+        let scope = &props["scope"];
+        let scope_description = scope["description"]
             .as_str()
             .unwrap_or_else(|| panic!("{relative} scope input has description"));
-        assert!(
-            scope_description.contains("reserved value")
-                && scope_description.contains("cwd_inferred"),
-            "{relative} scope input should describe cwd_inferred as reserved value"
-        );
+        if matches!(tool, "cx_recall" | "cx_browse" | "cx_search") {
+            assert_eq!(
+                scope["type"], "object",
+                "{relative} scope input must be structured object JSON"
+            );
+            assert!(
+                scope_description.contains("cwd_inferred"),
+                "{relative} scope input should describe cwd_inferred"
+            );
+        }
+        if tool == "cx_browse" || tool == "cx_search" {
+            for vocabulary in ["subtree", "set", "all"] {
+                assert!(
+                    scope_description.contains(vocabulary),
+                    "{relative} scope input should describe {vocabulary} selectors"
+                );
+            }
+        }
         assert!(
             !scope_description.contains("auto"),
             "{relative} scope input still describes auto inference"
         );
+        if tool == "cx_browse" {
+            assert!(
+                !props.contains_key("cwd"),
+                "{relative} inputSchema still exposes top-level cwd"
+            );
+        }
     }
 }
 
@@ -251,13 +321,28 @@ fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
         .expect("generated skill doc should be readable");
     for required in [
         "Public requests select scope through the `scope` field.",
-        r#"cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")"#,
+        r#"cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})"#,
         "`cwd_inferred` resolves linked git worktrees to the source repository identity.",
         "Persisted entries, export rows, and response payloads include a `scope_path` field",
     ] {
         assert!(
             content.contains(required),
             "generated skill doc missing scope migration boundary text: {required}"
+        );
+    }
+}
+
+fn assert_skill_doc_explains_search_contract(manifest: &Path) {
+    let content = fs::read_to_string(manifest.join("templates/SKILL.md"))
+        .expect("generated skill doc should be readable");
+    for required in [
+        "| `cx_search` | Content search across wide or unknown scopes",
+        "Use cx_search when you have a query and want results from multiple scopes",
+        "`cursor` | string | no | Opaque pagination cursor from a previous cx_search response",
+    ] {
+        assert!(
+            content.contains(required),
+            "generated skill doc missing cx_search contract text: {required}"
         );
     }
 }

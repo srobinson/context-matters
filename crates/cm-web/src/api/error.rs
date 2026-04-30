@@ -23,6 +23,7 @@ impl IntoResponse for ApiError {
             CmError::InvalidEntryKind(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
             CmError::InvalidRelationKind(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
             CmError::Validation(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
+            CmError::InvalidOperationInput { .. } => (StatusCode::BAD_REQUEST, self.0.to_string()),
             CmError::ConstraintViolation(_) => (StatusCode::CONFLICT, self.0.to_string()),
             CmError::Json(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
             CmError::Database(_) | CmError::Internal(_) => {

@@ -1,25 +1,20 @@
-use crate::common::{extract_stored_id, send_request, shutdown, spawn_server};
-use serde_json::json;
+use crate::common::{
+    call_tool, extract_stored_id, send_request, shutdown, spawn_server, tool_error_message,
+};
+use serde_json::{Value, json};
 
-fn call_tool(arguments: serde_json::Value, tool_name: &str, id: u64) -> serde_json::Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": "tools/call",
-        "params": {
-            "name": tool_name,
-            "arguments": arguments
-        }
-    })
-}
-
-fn tool_error_message(resp: &serde_json::Value) -> &str {
-    if let Some(message) = resp["error"]["message"].as_str() {
-        return message;
-    }
-    resp["result"]["_meta"]["cm_tool_error"]["message"]
-        .as_str()
-        .unwrap_or_else(|| panic!("missing tool error message: {resp}"))
+fn structured_entry_titles(resp: &Value) -> Vec<String> {
+    resp["result"]["structuredContent"]["entries"]
+        .as_array()
+        .unwrap_or_else(|| panic!("search response entries missing: {resp}"))
+        .iter()
+        .map(|entry| {
+            entry["title"]
+                .as_str()
+                .unwrap_or_else(|| panic!("search entry missing title: {entry}"))
+                .to_owned()
+        })
+        .collect()
 }
 
 #[test]
@@ -229,7 +224,7 @@ fn protocol_stats_rejects_unknown_fields() {
 }
 
 #[test]
-fn protocol_migrated_scope_tools_accept_exact_scope() {
+fn protocol_write_scope_tools_accept_legacy_exact_scope() {
     let dir = tempfile::tempdir().unwrap();
     let (child, mut stdin, mut stdout) = spawn_server(&dir);
 
@@ -257,26 +252,6 @@ fn protocol_migrated_scope_tools_accept_exact_scope() {
     let store_text = store_resp["result"]["content"][0]["text"].as_str().unwrap();
     assert!(store_text.contains("scope: global/project:helioy"));
 
-    let recall_resp = send_request(
-        &mut stdin,
-        &mut stdout,
-        &call_tool(json!({"scope": "global/project:helioy"}), "cx_recall", 3),
-    );
-    assert!(
-        recall_resp["error"].is_null(),
-        "recall failed: {recall_resp}"
-    );
-
-    let browse_resp = send_request(
-        &mut stdin,
-        &mut stdout,
-        &call_tool(json!({"scope": "global/project:helioy"}), "cx_browse", 4),
-    );
-    assert!(
-        browse_resp["error"].is_null(),
-        "browse failed: {browse_resp}"
-    );
-
     let export_resp = send_request(
         &mut stdin,
         &mut stdout,
@@ -285,6 +260,161 @@ fn protocol_migrated_scope_tools_accept_exact_scope() {
     assert!(
         export_resp["error"].is_null(),
         "export failed: {export_resp}"
+    );
+
+    shutdown(child, stdin);
+}
+
+#[test]
+fn protocol_search_accepts_structured_scope_variants_and_cursor() {
+    let dir = tempfile::tempdir().unwrap();
+    let (child, mut stdin, mut stdout) = spawn_server(&dir);
+
+    send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+
+    for (index, (title, scope)) in [
+        ("Global search fact", "global"),
+        ("Project search fact", "global/project:helioy"),
+        (
+            "Repo search fact",
+            "global/project:helioy/repo:context-matters",
+        ),
+        ("Other search fact", "global/project:attention-matters"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let resp = send_request(
+            &mut stdin,
+            &mut stdout,
+            &call_tool(
+                json!({
+                    "title": title,
+                    "body": format!("searchneedle body for {title}"),
+                    "kind": "fact",
+                    "scope": scope
+                }),
+                "cx_store",
+                10 + index as u64,
+            ),
+        );
+        assert!(resp["error"].is_null(), "store failed: {resp}");
+    }
+
+    let cases = [
+        (
+            json!({"kind": "path", "path": "global/project:helioy"}),
+            vec!["Project search fact"],
+        ),
+        (
+            json!({"kind": "cwd_inferred", "cwd": dir.path()}),
+            vec!["Global search fact"],
+        ),
+        (
+            json!({"kind": "subtree", "path": "global/project:helioy"}),
+            vec!["Project search fact", "Repo search fact"],
+        ),
+        (
+            json!({
+                "kind": "set",
+                "paths": ["global", "global/project:attention-matters"]
+            }),
+            vec!["Global search fact", "Other search fact"],
+        ),
+        (
+            json!({"kind": "all"}),
+            vec![
+                "Global search fact",
+                "Project search fact",
+                "Repo search fact",
+                "Other search fact",
+            ],
+        ),
+    ];
+
+    for (index, (scope, expected_titles)) in cases.into_iter().enumerate() {
+        let resp = send_request(
+            &mut stdin,
+            &mut stdout,
+            &call_tool(
+                json!({"query": "searchneedle", "scope": scope, "limit": 20}),
+                "cx_search",
+                30 + index as u64,
+            ),
+        );
+        assert!(resp["error"].is_null(), "search failed: {resp}");
+        let titles = structured_entry_titles(&resp);
+        for expected in expected_titles {
+            assert!(
+                titles.iter().any(|title| title == expected),
+                "search titles {titles:?} missing {expected}"
+            );
+        }
+    }
+
+    let first_page = send_request(
+        &mut stdin,
+        &mut stdout,
+        &call_tool(
+            json!({"query": "searchneedle", "scope": {"kind": "all"}, "limit": 1}),
+            "cx_search",
+            40,
+        ),
+    );
+    let cursor = first_page["result"]["structuredContent"]["header"]["next_cursor"]
+        .as_str()
+        .unwrap_or_else(|| panic!("first search page missing next_cursor: {first_page}"));
+    let second_page = send_request(
+        &mut stdin,
+        &mut stdout,
+        &call_tool(
+            json!({
+                "query": "searchneedle",
+                "scope": {"kind": "all"},
+                "limit": 1,
+                "cursor": cursor
+            }),
+            "cx_search",
+            41,
+        ),
+    );
+    assert!(
+        second_page["error"].is_null(),
+        "cursor search failed: {second_page}"
+    );
+    assert_eq!(structured_entry_titles(&second_page).len(), 1);
+
+    shutdown(child, stdin);
+}
+
+#[test]
+fn protocol_search_empty_query_returns_capability_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (child, mut stdin, mut stdout) = spawn_server(&dir);
+
+    send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+    );
+
+    let resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &call_tool(
+            json!({"query": "   ", "scope": {"kind": "all"}}),
+            "cx_search",
+            2,
+        ),
+    );
+    let message = tool_error_message(&resp);
+    assert!(
+        message.contains("query is required; use cx_browse"),
+        "empty search query should use shared capability error, got {message:?}"
     );
 
     shutdown(child, stdin);
@@ -301,9 +431,25 @@ fn protocol_migrated_scope_tools_reject_auto_scope() {
         &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
     );
 
-    let cases = [
+    let read_cases = [
         ("cx_browse", json!({"scope": "auto"})),
         ("cx_recall", json!({"scope": "auto"})),
+    ];
+    for (index, (tool, args)) in read_cases.into_iter().enumerate() {
+        let resp = send_request(
+            &mut stdin,
+            &mut stdout,
+            &call_tool(args, tool, 20 + index as u64),
+        );
+        let message = tool_error_message(&resp);
+        assert!(
+            message.contains("invalid type: string")
+                && message.contains("expected internally tagged enum"),
+            "{tool} error should reject plain string scope, got {message:?}"
+        );
+    }
+
+    let write_cases = [
         (
             "cx_store",
             json!({"title": "Bad", "body": "Body.", "kind": "fact", "scope": "auto"}),
@@ -315,11 +461,11 @@ fn protocol_migrated_scope_tools_reject_auto_scope() {
         ("cx_export", json!({"scope": "auto"})),
     ];
 
-    for (index, (tool, args)) in cases.into_iter().enumerate() {
+    for (index, (tool, args)) in write_cases.into_iter().enumerate() {
         let resp = send_request(
             &mut stdin,
             &mut stdout,
-            &call_tool(args, tool, 20 + index as u64),
+            &call_tool(args, tool, 30 + index as u64),
         );
         let message = tool_error_message(&resp);
         assert!(

@@ -5,9 +5,17 @@
  *
  * Mirrors the YAML `format_recall_view` header: surfaces the query,
  * routing branch, fallback tier, scope chain and hit counts,
- * histograms, and the post-projection token estimate. `routing` and
+ * histograms, and the token estimate after projection. `routing` and
  * `tier` are both strings so the frontend need not import the Rust
  * enum shapes; the values come straight out of the shared
  * `routing_explanation` and `search_tier_header_tag` helpers.
+ *
+ * The web `cx_search` endpoint currently reuses this shape. Search
+ * rows still carry `scope`, `kind`, `tags`, snippets, scores, and
+ * histograms. Recall only fields degrade as follows: `tier` is `null`
+ * unless recall performed its ancestor walk FTS fallback, and
+ * `scope_chain` is empty for wide content search selectors
+ * (`subtree`, `set`, `all`) because those requests do not produce an
+ * ancestor walk.
  */
 export type WebRecallHeader = { query: string | null, routing: string, tier: string | null, candidates: number, returned: number, scope_chain: Array<string>, scope_hits: { [key in string]: number }, kinds_histogram: { [key in string]: number }, tags_histogram: { [key in string]: number }, tokens: number, };

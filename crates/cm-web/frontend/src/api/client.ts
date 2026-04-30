@@ -1,3 +1,5 @@
+import type { ScopeSelector } from "@/lib/scope";
+import { serializeScopeSelector } from "@/lib/scope";
 import type { BrowseSort } from "./generated/BrowseSort";
 import type { Entry } from "./generated/Entry";
 import type { EntryKind } from "./generated/EntryKind";
@@ -128,8 +130,7 @@ export type EntryDetail = Entry & {
 // --- Param types ---
 
 export interface BrowseParams {
-  scope?: string;
-  cwd?: string;
+  scope?: ScopeSelector;
   include_resolution?: boolean;
   kind?: EntryKind;
   tag?: string;
@@ -142,13 +143,13 @@ export interface BrowseParams {
 
 export interface SearchParams {
   query: string;
-  scope?: string;
-  cwd?: string;
-  kind?: EntryKind;
-  tag?: string;
+  scope?: ScopeSelector;
+  kind?: EntryKind[];
+  tag?: string[];
   limit?: number;
-  cursor?: string;
 }
+
+export type AgentSearchParams = SearchParams;
 
 export interface MutationListParams {
   entry_id?: string;
@@ -160,8 +161,7 @@ export interface MutationListParams {
 
 export interface RecallParams {
   query?: string;
-  scope?: string;
-  cwd?: string;
+  scope?: ScopeSelector;
   kinds?: EntryKind[];
   tags?: string[];
   limit?: number;
@@ -169,13 +169,11 @@ export interface RecallParams {
 }
 
 export interface ExportParams {
-  scope?: string;
-  cwd?: string;
+  scope?: ScopeSelector;
 }
 
 export interface AgentBrowseParams {
-  scope?: string;
-  cwd?: string;
+  scope?: ScopeSelector;
   include_resolution?: boolean;
   kind?: EntryKind;
   tag?: string;
@@ -202,8 +200,7 @@ export const api = {
     browse(params: BrowseParams = {}): Promise<BrowseView> {
       return apiFetch(
         `/entries${toSearchParams({
-          scope: params.scope,
-          cwd: params.cwd,
+          scope: serializeScopeSelector(params.scope),
           include_resolution: params.include_resolution,
           kind: params.kind,
           tag: params.tag,
@@ -220,12 +217,10 @@ export const api = {
       return apiFetch(
         `/entries/search${toSearchParams({
           query: params.query,
-          scope: params.scope,
-          cwd: params.cwd,
+          scope: serializeScopeSelector(params.scope),
           kind: params.kind,
           tag: params.tag,
           limit: params.limit,
-          cursor: params.cursor,
         })}`,
       );
     },
@@ -234,8 +229,7 @@ export const api = {
       return apiFetch(
         `/entries/recall${toSearchParams({
           query: params.query,
-          scope: params.scope,
-          cwd: params.cwd,
+          scope: serializeScopeSelector(params.scope),
           kinds: params.kinds,
           tags: params.tags,
           limit: params.limit,
@@ -281,8 +275,7 @@ export const api = {
       return apiFetch(
         `/agent/recall${toSearchParams({
           query: params.query,
-          scope: params.scope,
-          cwd: params.cwd,
+          scope: serializeScopeSelector(params.scope),
           kinds: params.kinds,
           tags: params.tags,
           limit: params.limit,
@@ -291,11 +284,22 @@ export const api = {
       );
     },
 
+    search(params: AgentSearchParams): Promise<RecallView> {
+      return apiFetch(
+        `/agent/search${toSearchParams({
+          query: params.query,
+          scope: serializeScopeSelector(params.scope),
+          kind: params.kind,
+          tag: params.tag,
+          limit: params.limit,
+        })}`,
+      );
+    },
+
     browse(params: AgentBrowseParams = {}): Promise<BrowseView> {
       return apiFetch(
         `/agent/browse${toSearchParams({
-          scope: params.scope,
-          cwd: params.cwd,
+          scope: serializeScopeSelector(params.scope),
           include_resolution: params.include_resolution,
           kind: params.kind,
           tag: params.tag,
@@ -329,11 +333,8 @@ export const api = {
     },
   },
 
-  export(params?: string | ExportParams): Promise<Blob> {
-    const query =
-      typeof params === "string"
-        ? toSearchParams({ scope: params })
-        : toSearchParams({ scope: params?.scope, cwd: params?.cwd });
+  export(params?: ExportParams): Promise<Blob> {
+    const query = toSearchParams({ scope: serializeScopeSelector(params?.scope) });
     return fetch(`${API_BASE}/export${query}`).then((res) => {
       if (!res.ok) throw new ApiError(res.status, null);
       return res.blob();
