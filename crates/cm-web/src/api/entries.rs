@@ -3,9 +3,7 @@
 //! `browse`, `search`, and `recall` share their parsing and capability
 //! invocation with the `/api/agent/*` endpoints in [`super::agent`] so
 //! the two HTTP prefixes always return identical [`WebBrowseView`] /
-//! [`WebRecallView`] projections. `search` is a legacy alias that
-//! routes through the recall capability (the query is treated as a
-//! required FTS keyword and kind/tag narrow the scope walk).
+//! [`WebRecallView`] projections.
 
 use std::sync::Arc;
 
@@ -15,9 +13,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cm_capabilities::projection::{WebBrowseView, WebRecallView, project_web_recall};
-use cm_capabilities::recall::{self, RecallRequest};
 use cm_capabilities::scope::ScopeSelector;
-use cm_capabilities::validation::{check_input_size, clamp_limit};
 use cm_core::{
     ContextStore, Entry, EntryKind, EntryMeta, EntryRelation, MutationSource, NewEntry,
     UpdateEntry, WriteContext,
@@ -27,9 +23,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::api::agent::{self, BrowseQuery, ExecutedRecall};
+use crate::api::agent::{self, BrowseQuery, ExecutedRecall, ExecutedSearch};
 use crate::api::error::ApiError;
-use crate::api::scope_query;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -53,51 +48,14 @@ async fn browse(
     Ok(Json(agent::project_executed_browse(&executed)))
 }
 
-// ── Search (legacy FTS alias, routed through recall) ────────────
-//
-// The historical contract of `/api/entries/search` was a required FTS
-// keyword plus optional single-value kind/tag filters. Routing it
-// through the `recall` capability preserves the wire shape while
-// upgrading callers to the full scope-chain walk and tiered fallback
-// that recall provides. The new response shape is `WebRecallView`,
-// matching the semantic intent that "search is a subset of recall".
+// ── Search ──────────────────────────────────────────────────────
 
 async fn search(
     State(state): State<Arc<AppState>>,
     raw_query: RawQuery,
 ) -> Result<Json<WebRecallView>, ApiError> {
-    let sq = scope_query::parse_search_query(raw_query.0.as_deref())?;
-    if sq.q.is_empty() {
-        return Err(ApiError(cm_core::CmError::Validation(
-            "query parameter is required".to_owned(),
-        )));
-    }
-    check_input_size(&sq.q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-
-    let kinds: Vec<EntryKind> = sq
-        .kind
-        .as_deref()
-        .map(|k| k.parse::<EntryKind>().map_err(ApiError))
-        .transpose()?
-        .map(|k| vec![k])
-        .unwrap_or_default();
-
-    let tags: Vec<String> = sq.tag.map(|t| vec![t]).unwrap_or_default();
-    let limit = clamp_limit(sq.limit);
-
-    let request = RecallRequest {
-        query: Some(sq.q),
-        scope: sq.scope,
-        kinds,
-        tags,
-        limit,
-        max_tokens: None,
-    };
-
-    let result = recall::recall(&state.store, request.clone())
-        .await
-        .map_err(ApiError)?;
-
+    let ExecutedSearch { result, request } =
+        agent::execute_search(&state.store, raw_query.0.as_deref()).await?;
     Ok(Json(project_web_recall(&result, &request)))
 }
 

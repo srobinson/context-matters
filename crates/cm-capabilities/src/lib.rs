@@ -8,7 +8,10 @@ pub mod get;
 pub mod projection;
 pub mod recall;
 pub mod scope;
+pub mod search;
 pub mod stats;
 pub mod store;
 pub mod update;
 pub mod validation;
+
+pub use cm_core::{ContentSearchPage, ContentSearchRequest};

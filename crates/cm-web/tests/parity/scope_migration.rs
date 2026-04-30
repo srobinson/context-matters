@@ -1,11 +1,9 @@
 use axum::http::{Method, StatusCode};
-use cm_capabilities::recall::RecallRequest;
-use cm_capabilities::scope::ScopeSelector;
 use cm_core::{ContextStore, ScopePath};
 use serde_json::json;
 
 use super::support::{
-    capability_recall, cwd_inferred_scope_query, path_scope_query, path_scope_value, request_json,
+    all_scope_query, cwd_inferred_scope_query, path_scope_query, path_scope_value, request_json,
     seed_entries, test_app, test_store,
 };
 
@@ -14,32 +12,22 @@ async fn entries_search_uses_exact_scope_param() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
-    let scope = ScopePath::parse("global/project:helioy/repo:context-matters").unwrap();
-    let expected = capability_recall(
-        &store,
-        RecallRequest {
-            query: Some("Smart".to_owned()),
-            scope: Some(ScopeSelector::Path(scope)),
-            kinds: Vec::new(),
-            tags: Vec::new(),
-            limit: 20,
-            max_tokens: None,
-        },
-    )
-    .await;
-
     let app = test_app(store);
     let scope = path_scope_query("global/project:helioy/repo:context-matters");
-    let (status, web) = request_json(
-        app,
-        Method::GET,
-        &format!("/api/entries/search?query=Smart&{scope}"),
-        None,
-    )
-    .await;
+    let entries_uri = format!("/api/entries/search?query=Smart&{scope}");
+    let agent_uri = format!("/api/agent/search?query=Smart&{scope}");
+    let (entries_status, entries_body) =
+        request_json(app.clone(), Method::GET, &entries_uri, None).await;
+    let (agent_status, agent_body) = request_json(app, Method::GET, &agent_uri, None).await;
 
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(expected, web);
+    assert_eq!(entries_status, StatusCode::OK);
+    assert_eq!(agent_status, StatusCode::OK);
+    assert_eq!(entries_body, agent_body);
+    assert_eq!(
+        entries_body["header"]["scope_chain"],
+        json!(["global/project:helioy/repo:context-matters"])
+    );
+    assert_eq!(entries_body["entries"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -47,33 +35,42 @@ async fn entries_search_uses_cwd_inferred_scope_param() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
 
-    let expected = capability_recall(
-        &store,
-        RecallRequest {
-            query: Some("Smart".to_owned()),
-            scope: Some(ScopeSelector::cwd_inferred(Some(
-                "/tmp/helioy/context-matters".into(),
-            ))),
-            kinds: Vec::new(),
-            tags: Vec::new(),
-            limit: 20,
-            max_tokens: None,
-        },
-    )
-    .await;
-
     let app = test_app(store);
     let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
-    let (status, web) = request_json(
-        app,
-        Method::GET,
-        &format!("/api/entries/search?query=Smart&{scope}"),
-        None,
-    )
-    .await;
+    let entries_uri = format!("/api/entries/search?query=Smart&{scope}");
+    let agent_uri = format!("/api/agent/search?query=Smart&{scope}");
+    let (entries_status, entries_body) =
+        request_json(app.clone(), Method::GET, &entries_uri, None).await;
+    let (agent_status, agent_body) = request_json(app, Method::GET, &agent_uri, None).await;
 
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(expected, web);
+    assert_eq!(entries_status, StatusCode::OK);
+    assert_eq!(agent_status, StatusCode::OK);
+    assert_eq!(entries_body, agent_body);
+    assert_eq!(
+        entries_body["header"]["scope_chain"],
+        json!(["global/project:helioy/repo:context-matters"])
+    );
+    assert_eq!(entries_body["entries"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn entries_and_agent_search_match_for_all_scope() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    let scope = all_scope_query();
+    let entries_uri = format!("/api/entries/search?query=Smart&{scope}");
+    let agent_uri = format!("/api/agent/search?query=Smart&{scope}");
+    let (entries_status, entries_body) =
+        request_json(app.clone(), Method::GET, &entries_uri, None).await;
+    let (agent_status, agent_body) = request_json(app, Method::GET, &agent_uri, None).await;
+
+    assert_eq!(entries_status, StatusCode::OK);
+    assert_eq!(agent_status, StatusCode::OK);
+    assert_eq!(entries_body, agent_body);
+    assert_eq!(entries_body["header"]["routing"], json!("search"));
+    assert_eq!(entries_body["entries"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -128,6 +125,10 @@ async fn cm_web_rejects_removed_scope_query_fields() {
         "/api/agent/recall?query=Smart&scope_mode=resolved",
         "/api/agent/recall?query=Smart&cwd=/tmp/helioy/context-matters",
         "/api/agent/recall?query=Smart&scope=auto",
+        "/api/agent/search?query=Smart&scope_path=global",
+        "/api/agent/search?query=Smart&scope_mode=resolved",
+        "/api/agent/search?query=Smart&cwd=/tmp/helioy/context-matters",
+        "/api/agent/search?query=Smart&scope=auto",
         "/api/agent/browse?scope_path=global",
         "/api/agent/browse?scope_mode=resolved",
         "/api/agent/browse?cwd=/tmp/helioy/context-matters",
@@ -155,6 +156,7 @@ async fn cm_web_reports_invalid_structured_scope_json() {
 
     for uri in [
         "/api/agent/recall?query=Smart&scope=%7Bbad",
+        "/api/agent/search?query=Smart&scope=%7Bbad",
         "/api/agent/browse?scope=%7Bbad",
         "/api/entries/recall?query=Smart&scope=%7Bbad",
         "/api/entries/search?query=Smart&scope=%7Bbad",

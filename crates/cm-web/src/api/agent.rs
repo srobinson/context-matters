@@ -17,12 +17,14 @@ use axum::response::Json;
 use axum::routing::get;
 use cm_capabilities::browse::{self, BrowseRequest, BrowseResult};
 use cm_capabilities::projection::{
-    WebBrowseView, WebRecallView, project_web_browse, project_web_recall,
+    RecallRow, WebBrowseView, WebRecallView, estimate_tokens, project_web_browse,
+    project_web_recall,
 };
 use cm_capabilities::recall::{self, RecallRequest, RecallResult};
-use cm_capabilities::scope::ScopeSelector;
+use cm_capabilities::scope::{ScopeSelector, resolve_scope_filter};
+use cm_capabilities::search;
 use cm_capabilities::validation::{check_input_size, clamp_limit};
-use cm_core::{BrowseSort, EntryKind};
+use cm_core::{BrowseSort, ContentSearchPage, ContentSearchRequest, ContextStore, EntryKind};
 use cm_store::CmStore;
 use serde::Deserialize;
 use url::form_urlencoded;
@@ -34,6 +36,7 @@ use crate::api::scope_query;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/agent/recall", get(recall_handler))
+        .route("/agent/search", get(search_handler))
         .route("/agent/browse", get(browse_handler))
 }
 
@@ -152,6 +155,123 @@ async fn recall_handler(
 ) -> Result<Json<WebRecallView>, ApiError> {
     let ExecutedRecall { result, request } =
         execute_recall(&state.store, raw_query.0.as_deref()).await?;
+    Ok(Json(project_web_recall(&result, &request)))
+}
+
+// ── Shared search execution ─────────────────────────────────────
+
+/// Raw capability search result paired with a `RecallRequest` used only
+/// for the transitional `WebRecallView` projection.
+pub(crate) struct ExecutedSearch {
+    pub result: RecallResult,
+    pub request: RecallRequest,
+}
+
+pub(crate) async fn execute_search(
+    store: &CmStore,
+    raw_query: Option<&str>,
+) -> Result<ExecutedSearch, ApiError> {
+    let sq = scope_query::parse_search_query(raw_query)?;
+    check_input_size(&sq.q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
+
+    let kind = sq
+        .kind
+        .as_deref()
+        .map(|k| k.parse::<EntryKind>().map_err(ApiError))
+        .transpose()?;
+    let tags = sq.tag.map(|tag| vec![tag]);
+    let scope_selector = sq.scope.unwrap_or(ScopeSelector::All);
+    let scope_filter = resolve_scope_filter(store, &scope_selector)
+        .await
+        .map_err(ApiError)?;
+    let limit = clamp_limit(sq.limit);
+
+    let request = ContentSearchRequest {
+        query: sq.q,
+        scope: scope_filter,
+        kinds: kind.map(|kind| vec![kind]),
+        tags,
+        limit,
+        cursor: sq.cursor,
+    };
+
+    let page = search::search(store, request.clone())
+        .await
+        .map_err(ApiError)?;
+    let result = search_page_to_recall_result(store, &request, page).await?;
+    let request = RecallRequest {
+        query: Some(request.query),
+        scope: Some(scope_selector),
+        kinds: request.kinds.unwrap_or_default(),
+        tags: request.tags.unwrap_or_default(),
+        limit,
+        max_tokens: None,
+    };
+
+    Ok(ExecutedSearch { result, request })
+}
+
+async fn search_page_to_recall_result(
+    store: &CmStore,
+    request: &ContentSearchRequest,
+    page: ContentSearchPage,
+) -> Result<RecallResult, ApiError> {
+    let entries: Vec<RecallRow> = page
+        .items
+        .into_iter()
+        .map(|item| RecallRow {
+            entry: item.entry,
+            score: Some(item.score),
+        })
+        .collect();
+    let relation_count_ids = entries.iter().map(|row| row.entry.id).collect::<Vec<_>>();
+    let relation_counts = store
+        .count_relations_for(&relation_count_ids)
+        .await
+        .map_err(ApiError)?;
+    let token_estimate = entries
+        .iter()
+        .map(|row| estimate_tokens(&row.entry.body))
+        .sum();
+    let (scope_chain, scope_hits) = search_scope_summary(&entries);
+
+    Ok(RecallResult {
+        candidates_before_filter: entries.len(),
+        entries,
+        scope_chain,
+        scope_hits,
+        token_estimate,
+        routing: recall::RecallRouting::Search,
+        tier: None,
+        fetch_limit_used: request.limit,
+        relation_counts,
+        advisories: Vec::new(),
+    })
+}
+
+fn search_scope_summary(rows: &[RecallRow]) -> (Vec<String>, Vec<(String, usize)>) {
+    let mut seen = std::collections::BTreeMap::<String, usize>::new();
+    for row in rows {
+        *seen
+            .entry(row.entry.scope_path.as_str().to_owned())
+            .or_default() += 1;
+    }
+    let mut hits: Vec<(String, usize)> = seen.into_iter().collect();
+    hits.sort_by(|a, b| {
+        let depth_a = a.0.matches('/').count();
+        let depth_b = b.0.matches('/').count();
+        depth_b.cmp(&depth_a).then_with(|| a.0.cmp(&b.0))
+    });
+    let chain = hits.iter().map(|(scope, _)| scope.clone()).collect();
+    (chain, hits)
+}
+
+async fn search_handler(
+    State(state): State<Arc<AppState>>,
+    raw_query: RawQuery,
+) -> Result<Json<WebRecallView>, ApiError> {
+    let ExecutedSearch { result, request } =
+        execute_search(&state.store, raw_query.0.as_deref()).await?;
     Ok(Json(project_web_recall(&result, &request)))
 }
 

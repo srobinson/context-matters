@@ -361,6 +361,100 @@ async fn content_search_applies_kind_filter_before_limit() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn content_search_filters_each_scope_variant() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    for scope in [
+        "global/project:alpha",
+        "global/project:alpha/repo:one",
+        "global/project:beta",
+    ] {
+        store
+            .create_scope(
+                NewScope {
+                    path: ScopePath::parse(scope).unwrap(),
+                    label: scope.rsplit('/').next().unwrap_or(scope).to_owned(),
+                    meta: None,
+                },
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+    }
+
+    for (scope, title) in [
+        ("global", "global sqlite"),
+        ("global/project:alpha", "alpha sqlite"),
+        ("global/project:alpha/repo:one", "alpha repo sqlite"),
+        ("global/project:beta", "beta sqlite"),
+    ] {
+        store
+            .create_entry(
+                new_entry(scope, EntryKind::Fact, title, "shared sqlite content"),
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+    }
+
+    let exact = sorted_content_search_titles(
+        &store,
+        ScopeFilter::Exact(ScopePath::parse("global/project:alpha").unwrap()),
+    )
+    .await;
+    assert_eq!(exact, vec!["alpha sqlite"]);
+
+    let subtree = sorted_content_search_titles(
+        &store,
+        ScopeFilter::Subtree(ScopePath::parse("global/project:alpha").unwrap()),
+    )
+    .await;
+    assert_eq!(subtree, vec!["alpha repo sqlite", "alpha sqlite"]);
+
+    let set = sorted_content_search_titles(
+        &store,
+        ScopeFilter::Set(vec![
+            ScopePath::parse("global/project:alpha/repo:one").unwrap(),
+            ScopePath::parse("global/project:beta").unwrap(),
+        ]),
+    )
+    .await;
+    assert_eq!(set, vec!["alpha repo sqlite", "beta sqlite"]);
+
+    let all = sorted_content_search_titles(&store, ScopeFilter::All).await;
+    assert_eq!(
+        all,
+        vec![
+            "alpha repo sqlite",
+            "alpha sqlite",
+            "beta sqlite",
+            "global sqlite"
+        ]
+    );
+}
+
+async fn sorted_content_search_titles(store: &CmStore, scope: ScopeFilter) -> Vec<String> {
+    let mut titles: Vec<String> = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope,
+            kinds: None,
+            tags: None,
+            limit: 10,
+            cursor: None,
+        })
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .map(|item| item.entry.title)
+        .collect();
+    titles.sort();
+    titles
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn content_search_applies_tag_filter_before_limit() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
