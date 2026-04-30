@@ -174,12 +174,13 @@ pub(crate) async fn execute_search(
     let sq = scope_query::parse_search_query(raw_query)?;
     check_input_size(&sq.q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
 
-    let kind = sq
-        .kind
-        .as_deref()
+    let kinds: Vec<EntryKind> = sq
+        .kinds
+        .iter()
         .map(|k| k.parse::<EntryKind>().map_err(ApiError))
-        .transpose()?;
-    let tags = sq.tag.map(|tag| vec![tag]);
+        .collect::<Result<Vec<_>, _>>()?;
+    let kinds = (!kinds.is_empty()).then_some(kinds);
+    let tags = (!sq.tags.is_empty()).then_some(sq.tags);
     let scope_selector = sq.scope.unwrap_or(ScopeSelector::All);
     let include_scope_chain = matches!(
         &scope_selector,
@@ -193,7 +194,7 @@ pub(crate) async fn execute_search(
     let request = ContentSearchRequest {
         query: sq.q,
         scope: scope_filter,
-        kinds: kind.map(|kind| vec![kind]),
+        kinds,
         tags,
         limit,
         cursor: None,

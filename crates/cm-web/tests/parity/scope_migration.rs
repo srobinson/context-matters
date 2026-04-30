@@ -76,6 +76,48 @@ async fn entries_and_agent_search_match_for_all_scope() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn entries_and_agent_search_accept_repeated_kind_and_tag_filters() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    let scope = all_scope_query();
+    let filters = "kind=decision&kind=fact&tag=scope&tag=pagination";
+    let entries_uri = format!("/api/entries/search?query=Smart&{scope}&{filters}");
+    let agent_uri = format!("/api/agent/search?query=Smart&{scope}&{filters}");
+    let (entries_status, entries_body) =
+        request_json(app.clone(), Method::GET, &entries_uri, None).await;
+    let (agent_status, agent_body) = request_json(app, Method::GET, &agent_uri, None).await;
+
+    assert_eq!(entries_status, StatusCode::OK);
+    assert_eq!(agent_status, StatusCode::OK);
+    assert_eq!(entries_body, agent_body);
+    assert_eq!(
+        entry_titles(&entries_body),
+        vec!["Smart browse local scope", "Smart browse pagination"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn entries_and_agent_search_reject_invalid_repeated_kind_filters() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    let filters = "kind=unknown-kind&kind=fact";
+    let entries_uri = format!("/api/entries/search?query=Smart&{filters}");
+    let agent_uri = format!("/api/agent/search?query=Smart&{filters}");
+    let (entries_status, entries_body) =
+        request_json(app.clone(), Method::GET, &entries_uri, None).await;
+    let (agent_status, agent_body) = request_json(app, Method::GET, &agent_uri, None).await;
+
+    assert_eq!(entries_status, StatusCode::BAD_REQUEST);
+    assert_eq!(agent_status, StatusCode::BAD_REQUEST);
+    assert_eq!(entries_body, agent_body);
+    assert!(entries_body.to_string().contains("unknown-kind"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn entries_and_agent_search_reject_invalid_fts_queries() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;
@@ -102,6 +144,17 @@ async fn entries_and_agent_search_reject_invalid_fts_queries() {
             "{query}: {body_text}"
         );
     }
+}
+
+fn entry_titles(body: &serde_json::Value) -> Vec<&str> {
+    let mut titles: Vec<&str> = body["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["title"].as_str().unwrap())
+        .collect();
+    titles.sort_unstable();
+    titles
 }
 
 #[tokio::test(flavor = "multi_thread")]

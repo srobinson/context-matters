@@ -64,8 +64,8 @@ pub(crate) fn parse_scope_query(raw: Option<&str>) -> Result<Option<ScopeSelecto
 pub(crate) struct SearchQuery {
     pub q: String,
     pub scope: Option<ScopeSelector>,
-    pub kind: Option<String>,
-    pub tag: Option<String>,
+    pub kinds: Vec<String>,
+    pub tags: Vec<String>,
     pub limit: Option<u32>,
 }
 
@@ -74,8 +74,8 @@ const SEARCH_QUERY_KEYS: &[&str] = &["query", "scope", "kind", "tag", "limit"];
 pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
     let mut q = None;
     let mut scope = None;
-    let mut kind = None;
-    let mut tag = None;
+    let mut kinds = Vec::new();
+    let mut tags = Vec::new();
     let mut limit = None;
 
     for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
@@ -85,8 +85,8 @@ pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiEr
             "cwd" => return Err(err_cwd_removed()),
             "scope_path" => return Err(err_scope_path_removed()),
             "scope_mode" => return Err(err_scope_mode_removed()),
-            "kind" => kind = Some(value.into_owned()),
-            "tag" => tag = Some(value.into_owned()),
+            "kind" => kinds.push(value.into_owned()),
+            "tag" => tags.push(value.into_owned()),
             "limit" => {
                 limit = Some(value.parse::<u32>().map_err(|_| {
                     ApiError(cm_core::CmError::Validation(format!(
@@ -101,8 +101,8 @@ pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiEr
     Ok(SearchQuery {
         q: q.unwrap_or_default(),
         scope,
-        kind,
-        tag,
+        kinds,
+        tags,
         limit,
     })
 }
