@@ -19,6 +19,7 @@ mod cursor;
 mod entry;
 mod mutation;
 pub(crate) mod parse;
+mod predicates;
 mod query;
 mod scope;
 

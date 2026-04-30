@@ -40,6 +40,9 @@ pub fn cm_err_to_string(e: CmError) -> String {
             )
         }
         CmError::Validation(msg) => msg,
+        CmError::InvalidOperationInput { op, reason } => {
+            format!("Invalid {op} input: {reason}")
+        }
         CmError::ConstraintViolation(msg) => format!("Constraint violation: {msg}"),
         CmError::Json(e) => format!("[json] {e}"),
         CmError::Database(msg) => format!("[database] {msg}"),

@@ -72,6 +72,10 @@ pub enum CmError {
     #[error("validation error: {0}")]
     Validation(String),
 
+    /// An operation received syntactically valid input that does not match its contract.
+    #[error("invalid {op} input: {reason}")]
+    InvalidOperationInput { op: &'static str, reason: String },
+
     /// Foreign key constraint violation (e.g., scope has entries, cannot delete).
     #[error("constraint violation: {0}")]
     ConstraintViolation(String),

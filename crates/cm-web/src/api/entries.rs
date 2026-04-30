@@ -263,6 +263,11 @@ impl TryFrom<EntryWriteRequest> for NewEntry {
                     "scope='cwd_inferred' is not supported for entry write bodies".to_owned(),
                 )));
             }
+            ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => {
+                return Err(ApiError(cm_core::CmError::Validation(
+                    "entry write bodies require scope kind 'path'".to_owned(),
+                )));
+            }
         };
 
         Ok(NewEntry {

@@ -12,6 +12,7 @@ use crate::mcp::{
     ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, reject_unknown_fields,
     yaml_response,
 };
+use crate::shared::normalize_scope_selector_input;
 
 use super::{default_created_by, default_scope};
 
@@ -50,11 +51,12 @@ pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<ToolRes
         ],
     )?;
     let params: CxStoreParams = parse_params(args)?;
+    let scope = normalize_scope_selector_input(&params.scope);
     let request = StoreRequest {
         title: params.title,
         body: params.body,
         kind: params.kind,
-        scope: Some(ScopeSelector::parse(&params.scope).map_err(cm_err_to_string)?),
+        scope: Some(ScopeSelector::parse(&scope).map_err(cm_err_to_string)?),
         created_by: params.created_by,
         meta: params.meta,
         supersedes: params.supersedes,

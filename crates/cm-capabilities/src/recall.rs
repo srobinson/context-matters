@@ -29,6 +29,7 @@ pub async fn recall(
         .scope
         .clone()
         .unwrap_or_else(|| ScopeSelector::Path(ScopePath::global()));
+    reject_non_singular_scope(&scope_selector)?;
     let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
     let scope_path = resolved_scope.scope_path.as_ref();
 
@@ -67,6 +68,19 @@ pub async fn recall(
             .into_iter()
             .collect(),
     })
+}
+
+fn reject_non_singular_scope(selector: &ScopeSelector) -> Result<(), CmError> {
+    match selector {
+        ScopeSelector::Path(_) | ScopeSelector::CwdInferred { .. } => Ok(()),
+        ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => {
+            Err(CmError::InvalidOperationInput {
+                op: "cx_recall",
+                reason: "scope must resolve to one path; use cx_search for subtree, set, or all scope queries"
+                    .to_owned(),
+            })
+        }
+    }
 }
 
 fn post_filter_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {

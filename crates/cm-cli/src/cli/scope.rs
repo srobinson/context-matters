@@ -11,6 +11,7 @@
 //! Tests assert on the substring `"no --scope specified"`; keep it stable.
 
 use crate::cli::colors::Colors;
+use crate::shared::normalize_scope_selector_input;
 use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 
 /// Build a colorized advisory line. Pure: takes a `Colors` set + body string
@@ -26,15 +27,15 @@ pub fn print_advisory(body: &str) {
 
 /// Resolve `--scope` for legacy CLI commands that still default locally.
 ///
-/// * `Some("foo")` → returns `"foo"`, no I/O.
-/// * `Some("")` → treated as omitted (defaults to `"global"` with advisory).
-/// * `None` → returns `"global"` and prints the advisory to stderr.
+/// * `Some("foo")` → returns a structured path selector, no I/O.
+/// * `Some("")` → treated as omitted with a structured global selector.
+/// * `None` → returns a structured global selector and prints the advisory to stderr.
 pub fn resolve_scope(explicit: Option<&str>) -> String {
     match explicit {
-        Some(s) if !s.is_empty() => s.to_string(),
+        Some(s) if !s.is_empty() => normalize_scope_selector_input(s),
         _ => {
             print_advisory(RECALL_SCOPE_DEFAULT_ADVISORY);
-            "global".to_string()
+            normalize_scope_selector_input("global")
         }
     }
 }
@@ -47,9 +48,12 @@ mod tests {
     fn explicit_value_returns_unchanged() {
         assert_eq!(
             resolve_scope(Some("global/project:helioy")),
-            "global/project:helioy"
+            r#"{"kind":"path","path":"global/project:helioy"}"#
         );
-        assert_eq!(resolve_scope(Some("foo")), "foo");
+        assert_eq!(
+            resolve_scope(Some("foo")),
+            r#"{"kind":"path","path":"foo"}"#
+        );
     }
 
     #[test]
@@ -57,12 +61,15 @@ mod tests {
         // The eprintln! lands on the test runner's captured stderr; we can't
         // assert on it portably, but we can confirm the function returns the
         // documented default and the path runs without panicking.
-        assert_eq!(resolve_scope(None), "global");
+        assert_eq!(resolve_scope(None), r#"{"kind":"path","path":"global"}"#);
     }
 
     #[test]
     fn empty_string_treated_as_none() {
-        assert_eq!(resolve_scope(Some("")), "global");
+        assert_eq!(
+            resolve_scope(Some("")),
+            r#"{"kind":"path","path":"global"}"#
+        );
     }
 
     #[test]

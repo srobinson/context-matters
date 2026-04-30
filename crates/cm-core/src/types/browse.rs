@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::{entry::EntryKind, scope::ScopePath};
+use super::{entry::EntryKind, scope_filter::ScopeFilter};
 
 /// Cursor-based pagination.
 ///
@@ -82,9 +82,9 @@ pub enum BrowseSort {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct EntryFilter {
-    /// Filter to a specific scope path (exact match, no ancestor walk).
+    /// Filter by scope predicate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scope_path: Option<ScopePath>,
+    pub scope: Option<ScopeFilter>,
 
     /// Filter by entry kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -3,7 +3,10 @@ use cm_capabilities::scope::ScopeSelector;
 use cm_core::{BrowseSort, EntryKind, ScopePath};
 use serde_json::json;
 
-use super::support::{capability_browse, get_json, seed_entries, test_app, test_store};
+use super::support::{
+    capability_browse, cwd_inferred_scope_query, get_json, path_scope_query, seed_entries,
+    test_app, test_store,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn browse_basic_parity() {
@@ -101,11 +104,8 @@ async fn browse_agent_cwd_inferred_scope_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(
-        app,
-        "/api/agent/browse?scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
-    )
-    .await;
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
+    let web = get_json(app, &format!("/api/agent/browse?{scope}")).await;
 
     assert_eq!(
         expected, web,
@@ -138,11 +138,8 @@ async fn browse_entries_cwd_inferred_scope_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(
-        app,
-        "/api/entries?scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
-    )
-    .await;
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
+    let web = get_json(app, &format!("/api/entries?{scope}")).await;
 
     assert_eq!(
         expected, web,
@@ -169,7 +166,8 @@ async fn browse_scope_exact_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(app, "/api/agent/browse?scope=global/project:helioy").await;
+    let scope = path_scope_query("global/project:helioy");
+    let web = get_json(app, &format!("/api/agent/browse?{scope}")).await;
 
     assert_eq!(expected, web, "scope browse must stay exact");
     assert!(

@@ -135,10 +135,27 @@ pub fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), Strin
 
 /// Serde default for scope fields.
 pub fn default_scope() -> String {
-    "global".to_owned()
+    normalize_scope_selector_input("global")
 }
 
 /// Serde default for created_by fields.
 pub fn default_created_by() -> String {
     "agent:claude-code".to_owned()
+}
+
+/// Convert public CLI/MCP scope shorthand into the structured selector JSON
+/// consumed by `ScopeSelector::parse`.
+pub fn normalize_scope_selector_input(scope: &str) -> String {
+    let scope = scope.trim();
+    if scope.starts_with('{') || scope == "auto" {
+        return scope.to_owned();
+    }
+    if scope == "cwd_inferred" {
+        return r#"{"kind":"cwd_inferred"}"#.to_owned();
+    }
+    serde_json::json!({
+        "kind": "path",
+        "path": scope,
+    })
+    .to_string()
 }

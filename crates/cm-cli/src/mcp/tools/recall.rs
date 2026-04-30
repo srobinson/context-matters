@@ -11,6 +11,7 @@ use serde_json::Value;
 use crate::mcp::{
     ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
 };
+use crate::shared::normalize_scope_selector_input;
 
 /// Parameters for the `cx_recall` tool.
 #[derive(Debug, Deserialize)]
@@ -46,7 +47,10 @@ pub async fn cx_recall(store: &impl ContextStore, args: &Value) -> Result<ToolRe
 
     // Parse and validate scope path
     let scope = match &params.scope {
-        Some(s) => Some(ScopeSelector::parse(s).map_err(cm_err_to_string)?),
+        Some(s) => {
+            let scope = normalize_scope_selector_input(s);
+            Some(ScopeSelector::parse(&scope).map_err(cm_err_to_string)?)
+        }
         None => None,
     };
 

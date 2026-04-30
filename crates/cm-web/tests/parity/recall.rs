@@ -3,7 +3,10 @@ use cm_capabilities::scope::ScopeSelector;
 use cm_capabilities::validation::clamp_limit;
 use cm_core::ScopePath;
 
-use super::support::{capability_recall, get_json, seed_entries, test_app, test_store};
+use super::support::{
+    capability_recall, cwd_inferred_scope_query, get_json, path_scope_query, seed_entries,
+    test_app, test_store,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn recall_basic_query_parity() {
@@ -47,11 +50,8 @@ async fn recall_with_scope_and_tags_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(
-        app,
-        "/api/agent/recall?scope=global/project:helioy&tags=architecture",
-    )
-    .await;
+    let scope = path_scope_query("global/project:helioy");
+    let web = get_json(app, &format!("/api/agent/recall?{scope}&tags=architecture")).await;
 
     assert_eq!(
         expected, web,
@@ -78,11 +78,8 @@ async fn recall_agent_cwd_inferred_scope_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(
-        app,
-        "/api/agent/recall?query=Smart&scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
-    )
-    .await;
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
+    let web = get_json(app, &format!("/api/agent/recall?query=Smart&{scope}")).await;
 
     assert_eq!(
         expected, web,
@@ -109,11 +106,8 @@ async fn recall_entries_cwd_inferred_scope_parity() {
     .await;
 
     let app = test_app(store);
-    let web = get_json(
-        app,
-        "/api/entries/recall?query=Smart&scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
-    )
-    .await;
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
+    let web = get_json(app, &format!("/api/entries/recall?query=Smart&{scope}")).await;
 
     assert_eq!(
         expected, web,

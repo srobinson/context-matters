@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
-use cm_core::{BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination};
+use cm_core::{
+    BrowseSort, CmError, ContextStore, Entry, EntryFilter, EntryKind, Pagination, ScopeFilter,
+};
 use uuid::Uuid;
 
-use crate::scope::{CWD_INFERRED_SCOPE, ScopeResolution, ScopeSelector, resolve_browse_scope};
+use crate::scope::{
+    CWD_INFERRED_SCOPE, ScopeResolution, ScopeSelector, resolve_browse_scope, resolve_scope_filter,
+};
 use crate::validation::clamp_limit;
 
 // ── Types ────────────────────────────────────────────────────────
@@ -91,10 +95,19 @@ pub async fn browse(
         .as_ref()
         .expect("browse scope is defaulted before resolution");
     let scope_used = Some(selector.requested_scope());
-    let resolved_scope = resolve_browse_scope(store, selector).await?;
+    let resolved_scope = match selector {
+        ScopeSelector::Path(_) | ScopeSelector::CwdInferred { .. } => {
+            Some(resolve_browse_scope(store, selector).await?)
+        }
+        ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => None,
+    };
+    let scope_filter = match &resolved_scope {
+        Some(resolved) => Some(ScopeFilter::Exact(resolved.read_scope_path()?.clone())),
+        None => Some(resolve_scope_filter(store, selector).await?),
+    };
 
     let filter = EntryFilter {
-        scope_path: resolved_scope.scope_path,
+        scope: scope_filter,
         kind: effective_request.kind,
         tag: effective_request.tag,
         created_by: effective_request.created_by,
@@ -125,7 +138,7 @@ pub async fn browse(
         limit_used,
         sort_used,
         relation_counts,
-        resolution: resolved_scope.resolution,
+        resolution: resolved_scope.and_then(|resolved| resolved.resolution),
         advisory: scope_defaulted.then(|| BROWSE_SCOPE_DEFAULT_ADVISORY.to_owned()),
     })
 }

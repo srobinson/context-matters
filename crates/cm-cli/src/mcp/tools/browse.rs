@@ -11,6 +11,7 @@ use serde_json::Value;
 use crate::mcp::{
     ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
 };
+use crate::shared::normalize_scope_selector_input;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -64,8 +65,9 @@ pub async fn cx_browse(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         Some(raw) => Some(raw.into()),
         None => None,
     };
-    let scope = ScopeSelector::from_optional_scope(params.scope.as_deref(), cwd)
-        .map_err(cm_err_to_string)?;
+    let scope = params.scope.as_deref().map(normalize_scope_selector_input);
+    let scope =
+        ScopeSelector::from_optional_scope(scope.as_deref(), cwd).map_err(cm_err_to_string)?;
 
     let kind = match &params.kind {
         Some(k) => Some(parse_kind(k)?),

@@ -1,5 +1,6 @@
 use cm_core::{
-    CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery, Pagination, ScopePath,
+    CmError, ContextStore, Entry, EntryFilter, EntryKind, FtsQuery, Pagination, ScopeFilter,
+    ScopePath,
 };
 
 use crate::constants::MAX_LIMIT;
@@ -201,7 +202,7 @@ async fn recall_candidates_without_query(
         loop {
             let page = store
                 .browse(EntryFilter {
-                    scope_path: scoped_path.clone(),
+                    scope: scoped_path.clone().map(ScopeFilter::Exact),
                     kind: direct_kind,
                     tag: direct_tag.clone(),
                     pagination: Pagination {

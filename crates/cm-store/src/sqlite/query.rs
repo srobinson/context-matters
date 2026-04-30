@@ -6,15 +6,7 @@ use sqlx::{QueryBuilder, Row, Sqlite};
 use super::CmStore;
 use super::cursor::{decode_cursor, encode_cursor, order_by_clause, push_cursor_condition};
 use super::parse::{map_db_err, parse_entry};
-
-fn push_where_prefix(query: &mut QueryBuilder<'_, Sqlite>, has_where: &mut bool) {
-    if *has_where {
-        query.push(" AND ");
-    } else {
-        query.push(" WHERE ");
-        *has_where = true;
-    }
-}
+use super::predicates::{push_scope_filter, push_where_prefix};
 
 fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilter) -> bool {
     let mut has_where = false;
@@ -24,10 +16,8 @@ fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilte
         query.push("superseded_by IS NULL");
     }
 
-    if let Some(ref sp) = filter.scope_path {
-        push_where_prefix(query, &mut has_where);
-        query.push("scope_path = ");
-        query.push_bind(sp.as_str().to_owned());
+    if let Some(ref scope) = filter.scope {
+        push_scope_filter(query, &mut has_where, scope);
     }
 
     if let Some(ref kind) = filter.kind {

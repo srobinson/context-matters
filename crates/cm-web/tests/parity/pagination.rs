@@ -3,7 +3,9 @@ use cm_capabilities::scope::ScopeSelector;
 use cm_core::{BrowseSort, ScopePath};
 use cm_store::{CmStore, schema};
 
-use super::support::{capability_browse, get_json, seed_entries, test_app};
+use super::support::{
+    capability_browse, cwd_inferred_scope_query, get_json, path_scope_query, seed_entries, test_app,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn browse_pagination_parity() {
@@ -28,7 +30,8 @@ async fn browse_pagination_parity() {
     .await;
 
     let app = test_app(store);
-    let web_page1 = get_json(app, "/api/agent/browse?scope=global/project:helioy&limit=1").await;
+    let scope = path_scope_query("global/project:helioy");
+    let web_page1 = get_json(app, &format!("/api/agent/browse?{scope}&limit=1")).await;
 
     assert_eq!(cap_page1, web_page1, "Page 1 must match capability layer");
     assert!(
@@ -67,7 +70,7 @@ async fn browse_pagination_parity() {
     let app2 = test_app(store3);
     let web_page2 = get_json(
         app2,
-        &format!("/api/agent/browse?scope=global/project:helioy&limit=1&cursor={cursor}"),
+        &format!("/api/agent/browse?{scope}&limit=1&cursor={cursor}"),
     )
     .await;
 
@@ -99,11 +102,8 @@ async fn browse_cwd_inferred_scope_pagination_parity() {
     .await;
 
     let app = test_app(store);
-    let web_page1 = get_json(
-        app,
-        "/api/agent/browse?scope=cwd_inferred&cwd=/tmp/helioy/context-matters&limit=1",
-    )
-    .await;
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
+    let web_page1 = get_json(app, &format!("/api/agent/browse?{scope}&limit=1")).await;
 
     assert_eq!(
         cap_page1, web_page1,
@@ -138,9 +138,7 @@ async fn browse_cwd_inferred_scope_pagination_parity() {
     let app2 = test_app(store3);
     let web_page2 = get_json(
         app2,
-        &format!(
-            "/api/agent/browse?scope=cwd_inferred&cwd=/tmp/helioy/context-matters&limit=1&cursor={cursor}"
-        ),
+        &format!("/api/agent/browse?{scope}&limit=1&cursor={cursor}"),
     )
     .await;
 

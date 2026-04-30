@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::mcp::{
     ToolResult, cm_err_to_string, json_response, parse_params, reject_removed_scope_inputs,
 };
+use crate::shared::normalize_scope_selector_input;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,6 +39,8 @@ pub async fn cx_export(store: &impl ContextStore, args: &Value) -> Result<ToolRe
     let params: CxExportParams = parse_params(args)?;
     let scope = params
         .scope
+        .as_deref()
+        .map(normalize_scope_selector_input)
         .as_deref()
         .map(ScopeSelector::parse)
         .transpose()

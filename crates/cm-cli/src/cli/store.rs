@@ -19,12 +19,14 @@ use cm_capabilities::scope::ScopeSelector;
 
 use crate::cli::colors::Colors;
 use crate::cli::errors::capability_error;
+use crate::shared::normalize_scope_selector_input;
 
 /// `cm store` handler. Synchronous because it touches no I/O beyond
 /// `println!`. Validates the optional scope selector before printing so
 /// removed public inputs fail the same way as MCP `cx_store`.
 pub fn run(scope: Option<String>) -> Result<()> {
     if let Some(scope) = scope {
+        let scope = normalize_scope_selector_input(&scope);
         ScopeSelector::parse(&scope).map_err(capability_error)?;
     }
 

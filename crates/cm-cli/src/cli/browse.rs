@@ -20,6 +20,7 @@ use cm_core::ContextStore;
 
 use crate::cli::errors::{capability_error, string_error};
 use crate::cli::scope::print_advisory;
+use crate::shared::normalize_scope_selector_input;
 
 /// `cm browse` handler. Read-only: no `WriteContext` constructed.
 ///
@@ -47,6 +48,7 @@ pub async fn run(
         Some(raw) => Some(raw.into()),
         None => None,
     };
+    let scope = scope.as_deref().map(normalize_scope_selector_input);
     let scope =
         ScopeSelector::from_optional_scope(scope.as_deref(), cwd).map_err(capability_error)?;
 

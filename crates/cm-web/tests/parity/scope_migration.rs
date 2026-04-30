@@ -4,7 +4,10 @@ use cm_capabilities::scope::ScopeSelector;
 use cm_core::{ContextStore, ScopePath};
 use serde_json::json;
 
-use super::support::{capability_recall, request_json, seed_entries, test_app, test_store};
+use super::support::{
+    capability_recall, cwd_inferred_scope_query, path_scope_query, path_scope_value, request_json,
+    seed_entries, test_app, test_store,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn entries_search_uses_exact_scope_param() {
@@ -26,10 +29,11 @@ async fn entries_search_uses_exact_scope_param() {
     .await;
 
     let app = test_app(store);
+    let scope = path_scope_query("global/project:helioy/repo:context-matters");
     let (status, web) = request_json(
         app,
         Method::GET,
-        "/api/entries/search?query=Smart&scope=global/project:helioy/repo:context-matters",
+        &format!("/api/entries/search?query=Smart&{scope}"),
         None,
     )
     .await;
@@ -59,10 +63,11 @@ async fn entries_search_uses_cwd_inferred_scope_param() {
     .await;
 
     let app = test_app(store);
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
     let (status, web) = request_json(
         app,
         Method::GET,
-        "/api/entries/search?query=Smart&scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
+        &format!("/api/entries/search?query=Smart&{scope}"),
         None,
     )
     .await;
@@ -80,13 +85,8 @@ async fn export_uses_exact_scope_param() {
     let expected = store.export(Some(&scope)).await.unwrap();
 
     let app = test_app(store);
-    let (status, web) = request_json(
-        app,
-        Method::GET,
-        "/api/export?scope=global/project:helioy",
-        None,
-    )
-    .await;
+    let scope = path_scope_query("global/project:helioy");
+    let (status, web) = request_json(app, Method::GET, &format!("/api/export?{scope}"), None).await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(web, serde_json::to_value(expected).unwrap());
@@ -101,13 +101,8 @@ async fn export_uses_cwd_inferred_scope_param() {
     let expected = store.export(Some(&scope)).await.unwrap();
 
     let app = test_app(store);
-    let (status, web) = request_json(
-        app,
-        Method::GET,
-        "/api/export?scope=cwd_inferred&cwd=/tmp/helioy/context-matters",
-        None,
-    )
-    .await;
+    let scope = cwd_inferred_scope_query("/tmp/helioy/context-matters");
+    let (status, web) = request_json(app, Method::GET, &format!("/api/export?{scope}"), None).await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(web, serde_json::to_value(expected).unwrap());
@@ -152,8 +147,9 @@ async fn create_entry_body_uses_scope_not_scope_path() {
     seed_entries(&store).await;
 
     let app = test_app(store);
+    let scope = path_scope_value("global/project:helioy");
     let body = json!({
-        "scope": "global/project:helioy",
+        "scope": scope,
         "kind": "fact",
         "title": "Web create scope contract",
         "body": "Create bodies use scope as the public selector.",
@@ -175,10 +171,11 @@ async fn merge_entry_body_uses_scope_not_scope_path() {
     let old_id = entries[0].id.to_string();
 
     let app = test_app(store);
+    let scope = path_scope_value("global/project:helioy");
     let body = json!({
         "old_id": old_id,
         "new_entry": {
-            "scope": "global/project:helioy",
+            "scope": scope,
             "kind": "fact",
             "title": "Web merge scope contract",
             "body": "Merge bodies use scope as the public selector.",
@@ -217,7 +214,7 @@ async fn entry_write_bodies_reject_removed_scope_inputs() {
             "created_by": "agent:test"
         }),
         json!({
-            "scope": "global/project:helioy",
+            "scope": path_scope_value("global/project:helioy"),
             "scope_mode": "resolved",
             "kind": "fact",
             "title": "Removed scope mode",
