@@ -9,7 +9,6 @@ const ALL_SCOPE: ScopeSelector = { kind: "all" };
 interface UseRecallOrSearchArgs {
   isRecallMode: boolean;
   scope?: SingularScopeSelector;
-  query: string;
   debouncedQuery: string;
   kinds: EntryKind[];
   tags: string[];
@@ -20,7 +19,6 @@ interface UseRecallOrSearchArgs {
 export function useRecallOrSearch({
   isRecallMode,
   scope,
-  query,
   debouncedQuery,
   kinds,
   tags,
@@ -54,8 +52,6 @@ export function useRecallOrSearch({
 
   return {
     query: isAllScope ? searchQuery : recallQuery,
-    operation: isAllScope ? ("search" as const) : ("recall" as const),
-    hasQueryInput: query.trim().length > 0,
     showQueryOrScopeHint: isRecallMode && isAllScope && debouncedQuery.length === 0,
   };
 }

@@ -133,7 +133,6 @@ export function FeedPage({ search }: FeedPageProps) {
   const { query: recallQuery, showQueryOrScopeHint } = useRecallOrSearch({
     isRecallMode,
     scope: recallScope,
-    query: searchInput,
     debouncedQuery,
     kinds: recallKinds,
     tags: recallTags,
