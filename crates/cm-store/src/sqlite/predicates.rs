@@ -1,4 +1,4 @@
-use cm_core::{ScopeFilter, ScopePath};
+use cm_core::{EntryKind, ScopeFilter, ScopePath};
 use sqlx::{QueryBuilder, Sqlite};
 
 pub(crate) fn push_where_prefix(query: &mut QueryBuilder<'_, Sqlite>, has_where: &mut bool) {
@@ -42,6 +42,46 @@ pub(crate) fn push_scope_filter(
             push_scope_set(query, has_where, scope_paths.iter().map(ScopePath::as_str));
         }
     }
+}
+
+pub(crate) fn push_kind_predicate(
+    query: &mut QueryBuilder<'_, Sqlite>,
+    has_where: &mut bool,
+    kinds: &[EntryKind],
+) {
+    if kinds.is_empty() {
+        return;
+    }
+
+    push_where_prefix(query, has_where);
+    query.push("e.kind IN (");
+    {
+        let mut separated = query.separated(", ");
+        for kind in kinds {
+            separated.push_bind(kind.as_str().to_owned());
+        }
+    }
+    query.push(")");
+}
+
+pub(crate) fn push_tag_predicate(
+    query: &mut QueryBuilder<'_, Sqlite>,
+    has_where: &mut bool,
+    tags: &[String],
+) {
+    if tags.is_empty() {
+        return;
+    }
+
+    push_where_prefix(query, has_where);
+    query.push("EXISTS (SELECT 1 FROM json_each(json_extract(e.meta, '$.tags')) WHERE value IN (");
+    {
+        let mut separated = query.separated(", ");
+        for tag in tags {
+            separated.push_bind(tag.clone());
+        }
+    }
+    query.push("))");
 }
 
 fn push_exact_scope(

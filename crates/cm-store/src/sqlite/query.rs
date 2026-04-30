@@ -9,7 +9,9 @@ use sqlx::{QueryBuilder, Row, Sqlite};
 use super::CmStore;
 use super::cursor::{decode_cursor, encode_cursor, order_by_clause, push_cursor_condition};
 use super::parse::{map_db_err, parse_entry};
-use super::predicates::{push_scope_filter, push_where_prefix};
+use super::predicates::{
+    push_kind_predicate, push_scope_filter, push_tag_predicate, push_where_prefix,
+};
 
 fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilter) -> bool {
     let mut has_where = false;
@@ -24,9 +26,7 @@ fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilte
     }
 
     if let Some(ref kind) = filter.kind {
-        push_where_prefix(query, &mut has_where);
-        query.push("kind = ");
-        query.push_bind(kind.as_str().to_owned());
+        push_kind_predicate(query, &mut has_where, &[*kind]);
     }
 
     if let Some(ref created_by) = filter.created_by {
@@ -36,10 +36,7 @@ fn push_browse_filters(query: &mut QueryBuilder<'_, Sqlite>, filter: &EntryFilte
     }
 
     if let Some(ref tag) = filter.tag {
-        push_where_prefix(query, &mut has_where);
-        query.push("EXISTS (SELECT 1 FROM json_each(entries.meta, '$.tags') WHERE value = ");
-        query.push_bind(tag.clone());
-        query.push(")");
+        push_tag_predicate(query, &mut has_where, std::slice::from_ref(tag));
     }
 
     has_where
@@ -166,7 +163,7 @@ impl CmStore {
             .transpose()?;
 
         // Build a separate count without cursor
-        let mut count_q = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) as cnt FROM entries");
+        let mut count_q = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) as cnt FROM entries e");
         push_browse_filters(&mut count_q, &filter);
         let (total,): (i64,) = count_q
             .build_query_as()
@@ -177,7 +174,7 @@ impl CmStore {
         // Fetch query with limit + 1 to detect next page
         let fetch_limit = filter.pagination.limit as i64 + 1;
         let order = order_by_clause(sort);
-        let mut data_q = QueryBuilder::<Sqlite>::new("SELECT * FROM entries");
+        let mut data_q = QueryBuilder::<Sqlite>::new("SELECT e.* FROM entries e");
         let mut has_where = push_browse_filters(&mut data_q, &filter);
         if let Some(ref cursor) = cursor {
             push_where_prefix(&mut data_q, &mut has_where);

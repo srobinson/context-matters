@@ -2,7 +2,10 @@
 
 mod common;
 
-use cm_core::{AncestorWalkRequest, EntryKind, NewScope, ScoredEntry};
+use cm_core::{
+    AncestorWalkRequest, ContentSearchRequest, EntryKind, EntryMeta, NewEntry, NewScope,
+    ScopeFilter, ScoredEntry,
+};
 use common::*;
 
 async fn search_ancestor_walk(store: &CmStore, query: &str, scope: ScopePath) -> Vec<ScoredEntry> {
@@ -14,6 +17,15 @@ async fn search_ancestor_walk(store: &CmStore, query: &str, scope: ScopePath) ->
         })
         .await
         .unwrap()
+}
+
+fn tagged_entry(scope: &str, kind: EntryKind, title: &str, body: &str, tags: &[&str]) -> NewEntry {
+    let mut entry = new_entry(scope, kind, title, body);
+    entry.meta = Some(EntryMeta {
+        tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
+        ..Default::default()
+    });
+    entry
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -298,4 +310,153 @@ async fn search_with_scope_filter() {
     assert!(scopes.contains(&"global/project:scoped"));
     assert!(scopes.contains(&"global"));
     assert!(!scopes.contains(&"global/project:other"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn content_search_applies_kind_filter_before_limit() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    store
+        .create_entry(
+            new_entry(
+                "global",
+                EntryKind::Fact,
+                "dense sqlite note",
+                "sqlite sqlite sqlite sqlite sqlite",
+            ),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    store
+        .create_entry(
+            new_entry(
+                "global",
+                EntryKind::Decision,
+                "decision sqlite note",
+                "sqlite once",
+            ),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let page = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope: ScopeFilter::All,
+            kinds: Some(vec![EntryKind::Decision]),
+            tags: None,
+            limit: 1,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].entry.kind, EntryKind::Decision);
+    assert_eq!(page.items[0].entry.title, "decision sqlite note");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn content_search_applies_tag_filter_before_limit() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    store
+        .create_entry(
+            new_entry(
+                "global",
+                EntryKind::Fact,
+                "dense untagged sqlite note",
+                "sqlite sqlite sqlite sqlite sqlite",
+            ),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    store
+        .create_entry(
+            tagged_entry(
+                "global",
+                EntryKind::Fact,
+                "tagged sqlite note",
+                "sqlite once",
+                &["target"],
+            ),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let page = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope: ScopeFilter::All,
+            kinds: None,
+            tags: Some(vec!["target".to_owned()]),
+            limit: 1,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].entry.title, "tagged sqlite note");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn content_search_cursor_round_trip_remains_stable_with_filters() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    for title in ["alpha sqlite", "beta sqlite", "gamma sqlite"] {
+        store
+            .create_entry(
+                tagged_entry(
+                    "global",
+                    EntryKind::Fact,
+                    title,
+                    &format!("{title} body"),
+                    &["pageable"],
+                ),
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+    }
+
+    let first = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope: ScopeFilter::All,
+            kinds: Some(vec![EntryKind::Fact]),
+            tags: Some(vec!["pageable".to_owned()]),
+            limit: 2,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+
+    let second = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope: ScopeFilter::All,
+            kinds: Some(vec![EntryKind::Fact]),
+            tags: Some(vec!["pageable".to_owned()]),
+            limit: 2,
+            cursor: first.next_cursor.clone(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(first.items.len(), 2);
+    assert_eq!(second.items.len(), 1);
+    assert!(first.next_cursor.is_some());
+    assert!(second.next_cursor.is_none());
+    assert_ne!(first.items[0].entry.id, second.items[0].entry.id);
+    assert_ne!(first.items[1].entry.id, second.items[0].entry.id);
 }

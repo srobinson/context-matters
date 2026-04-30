@@ -22,14 +22,16 @@ pub(crate) mod parse;
 mod predicates;
 mod query;
 mod scope;
+mod search;
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use cm_core::{
-    AncestorWalkRequest, CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation,
-    MutationAction, MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, RelationKind,
-    Scope, ScopeKind, ScopePath, ScoredEntry, StoreStats, UpdateEntry, WriteContext,
+    AncestorWalkRequest, CmError, ContentSearchPage, ContentSearchRequest, ContextStore, Entry,
+    EntryFilter, EntryKind, EntryRelation, MutationAction, MutationRecord, MutationSource,
+    NewEntry, NewScope, PagedResult, RelationKind, Scope, ScopeKind, ScopePath, ScoredEntry,
+    StoreStats, UpdateEntry, WriteContext,
 };
 use sqlx::sqlite::SqlitePool;
 use uuid::Uuid;
@@ -94,6 +96,13 @@ impl ContextStore for CmStore {
         request: AncestorWalkRequest,
     ) -> Result<Vec<ScoredEntry>, CmError> {
         self.do_search_ancestor_walk(request).await
+    }
+
+    async fn do_content_search(
+        &self,
+        request: ContentSearchRequest,
+    ) -> Result<ContentSearchPage, CmError> {
+        self.do_content_search(request).await
     }
 
     async fn browse(&self, filter: EntryFilter) -> Result<PagedResult<Entry>, CmError> {
