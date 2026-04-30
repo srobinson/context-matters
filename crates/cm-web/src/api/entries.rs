@@ -24,12 +24,12 @@ use cm_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::api::agent::{self, BrowseQuery, ExecutedRecall};
 use crate::api::error::ApiError;
+use crate::api::scope_query;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -62,29 +62,17 @@ async fn browse(
 // that recall provides. The new response shape is `WebRecallView`,
 // matching the semantic intent that "search is a subset of recall".
 
-#[derive(Debug, Deserialize)]
-struct SearchQuery {
-    q: String,
-    scope: Option<String>,
-    cwd: Option<String>,
-    kind: Option<String>,
-    tag: Option<String>,
-    limit: Option<u32>,
-}
-
 async fn search(
     State(state): State<Arc<AppState>>,
     raw_query: RawQuery,
 ) -> Result<Json<WebRecallView>, ApiError> {
-    let sq = parse_search_query(raw_query.0.as_deref())?;
+    let sq = scope_query::parse_search_query(raw_query.0.as_deref())?;
     if sq.q.is_empty() {
         return Err(ApiError(cm_core::CmError::Validation(
             "query parameter is required".to_owned(),
         )));
     }
     check_input_size(&sq.q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-
-    let scope = agent::parse_scope_selector(sq.scope, sq.cwd)?;
 
     let kinds: Vec<EntryKind> = sq
         .kind
@@ -99,7 +87,7 @@ async fn search(
 
     let request = RecallRequest {
         query: Some(sq.q),
-        scope,
+        scope: sq.scope,
         kinds,
         tags,
         limit,
@@ -111,46 +99,6 @@ async fn search(
         .map_err(ApiError)?;
 
     Ok(Json(project_web_recall(&result, &request)))
-}
-
-const SEARCH_QUERY_KEYS: &[&str] = &["query", "scope", "cwd", "kind", "tag", "limit"];
-
-fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
-    let mut q = None;
-    let mut scope = None;
-    let mut cwd = None;
-    let mut kind = None;
-    let mut tag = None;
-    let mut limit = None;
-
-    for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
-        match key.as_ref() {
-            "query" => q = Some(value.into_owned()),
-            "scope" => scope = Some(value.into_owned()),
-            "cwd" => cwd = Some(value.into_owned()),
-            "scope_path" => return Err(agent::err_scope_path_removed()),
-            "scope_mode" => return Err(agent::err_scope_mode_removed()),
-            "kind" => kind = Some(value.into_owned()),
-            "tag" => tag = Some(value.into_owned()),
-            "limit" => {
-                limit = Some(value.parse::<u32>().map_err(|_| {
-                    ApiError(cm_core::CmError::Validation(format!(
-                        "invalid limit: '{value}'"
-                    )))
-                })?)
-            }
-            other => return Err(agent::err_unknown_query_key(other, SEARCH_QUERY_KEYS)),
-        }
-    }
-
-    Ok(SearchQuery {
-        q: q.unwrap_or_default(),
-        scope,
-        cwd,
-        kind,
-        tag,
-        limit,
-    })
 }
 
 // ── Recall compatibility alias ──────────────────────────────────

@@ -9,7 +9,6 @@
 //! `/api/entries/*` compatibility aliases in `entries.rs` so the two
 //! HTTP prefixes cannot drift.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
@@ -30,6 +29,7 @@ use url::form_urlencoded;
 
 use crate::AppState;
 use crate::api::error::ApiError;
+use crate::api::scope_query;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -42,105 +42,18 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(Debug)]
 pub(crate) struct RecallQuery {
     pub query: Option<String>,
-    pub scope: Option<String>,
-    pub cwd: Option<String>,
+    pub scope: Option<ScopeSelector>,
     pub kinds: Vec<String>,
     pub tags: Vec<String>,
     pub limit: Option<u32>,
     pub max_tokens: Option<u32>,
 }
 
-pub(crate) fn err_scope_path_removed() -> ApiError {
-    ApiError(cm_core::CmError::Validation(
-        "use 'scope' instead of 'scope_path'".to_owned(),
-    ))
-}
-
-pub(crate) fn err_scope_mode_removed() -> ApiError {
-    ApiError(cm_core::CmError::Validation(
-        "use 'scope' instead of 'scope_mode'".to_owned(),
-    ))
-}
-
-pub(crate) fn err_unknown_query_key(key: &str, allowed: &[&str]) -> ApiError {
-    ApiError(cm_core::CmError::Validation(format!(
-        "unknown query parameter '{key}' (allowed: {})",
-        allowed.join(", ")
-    )))
-}
-
-const SCOPE_QUERY_KEYS: &[&str] = &["scope", "cwd"];
-
-pub(crate) fn parse_scope_query(
-    raw: Option<&str>,
-) -> Result<(Option<String>, Option<String>), ApiError> {
-    let mut scope = None;
-    let mut cwd = None;
-
-    for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
-        match key.as_ref() {
-            "scope" => scope = Some(value.into_owned()),
-            "cwd" => cwd = Some(value.into_owned()),
-            "scope_path" => return Err(err_scope_path_removed()),
-            "scope_mode" => return Err(err_scope_mode_removed()),
-            other => return Err(err_unknown_query_key(other, SCOPE_QUERY_KEYS)),
-        }
-    }
-
-    Ok((scope, cwd))
-}
-
-pub(crate) fn parse_scope_selector(
-    scope: Option<String>,
-    cwd: Option<String>,
-) -> Result<Option<ScopeSelector>, ApiError> {
-    if let Some(ref s) = scope {
-        check_input_size(s, "scope").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-    }
-    if let Some(ref c) = cwd {
-        check_input_size(c, "cwd").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-    }
-
-    let cwd = parse_cwd(cwd)?;
-    let Some(scope) = scope else {
-        if cwd.is_some() {
-            return Err(ApiError(cm_core::CmError::Validation(
-                "cwd can only be supplied with scope='cwd_inferred'".to_owned(),
-            )));
-        }
-        return Ok(None);
-    };
-
-    ScopeSelector::parse(&scope)
-        .and_then(|selector| selector.with_cwd(cwd))
-        .map(Some)
-        .map_err(ApiError)
-}
-
-fn parse_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, ApiError> {
-    match cwd {
-        Some(raw) if raw.trim().is_empty() => Err(ApiError(cm_core::CmError::Validation(
-            "cwd cannot be empty".to_owned(),
-        ))),
-        Some(raw) => Ok(Some(raw.into())),
-        None => Ok(None),
-    }
-}
-
-const RECALL_QUERY_KEYS: &[&str] = &[
-    "query",
-    "scope",
-    "cwd",
-    "kinds",
-    "tags",
-    "limit",
-    "max_tokens",
-];
+const RECALL_QUERY_KEYS: &[&str] = &["query", "scope", "kinds", "tags", "limit", "max_tokens"];
 
 pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiError> {
     let mut query = None;
     let mut scope = None;
-    let mut cwd = None;
     let mut kinds = Vec::new();
     let mut tags = Vec::new();
     let mut limit = None;
@@ -149,10 +62,10 @@ pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiEr
     for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
         match key.as_ref() {
             "query" => query = Some(value.into_owned()),
-            "scope" => scope = Some(value.into_owned()),
-            "cwd" => cwd = Some(value.into_owned()),
-            "scope_path" => return Err(err_scope_path_removed()),
-            "scope_mode" => return Err(err_scope_mode_removed()),
+            "scope" => scope = Some(scope_query::parse_scope_value(value.into_owned())?),
+            "cwd" => return Err(scope_query::err_cwd_removed()),
+            "scope_path" => return Err(scope_query::err_scope_path_removed()),
+            "scope_mode" => return Err(scope_query::err_scope_mode_removed()),
             "kinds" => kinds.push(value.into_owned()),
             "tags" => tags.push(value.into_owned()),
             "limit" => {
@@ -169,14 +82,13 @@ pub(crate) fn parse_recall_query(raw: Option<&str>) -> Result<RecallQuery, ApiEr
                     )))
                 })?)
             }
-            other => return Err(err_unknown_query_key(other, RECALL_QUERY_KEYS)),
+            other => return Err(scope_query::err_unknown_query_key(other, RECALL_QUERY_KEYS)),
         }
     }
 
     Ok(RecallQuery {
         query,
         scope,
-        cwd,
         kinds,
         tags,
         limit,
@@ -208,8 +120,6 @@ pub(crate) async fn execute_recall(
         check_input_size(q, "query").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
 
-    let scope = parse_scope_selector(rq.scope, rq.cwd)?;
-
     let kinds: Vec<EntryKind> = rq
         .kinds
         .iter()
@@ -220,7 +130,7 @@ pub(crate) async fn execute_recall(
 
     let request = RecallRequest {
         query: rq.query,
-        scope,
+        scope: rq.scope,
         kinds,
         tags: rq.tags,
         limit,
@@ -294,18 +204,17 @@ pub(crate) async fn execute_browse(
     if let Some(ref s) = bq.scope {
         check_input_size(s, "scope").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
     }
-    if let Some(ref c) = bq.cwd {
-        check_input_size(c, "cwd").map_err(|msg| ApiError(cm_core::CmError::Validation(msg)))?;
-    }
 
     if bq.scope_path.is_some() {
-        return Err(err_scope_path_removed());
+        return Err(scope_query::err_scope_path_removed());
     }
     if bq.scope_mode.is_some() {
-        return Err(err_scope_mode_removed());
+        return Err(scope_query::err_scope_mode_removed());
     }
-    let cwd = parse_cwd(bq.cwd)?;
-    let scope = ScopeSelector::from_optional_scope(bq.scope.as_deref(), cwd).map_err(ApiError)?;
+    if bq.cwd.is_some() {
+        return Err(scope_query::err_cwd_removed());
+    }
+    let scope = scope_query::parse_optional_scope(bq.scope)?;
 
     let kind = bq
         .kind

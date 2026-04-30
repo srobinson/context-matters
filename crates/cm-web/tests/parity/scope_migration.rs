@@ -118,27 +118,55 @@ async fn cm_web_rejects_removed_scope_query_fields() {
         "/api/entries/search?query=Smart&scope_path=global",
         "/api/entries/search?query=Smart&scope=global&scope_path=global",
         "/api/entries/search?query=Smart&scope_mode=resolved",
+        "/api/entries/search?query=Smart&cwd=/tmp/helioy/context-matters",
         "/api/entries/search?query=Smart&scope=auto",
         "/api/entries/recall?query=Smart&scope_path=global",
         "/api/entries/recall?query=Smart&scope_mode=resolved",
+        "/api/entries/recall?query=Smart&cwd=/tmp/helioy/context-matters",
         "/api/entries/recall?query=Smart&scope=auto",
         "/api/agent/recall?query=Smart&scope_path=global",
         "/api/agent/recall?query=Smart&scope_mode=resolved",
+        "/api/agent/recall?query=Smart&cwd=/tmp/helioy/context-matters",
         "/api/agent/recall?query=Smart&scope=auto",
         "/api/agent/browse?scope_path=global",
         "/api/agent/browse?scope_mode=resolved",
+        "/api/agent/browse?cwd=/tmp/helioy/context-matters",
         "/api/agent/browse?scope=auto",
         "/api/entries?scope_path=global",
         "/api/entries?scope_mode=resolved",
+        "/api/entries?cwd=/tmp/helioy/context-matters",
         "/api/entries?scope=auto",
         "/api/export?scope_path=global",
         "/api/export?scope=global&scope_path=global",
         "/api/export?scope_mode=resolved",
+        "/api/export?cwd=/tmp/helioy/context-matters",
         "/api/export?scope=auto",
     ] {
         let (status, body) = request_json(app.clone(), Method::GET, uri, None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{uri} returned {body:?}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cm_web_reports_invalid_structured_scope_json() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+    let app = test_app(store);
+
+    let (status, body) = request_json(
+        app,
+        Method::GET,
+        "/api/agent/recall?query=Smart&scope=%7Bbad",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body.to_string()
+            .contains("scope must be structured JSON with a kind field"),
+        "{body:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

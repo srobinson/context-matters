@@ -9,15 +9,14 @@ use cm_capabilities::scope::resolve_scope_selection;
 use cm_core::ContextStore;
 
 use crate::AppState;
-use crate::api::agent;
 use crate::api::error::ApiError;
+use crate::api::scope_query;
 
 pub async fn export(
     State(state): State<Arc<AppState>>,
     raw_query: RawQuery,
 ) -> Result<Response, ApiError> {
-    let (scope, cwd) = agent::parse_scope_query(raw_query.0.as_deref())?;
-    let scope_selector = agent::parse_scope_selector(scope, cwd)?;
+    let scope_selector = scope_query::parse_scope_query(raw_query.0.as_deref())?;
     let scope_path = match scope_selector.as_ref() {
         Some(selector) => {
             let selection = resolve_scope_selection(&state.store, selector)
