@@ -27,9 +27,9 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use cm_core::{
-    CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation, MutationAction,
-    MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, RelationKind, Scope,
-    ScopeKind, ScopePath, ScoredEntry, StoreStats, UpdateEntry, WriteContext,
+    AncestorWalkRequest, CmError, ContextStore, Entry, EntryFilter, EntryKind, EntryRelation,
+    MutationAction, MutationRecord, MutationSource, NewEntry, NewScope, PagedResult, RelationKind,
+    Scope, ScopeKind, ScopePath, ScoredEntry, StoreStats, UpdateEntry, WriteContext,
 };
 use sqlx::sqlite::SqlitePool;
 use uuid::Uuid;
@@ -89,13 +89,11 @@ impl ContextStore for CmStore {
         self.do_resolve_context(scope_path, kinds, limit).await
     }
 
-    async fn search(
+    async fn do_search_ancestor_walk(
         &self,
-        query: &str,
-        scope_path: Option<&ScopePath>,
-        limit: u32,
+        request: AncestorWalkRequest,
     ) -> Result<Vec<ScoredEntry>, CmError> {
-        self.do_search(query, scope_path, limit).await
+        self.do_search_ancestor_walk(request).await
     }
 
     async fn browse(&self, filter: EntryFilter) -> Result<PagedResult<Entry>, CmError> {

@@ -5,13 +5,13 @@ use uuid::Uuid;
 
 use crate::{
     CmError, Entry, EntryFilter, EntryKind, EntryRelation, MutationAction, MutationRecord,
-    MutationSource, NewEntry, NewScope, PagedResult, RelationKind, Scope, ScopeKind, ScopePath,
-    StoreStats, UpdateEntry, WriteContext,
+    MutationSource, NewEntry, NewScope, PagedResult, RelationKind, Scope, ScopeFilter, ScopeKind,
+    ScopePath, StoreStats, UpdateEntry, WriteContext,
 };
 
 /// An `Entry` paired with a raw FTS5 relevance score.
 ///
-/// Returned by [`ContextStore::search`]. The `score` field carries the raw
+/// Returned by [`ContextStore::do_search_ancestor_walk`]. The `score` field carries the raw
 /// SQLite FTS5 `bm25(entries_fts)` / `rank` value as `f32`: a negative
 /// float where **lower values indicate higher relevance** (better match).
 /// The value is intentionally unnormalised at this layer so that downstream
@@ -21,6 +21,32 @@ use crate::{
 pub struct ScoredEntry {
     pub entry: Entry,
     pub score: f32,
+}
+
+/// Request for recall's FTS5 ancestor walk.
+#[derive(Debug, Clone)]
+pub struct AncestorWalkRequest {
+    pub query: String,
+    pub scope: ScopePath,
+    pub limit: u32,
+}
+
+/// Request for content-first search across store-level scope predicates.
+#[derive(Debug, Clone)]
+pub struct ContentSearchRequest {
+    pub query: String,
+    pub scope: ScopeFilter,
+    pub kinds: Option<Vec<EntryKind>>,
+    pub tags: Option<Vec<String>>,
+    pub limit: u32,
+    pub cursor: Option<String>,
+}
+
+/// A page of content-first search results.
+#[derive(Debug, Clone)]
+pub struct ContentSearchPage {
+    pub items: Vec<ScoredEntry>,
+    pub next_cursor: Option<String>,
 }
 
 /// Async storage interface for context entries.
@@ -103,7 +129,7 @@ pub trait ContextStore: Send + Sync + 'static {
         limit: u32,
     ) -> Result<Vec<Entry>, CmError>;
 
-    /// Full-text search using FTS5.
+    /// Full-text search using FTS5 over a scope and its ancestors.
     ///
     /// Searches `title` and `body` fields using SQLite FTS5 `MATCH` syntax.
     /// Results are ranked by FTS5 relevance score and returned as
@@ -112,17 +138,23 @@ pub trait ContextStore: Send + Sync + 'static {
     ///
     /// # Arguments
     ///
-    /// - `query`: FTS5 query string. Supports prefix queries (`rust*`),
-    ///   phrase queries (`"scope path"`), and boolean operators (`AND`, `OR`, `NOT`).
-    /// - `scope_path`: Optional scope filter. When set, only entries at this
-    ///   exact scope or its ancestors are included.
-    /// - `limit`: Maximum number of results.
-    async fn search(
+    /// The scope is always singular. Results include entries at the requested
+    /// scope and its ancestors, ordered by FTS5 rank.
+    async fn do_search_ancestor_walk(
         &self,
-        query: &str,
-        scope_path: Option<&ScopePath>,
-        limit: u32,
+        request: AncestorWalkRequest,
     ) -> Result<Vec<ScoredEntry>, CmError>;
+
+    /// Content-first search across a store-level scope predicate.
+    async fn do_content_search(
+        &self,
+        _request: ContentSearchRequest,
+    ) -> Result<ContentSearchPage, CmError> {
+        Err(CmError::InvalidOperationInput {
+            op: "cx_search",
+            reason: "content search store path is not implemented yet".to_owned(),
+        })
+    }
 
     /// Browse entries with filtering and pagination.
     ///

@@ -2,8 +2,19 @@
 
 mod common;
 
-use cm_core::{EntryKind, NewScope};
+use cm_core::{AncestorWalkRequest, EntryKind, NewScope, ScoredEntry};
 use common::*;
+
+async fn search_ancestor_walk(store: &CmStore, query: &str, scope: ScopePath) -> Vec<ScoredEntry> {
+    store
+        .do_search_ancestor_walk(AncestorWalkRequest {
+            query: query.to_owned(),
+            scope,
+            limit: 10,
+        })
+        .await
+        .unwrap()
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn c19_fts_search_finds_by_title() {
@@ -23,7 +34,7 @@ async fn c19_fts_search_finds_by_title() {
         .await
         .unwrap();
 
-    let results = store.search("photosynthesis", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "photosynthesis", ScopePath::global()).await;
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].entry.title, "Photosynthesis in plants");
@@ -47,7 +58,7 @@ async fn c19_fts_search_finds_by_body() {
         .await
         .unwrap();
 
-    let results = store.search("mitochondria", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "mitochondria", ScopePath::global()).await;
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].entry.title, "Generic title");
@@ -87,7 +98,7 @@ async fn fts_search_surfaces_bm25_score_and_preserves_ranking() {
         .await
         .unwrap();
 
-    let results = store.search("sqlx", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "sqlx", ScopePath::global()).await;
     assert_eq!(results.len(), 2);
 
     for scored in &results {
@@ -135,10 +146,10 @@ async fn c20_fts_reflects_updated_content() {
         .await
         .unwrap();
 
-    let results = store.search("giraffes", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "giraffes", ScopePath::global()).await;
     assert_eq!(results.len(), 1);
 
-    let results = store.search("elephants", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "elephants", ScopePath::global()).await;
     assert_eq!(results.len(), 0);
 }
 
@@ -160,12 +171,12 @@ async fn c21_superseded_entries_excluded_from_search() {
         .await
         .unwrap();
 
-    let results = store.search("quantum", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "quantum", ScopePath::global()).await;
     assert_eq!(results.len(), 1);
 
     store.forget_entry(entry.id, &test_ctx()).await.unwrap();
 
-    let results = store.search("quantum", None, 10).await.unwrap();
+    let results = search_ancestor_walk(&store, "quantum", ScopePath::global()).await;
     assert_eq!(results.len(), 0);
 }
 
@@ -203,10 +214,10 @@ async fn c25_updated_at_and_fts_both_fire_on_update() {
 
     assert!(updated.updated_at > entry.updated_at);
 
-    let found = store.search("pelican", None, 10).await.unwrap();
+    let found = search_ancestor_walk(&store, "pelican", ScopePath::global()).await;
     assert_eq!(found.len(), 1);
 
-    let not_found = store.search("albatross", None, 10).await.unwrap();
+    let not_found = search_ancestor_walk(&store, "albatross", ScopePath::global()).await;
     assert_eq!(not_found.len(), 0);
 }
 
@@ -277,10 +288,7 @@ async fn search_with_scope_filter() {
         .await
         .unwrap();
 
-    let results = store
-        .search("butterfly", Some(&project_path), 10)
-        .await
-        .unwrap();
+    let results = search_ancestor_walk(&store, "butterfly", project_path).await;
     assert_eq!(results.len(), 2);
 
     let scopes: Vec<&str> = results

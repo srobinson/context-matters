@@ -1,6 +1,9 @@
-//! Read-only query operations: resolve_context, search, browse.
+//! Read-only query operations: resolve_context, ancestor search, browse.
 
-use cm_core::{CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath, ScoredEntry};
+use cm_core::{
+    AncestorWalkRequest, CmError, Entry, EntryFilter, EntryKind, PagedResult, ScopePath,
+    ScoredEntry,
+};
 use sqlx::{QueryBuilder, Row, Sqlite};
 
 use super::CmStore;
@@ -101,13 +104,11 @@ impl CmStore {
         Ok(all_entries)
     }
 
-    pub(crate) async fn do_search(
+    pub(crate) async fn do_search_ancestor_walk(
         &self,
-        query: &str,
-        scope_path: Option<&ScopePath>,
-        limit: u32,
+        request: AncestorWalkRequest,
     ) -> Result<Vec<ScoredEntry>, CmError> {
-        let fts_query = cm_core::FtsQuery::new(query);
+        let fts_query = cm_core::FtsQuery::new(&request.query);
         let fts_str = fts_query.as_str().to_owned();
 
         if fts_str.is_empty() {
@@ -116,47 +117,28 @@ impl CmStore {
 
         let pool = &self.read_pool;
 
-        // Both branches select `f.rank` as the trailing column so the row
-        // decoder can pair each `Entry` with its raw BM25 score. SQLite's
-        // FTS5 `rank` is a negative float (lower = more relevant).
-        let rows = if let Some(sp) = scope_path {
-            let ancestors: Vec<&str> = sp.ancestors().collect();
-            let mut q = QueryBuilder::<Sqlite>::new(
-                "SELECT e.*, f.rank AS fts_rank FROM entries e \
-                 JOIN entries_fts f ON e.rowid = f.rowid \
-                 WHERE f.entries_fts MATCH ",
-            );
-            q.push_bind(fts_str.clone());
-            q.push(
-                " \
-                 AND e.superseded_by IS NULL \
-                 AND e.scope_path IN (",
-            );
-            {
-                let mut separated = q.separated(", ");
-                for a in &ancestors {
-                    separated.push_bind(*a);
-                }
+        let ancestors: Vec<&str> = request.scope.ancestors().collect();
+        let mut q = QueryBuilder::<Sqlite>::new(
+            "SELECT e.*, f.rank AS fts_rank FROM entries e \
+             JOIN entries_fts f ON e.rowid = f.rowid \
+             WHERE f.entries_fts MATCH ",
+        );
+        q.push_bind(fts_str);
+        q.push(
+            " \
+             AND e.superseded_by IS NULL \
+             AND e.scope_path IN (",
+        );
+        {
+            let mut separated = q.separated(", ");
+            for ancestor in &ancestors {
+                separated.push_bind(*ancestor);
             }
-            q.push(") ORDER BY f.rank LIMIT ");
-            q.push_bind(limit as i64);
+        }
+        q.push(") ORDER BY f.rank LIMIT ");
+        q.push_bind(request.limit as i64);
 
-            q.build().fetch_all(pool).await.map_err(map_db_err)?
-        } else {
-            sqlx::query(
-                "SELECT e.*, f.rank AS fts_rank FROM entries e \
-                 JOIN entries_fts f ON e.rowid = f.rowid \
-                 WHERE f.entries_fts MATCH ? \
-                 AND e.superseded_by IS NULL \
-                 ORDER BY f.rank \
-                 LIMIT ?",
-            )
-            .bind(&fts_str)
-            .bind(limit as i64)
-            .fetch_all(pool)
-            .await
-            .map_err(map_db_err)?
-        };
+        let rows = q.build().fetch_all(pool).await.map_err(map_db_err)?;
 
         rows.iter()
             .map(|row| {
