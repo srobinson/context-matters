@@ -25,7 +25,7 @@ This project has a structured context store available via the **`cm` MCP server*
 | `cx_update` | Partially update an existing entry | `cx_update(id: "uuid", title: "Updated title")` |
 | `cx_forget` | Soft-delete entries no longer relevant | `cx_forget(ids: ["uuid"])` |
 | `cx_stats` | View store statistics and scope breakdown | `cx_stats()` |
-| `cx_export` | Export entries as JSON for backup | `cx_export(scope: {"kind":"path","path":"global/project:helioy"})` |
+| `cx_export` | Export entries as JSON for backup | `cx_export(scope: "global/project:helioy")` |
 
 ## Context Management Workflow
 
@@ -45,7 +45,7 @@ This project has a structured context store available via the **`cm` MCP server*
 2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
    → retrieve priority context for THIS known scope and its ancestors
 3. Work on the task
-4. cx_store(title: "...", body: "...", kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})
+4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
    → persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
    → preserve conversation at session end for continuity

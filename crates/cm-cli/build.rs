@@ -402,7 +402,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         (
             "cx_export",
             "Export entries as JSON for backup",
-            r#"`cx_export(scope: {"kind":"path","path":"global/project:helioy"})`"#,
+            r#"`cx_export(scope: "global/project:helioy")`"#,
         ),
     ];
 
