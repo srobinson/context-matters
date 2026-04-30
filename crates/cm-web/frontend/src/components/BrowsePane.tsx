@@ -26,7 +26,7 @@ export function BrowsePane({ expandedIds, onToggleExpanded }: BrowsePaneProps) {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
 
   const query = useAgentBrowse({
-    scope,
+    scope: scope ? { kind: "path", path: scope } : undefined,
     kind,
     tag,
     created_by: agent,

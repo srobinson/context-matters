@@ -4,6 +4,7 @@ import type { NewEntryRequest } from "@/api/client";
 import type { Entry } from "@/api/generated/Entry";
 import type { EntryKind } from "@/api/generated/EntryKind";
 import { useForgetEntry, useMergeEntry } from "@/api/hooks";
+import { serializeScopeSelector } from "@/lib/scope";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { KindBadge } from "./domain/KindBadge";
@@ -92,7 +93,7 @@ export function MergePanel({ entries, onComplete, onCancel }: MergePanelProps) {
     }
 
     const newEntry: NewEntryRequest = {
-      scope: baseEntry.scope_path,
+      scope: serializeScopeSelector({ kind: "path", path: baseEntry.scope_path }),
       kind: baseEntry.kind as EntryKind,
       title: baseEntry.title,
       body: baseEntry.body,

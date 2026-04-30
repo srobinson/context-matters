@@ -14,7 +14,7 @@ import { FeedSearchInput } from "./FeedSearchInput";
 import { FeedToolbar } from "./FeedToolbar";
 import { MergeStatus } from "./MergeStatus";
 import { RecallResults } from "./RecallResults";
-import type { FeedSearch } from "./search";
+import { type FeedSearch, scopeSelectorFromFeedScope } from "./search";
 import { useEntryFocus } from "./useEntryFocus";
 import { useMergeSelection } from "./useMergeSelection";
 import { useRecallControls } from "./useRecallControls";
@@ -117,7 +117,7 @@ export function FeedPage({ search }: FeedPageProps) {
   const browseQuery = useEntries({
     sort: sort ?? "recent",
     kind,
-    scope,
+    scope: scopeSelectorFromFeedScope(scope),
     tag,
     created_by,
     include_superseded: show_forgotten,
@@ -127,7 +127,7 @@ export function FeedPage({ search }: FeedPageProps) {
   const recallQuery = useAgentRecall(
     {
       query: debouncedQuery || undefined,
-      scope: recallScope,
+      scope: scopeSelectorFromFeedScope(recallScope),
       kinds: recallKinds,
       tags: recallTags,
       limit: recallLimit,

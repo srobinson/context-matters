@@ -48,37 +48,38 @@ fn frontend_api_contract_keeps_scope_path_as_rejected_input_only() {
     let source = frontend_source("api/scope-contract.test.ts");
 
     assert!(
-        source.contains("api.entries.browse({ scope })")
-            && source.contains("api.entries.search({ query: \"Scope\", scope })")
-            && source.contains("api.export(scope)")
+        source.contains("api.entries.browse({ scope: subtreeScope })")
+            && source.contains("api.entries.search({ query: \"Scope\", scope: subtreeScope })")
+            && source.contains("api.agent.search({ query: \"Scope\", scope: setScope })")
+            && source.contains("api.export({ scope: cwdScope })")
             && source.contains("api.entries.create(entry)")
             && source.contains("api.entries.merge("),
         "frontend request contracts should exercise scope on migrated surfaces"
     );
     assert!(
-        source.matches("@ts-expect-error").count() >= 5,
+        source.matches("@ts-expect-error").count() >= 12,
         "frontend contract should keep type-level rejection coverage"
     );
 }
 
 #[test]
-fn frontend_api_contract_exercises_cwd_inferred_recall_and_export() {
+fn frontend_api_contract_exercises_scope_selector_variants() {
     let source = frontend_source("api/scope-contract.test.ts");
 
     assert!(
-        source.contains("api.entries.recall({")
-            && source.contains("api.agent.recall({")
-            && source.contains("api.export({ scope: \"cwd_inferred\"")
-            && source
-                .matches("cwd: \"/tmp/helioy/context-matters\"")
-                .count()
-                >= 3,
-        "frontend request contracts should exercise cwd_inferred recall and export with cwd"
+        source.contains("const pathScope: ScopeSelector = { kind: \"path\"")
+            && source.contains("const cwdScope: ScopeSelector = {")
+            && source.contains("kind: \"cwd_inferred\",")
+            && source.contains("const subtreeScope: ScopeSelector = { kind: \"subtree\"")
+            && source.contains("const setScope: ScopeSelector = {")
+            && source.contains("kind: \"set\",")
+            && source.contains("const allScope: ScopeSelector = { kind: \"all\" }"),
+        "frontend request contracts should exercise every ScopeSelector variant"
     );
 }
 
 #[test]
-fn frontend_api_client_serializes_cwd_query_params() {
+fn frontend_api_client_serializes_structured_scope_query_params() {
     let source = frontend_source("api/client.ts");
 
     let entries_recall = source_between(
@@ -87,9 +88,9 @@ fn frontend_api_client_serializes_cwd_query_params() {
         "get(id: string): Promise<EntryDetail>",
     );
     assert!(
-        entries_recall.contains("scope: params.scope,")
-            && entries_recall.contains("cwd: params.cwd,"),
-        "entries.recall should serialize scope and cwd query params"
+        entries_recall.contains("scope: serializeScopeSelector(params.scope),")
+            && !entries_recall.contains("cwd: params.cwd,"),
+        "entries.recall should serialize one structured scope query param"
     );
 
     let agent_recall = source_between(
@@ -98,13 +99,25 @@ fn frontend_api_client_serializes_cwd_query_params() {
         "browse(params: AgentBrowseParams = {}): Promise<BrowseView>",
     );
     assert!(
-        agent_recall.contains("scope: params.scope,") && agent_recall.contains("cwd: params.cwd,"),
-        "agent.recall should serialize scope and cwd query params"
+        agent_recall.contains("scope: serializeScopeSelector(params.scope),")
+            && !agent_recall.contains("cwd: params.cwd,"),
+        "agent.recall should serialize one structured scope query param"
     );
 
-    let export_call = source_between(&source, "export(params?: string | ExportParams)", "};");
+    let agent_search = source_between(
+        &source,
+        "search(params: AgentSearchParams): Promise<RecallView>",
+        "browse(params: AgentBrowseParams = {}): Promise<BrowseView>",
+    );
     assert!(
-        export_call.contains("toSearchParams({ scope: params?.scope, cwd: params?.cwd })"),
-        "export should serialize scope and cwd query params"
+        agent_search.contains("scope: serializeScopeSelector(params.scope),"),
+        "agent.search should serialize one structured scope query param"
+    );
+
+    let export_call = source_between(&source, "export(params?: ExportParams)", "};");
+    assert!(
+        export_call.contains("scope: serializeScopeSelector(params?.scope)")
+            && !export_call.contains("cwd: params?.cwd"),
+        "export should serialize one structured scope query param"
     );
 }
