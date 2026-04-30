@@ -229,3 +229,25 @@ fn frontend_scope_controls_share_scope_selector_primitives() {
         "BrowsePane should keep ScopeSelector state directly"
     );
 }
+
+#[test]
+fn frontend_filter_bar_formats_wide_scope_chips() {
+    let filter_bar = frontend_source("components/FilterBar.tsx");
+
+    assert!(
+        filter_bar.contains("scope:subtree(${scope.path})"),
+        "subtree chips should render as scope:subtree(path)"
+    );
+    assert!(
+        filter_bar.contains("`scope:[${scope.paths.join(\", \")}]`"),
+        "set chips with up to three paths should render as scope:[a, b]"
+    );
+    assert!(
+        filter_bar.contains("`scope:[${scope.paths[0]} +${scope.paths.length - 1}]`"),
+        "set chips with more than three paths should render as scope:[a +N]"
+    );
+    assert!(
+        filter_bar.contains("scope?.kind === \"all\") return \"scope:all\""),
+        "all chips should render as scope:all"
+    );
+}

@@ -137,8 +137,12 @@ function buildNonScopeFacets(stats: Stats | undefined): FacetDefinition[] {
 function scopeChipValue(scope: ScopeSelectorValue | undefined): string | undefined {
   if (scope?.kind === "path") return `scope:${scope.path}`;
   if (scope?.kind === "cwd_inferred") return scope.cwd ? `scope:cwd:${scope.cwd}` : "scope:cwd";
-  if (scope?.kind === "subtree") return `scope:subtree:${scope.path}`;
-  if (scope?.kind === "set") return `scope:set:${scope.paths.join(",")}`;
+  if (scope?.kind === "subtree") return `scope:subtree(${scope.path})`;
+  if (scope?.kind === "set") {
+    if (scope.paths.length === 0) return undefined;
+    if (scope.paths.length > 3) return `scope:[${scope.paths[0]} +${scope.paths.length - 1}]`;
+    return `scope:[${scope.paths.join(", ")}]`;
+  }
   if (scope?.kind === "all") return "scope:all";
   return undefined;
 }
