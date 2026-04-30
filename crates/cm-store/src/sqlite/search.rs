@@ -96,19 +96,16 @@ fn build_content_search_query(
     cursor: Option<&SearchCursor>,
     mode: ContentSearchQueryMode,
 ) -> QueryBuilder<'static, Sqlite> {
-    let mut q = QueryBuilder::<Sqlite>::new(match mode {
-        ContentSearchQueryMode::Rows => {
-            "SELECT e.*, f.rank AS fts_rank FROM entries e \
-             JOIN entries_fts f ON e.rowid = f.rowid \
-             WHERE f.entries_fts MATCH "
-        }
+    let prefix = match mode {
+        ContentSearchQueryMode::Rows => "",
         #[cfg(test)]
-        ContentSearchQueryMode::ExplainPlan => {
-            "EXPLAIN QUERY PLAN SELECT e.*, f.rank AS fts_rank FROM entries e \
-             JOIN entries_fts f ON e.rowid = f.rowid \
-             WHERE f.entries_fts MATCH "
-        }
-    });
+        ContentSearchQueryMode::ExplainPlan => "EXPLAIN QUERY PLAN ",
+    };
+    let mut q = QueryBuilder::<Sqlite>::new(format!(
+        "{prefix}SELECT e.*, f.rank AS fts_rank FROM entries e \
+         JOIN entries_fts f ON e.rowid = f.rowid \
+         WHERE f.entries_fts MATCH "
+    ));
     q.push_bind(fts_str.to_owned());
     let mut has_where = true;
 
