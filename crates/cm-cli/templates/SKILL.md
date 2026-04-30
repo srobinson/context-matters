@@ -45,7 +45,7 @@ This project has a structured context store available via the **`cm` MCP server*
 2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
    → retrieve priority context for THIS known scope and its ancestors
 3. Work on the task
-4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
+4. cx_store(title: "...", body: "...", kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})
    → persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
    → preserve conversation at session end for continuity
@@ -66,19 +66,18 @@ global/project:helioy/repo:nancyr               — codebase-specific facts
 global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
 
-Public requests select scope through the `scope` field. Two forms:
+Public requests select scope through the `scope` field. Structured selectors:
 
 ```
-{ "scope": "global/project:helioy/repo:nancyr" }   exact path for legacy tools
-{ "scope": "cwd_inferred" }                        infer from cwd for legacy tools
-{ "scope": {"kind":"path","path":"global"} }       structured exact path
+{ "scope": {"kind":"path","path":"global"} }       exact scope for recall or search
 { "scope": {"kind":"cwd_inferred","cwd":"/repo"} } structured cwd inference
 { "scope": {"kind":"subtree","path":"global/project:helioy"} } subtree match
 { "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set
 { "scope": {"kind":"all"} }                        no scope filter
 ```
 
-For cwd based browse resolution, call `cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
+`cx_recall` accepts only `path` and `cwd_inferred` selectors. Use `cx_search` for `subtree`, `set`, and `all`.
+For cwd based browse resolution, call `cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
 
 Persisted entries, export rows, and response payloads include a `scope_path` field that identifies the exact stored scope of each row.
 
@@ -95,12 +94,12 @@ This keeps initial responses compact while allowing selective deep reads.
 
 ### `cx_recall`
 
-Search and retrieve context entries relevant to the current task. Primary retrieval tool. Combines FTS5 keyword search with scope resolution (ancestor walk). Call after receiving a task with a summary of what you are working on. When query is omitted, returns all entries at the target scope via ancestor walk. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.
+Recall priority context for a single known scope by walking that scope and its ancestors. Call after receiving a task with a summary of what you are working on. With a query, uses FTS5 inside the ancestor walk. Without a query, returns all entries visible at the target scope. Use cx_search when you need content search across subtree, set, or all scopes. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix que... |
-| `scope` | string | no | Scope selector to search within. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scopes retrieve... |
+| `scope` | string | no | Scope selector for recall. Pass structured JSON such as {"kind":"path","path":"global/project:helioy"} or {"kind":"cw... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |

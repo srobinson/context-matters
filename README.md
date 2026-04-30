@@ -18,7 +18,7 @@ cargo install --path crates/cm-cli
 
 ## MCP server
 
-Runs as a Model Context Protocol server. Nine tools, all prefixed `cx_*`.
+Runs as a Model Context Protocol server. Ten tools, all prefixed `cx_*`.
 
 ```bash
 cm serve
@@ -26,7 +26,8 @@ cm serve
 
 | Tool | Purpose |
 |------|---------|
-| `cx_recall` | Search and retrieve context relevant to the current task |
+| `cx_recall` | Priority context for one known scope via ancestor walk |
+| `cx_search` | Content search across wide or unknown scopes |
 | `cx_store` | Persist a fact, decision, preference, or lesson |
 | `cx_deposit` | Batch-store conversation exchanges for continuity |
 | `cx_browse` | List entries with filters and cursor pagination |
@@ -47,29 +48,31 @@ global/project:helioy/repo:fmm               codebase-specific facts
 global/project:helioy/repo:fmm/session:abc   ephemeral task context
 ```
 
-Public request inputs select scope with `scope` only:
+Public request inputs select scope with structured `scope` JSON:
 
 ```json
-{ "scope": "global/project:helioy/repo:fmm" }
+{ "scope": { "kind": "path", "path": "global/project:helioy/repo:fmm" } }
 ```
 
 ```json
-{ "scope": "cwd_inferred" }
+{ "scope": { "kind": "cwd_inferred", "cwd": "/path/to/repo" } }
 ```
 
-`cwd_inferred` is the reserved value for cwd based resolution. It uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory.
+Other read selectors include `subtree`, `set`, and `all`. `cx_recall` accepts only `path` and `cwd_inferred`; use `cx_search` for broad content search. `cwd_inferred` uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory.
 
 Persisted entries, export rows, response payloads, and internal exact path types include a `scope_path` field that identifies the exact stored scope of each row.
 
 ## Architecture
 
-Three crates, clean separation:
+Five crates, clean separation:
 
 | Crate | What it does |
 |-------|-------------|
 | `cm-core` | Domain types, ContextStore trait, query construction. Zero I/O. |
 | `cm-store` | SQLite adapter via sqlx. WAL mode, FTS5 search, BLAKE3 dedup. |
+| `cm-capabilities` | Shared request/response types, validation, scope resolution, projections. |
 | `cm-cli` | CLI binary + MCP server. Tool docs generated from `tools.toml`. |
+| `cm-web` | Web monitoring dashboard with Axum and React/Vite. |
 
 ## Development
 

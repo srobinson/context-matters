@@ -4,19 +4,19 @@ Structured context store for AI agents. Part of the [helioy](https://github.com/
 
 ## What it is
 
-A Rust MCP server that gives AI agents persistent memory across sessions. Agents store facts, decisions, preferences, lessons, and feedback into a SQLite database and recall them later using full-text search and hierarchical scope resolution.
+A Rust MCP server that gives AI agents persistent memory across sessions. Agents store facts, decisions, preferences, lessons, and feedback into a SQLite database, then retrieve them through scoped recall or broad content search.
 
 ## Why it exists
 
-AI agents lose all context between sessions. context-matters solves this by providing a structured, queryable store that agents interact with through 9 MCP tools (prefixed `cx_`). Feedback from user corrections gets highest recall priority, so agents learn from mistakes.
+AI agents lose all context between sessions. context-matters solves this by providing a structured, queryable store that agents interact with through 10 MCP tools (prefixed `cx_`). Feedback from user corrections gets highest recall priority, so agents learn from mistakes.
 
 ## How it works
 
 **Storage**: SQLite with FTS5, WAL mode, BLAKE3 content hashing for deduplication, UUID v7 for time-sortable IDs.
 
-**Scope hierarchy**: `global > project > repo > session`. Queries at a narrow scope automatically walk up to ancestors, so project-level decisions are visible from any repo within that project.
+**Scope hierarchy**: `global > project > repo > session`. Recall at a narrow scope automatically walks up to ancestors, so project-level decisions are visible from any repo within that project.
 
-**Scope selection**: Public requests use `scope`. Pass an exact path, or pass `cwd_inferred` to infer from cwd. `cwd_inferred` normalizes linked git worktrees to the source repo identity.
+**Scope selection**: Public read requests use structured `scope` JSON. Variants are `path`, `cwd_inferred`, `subtree`, `set`, and `all`. `cx_recall` accepts `path` and `cwd_inferred`; `cx_search` accepts the full vocabulary.
 
 **Persisted scope path**: stored entries, exports, response payloads, and internal exact path models include a `scope_path` field that identifies where each row lives.
 
@@ -42,7 +42,8 @@ Tool documentation lives in `tools.toml`. `build.rs` generates MCP schema, CLI h
 
 | Tool | Purpose |
 |------|---------|
-| `cx_recall` | FTS5 search + scope ancestor walk. Primary retrieval. |
+| `cx_recall` | Priority retrieval for one known scope via ancestor walk. |
+| `cx_search` | FTS5 BM25 content search across wide or unknown scopes. |
 | `cx_store` | Create an entry with auto-scope creation. |
 | `cx_deposit` | Batch-store conversation exchanges. |
 | `cx_browse` | Filtered inventory with cursor pagination. |

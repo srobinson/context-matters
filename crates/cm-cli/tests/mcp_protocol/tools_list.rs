@@ -299,7 +299,7 @@ fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
         .expect("generated skill doc should be readable");
     for required in [
         "Public requests select scope through the `scope` field.",
-        r#"cx_browse(scope: "cwd_inferred", cwd: "/path/to/repo")"#,
+        r#"cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})"#,
         "`cwd_inferred` resolves linked git worktrees to the source repository identity.",
         "Persisted entries, export rows, and response payloads include a `scope_path` field",
     ] {
