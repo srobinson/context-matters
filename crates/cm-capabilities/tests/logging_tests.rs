@@ -13,7 +13,7 @@ use cm_capabilities::{
     search::search,
 };
 use cm_core::{CmError, EntryKind, ScopeFilter, ScopePath};
-use common::{create_global, seed_entry, test_store};
+use common::{create_global, ensure_scope, seed_entry, seed_entry_with_scope, test_store};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::{Layer, layer::Context, prelude::*};
 
@@ -175,6 +175,45 @@ async fn search_logs_matching_structured_completion_event() {
     assert_eq!(event.get("query_len").unwrap(), "5");
     assert_eq!(event.get("result_count").unwrap(), "1");
     assert_eq!(event.get("rank_source").unwrap(), "fts");
+    assert_eq!(event.get("error_variant").unwrap(), "none");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recall_logs_cwd_inferred_variant_with_resolved_scope_path() {
+    let (store, _dir) = test_store().await;
+    ensure_scope(&store, "global/project:helioy/repo:context-matters").await;
+    seed_entry_with_scope(
+        &store,
+        "Cwd inferred recall note",
+        "alpha cwd inferred body",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+    let (log, _guard) = install_event_log();
+
+    recall(
+        &store,
+        RecallRequest {
+            query: Some("alpha".to_owned()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
+            limit: 10,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let events = log.take();
+    let event = event_for(&events, "recall");
+    assert_shared_schema(event);
+    assert_eq!(event.get("scope_variant").unwrap(), "cwd_inferred");
+    assert_eq!(
+        event.get("scope_paths").unwrap(),
+        "[\"global/project:helioy/repo:context-matters\"]"
+    );
     assert_eq!(event.get("error_variant").unwrap(), "none");
 }
 
