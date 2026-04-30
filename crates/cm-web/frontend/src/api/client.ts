@@ -144,8 +144,8 @@ export interface BrowseParams {
 export interface SearchParams {
   query: string;
   scope?: ScopeSelector;
-  kind?: EntryKind;
-  tag?: string;
+  kind?: EntryKind[];
+  tag?: string[];
   limit?: number;
 }
 

@@ -38,8 +38,8 @@ export function useRecallOrSearch({
   const searchParams: AgentSearchParams = {
     query: debouncedQuery,
     scope: ALL_SCOPE,
-    kind: first(kinds),
-    tag: first(tags),
+    kind: kinds,
+    tag: tags,
     limit,
   };
 
@@ -54,8 +54,4 @@ export function useRecallOrSearch({
     query: isAllScope ? searchQuery : recallQuery,
     showQueryOrScopeHint: isRecallMode && isAllScope && debouncedQuery.length === 0,
   };
-}
-
-function first<T>(values: T[]): T | undefined {
-  return values[0];
 }

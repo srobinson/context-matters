@@ -24,6 +24,12 @@ void api.entries.recall({ query: "Scope", scope: pathScope });
 void api.agent.recall({ query: "Scope", scope: cwdScope });
 void api.entries.search({ query: "Scope", scope: subtreeScope });
 void api.agent.search({ query: "Scope", scope: setScope });
+void api.agent.search({
+  query: "Scope",
+  scope: allScope,
+  kind: ["fact", "decision"],
+  tag: ["alpha", "beta"],
+});
 void api.agent.browse({ scope: allScope });
 void api.entries.browse({ scope: subtreeScope });
 void api.export({ scope: cwdScope });
@@ -53,6 +59,12 @@ void api.agent.search({ query: "Scope", cwd: "/tmp/helioy/context-matters" });
 
 // @ts-expect-error public search requests are not paginated until WebRecallView diverges
 void api.entries.search({ query: "Scope", cursor: "opaque" });
+
+// @ts-expect-error public search kind filters are repeated query params
+void api.agent.search({ query: "Scope", kind: "fact" });
+
+// @ts-expect-error public search tag filters are repeated query params
+void api.agent.search({ query: "Scope", tag: "alpha" });
 
 // @ts-expect-error public agent search requests are not paginated until WebRecallView diverges
 void api.agent.search({ query: "Scope", cursor: "opaque" });
