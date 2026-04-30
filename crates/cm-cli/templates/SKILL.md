@@ -20,12 +20,12 @@ This project has a structured context store available via the **`cm` MCP server*
 | `cx_search` | Content search across wide or unknown scopes | `cx_search(query: "auth decisions", scope: {"kind":"all"})` |
 | `cx_store` | Persist a fact, decision, preference, or lesson | `cx_store(title: "Use UUIDv7", body: "...", kind: "decision")` |
 | `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{user: "...", assistant: "..."}])` |
-| `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: "global/project:helioy")` |
+| `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})` |
 | `cx_get` | Fetch full content for specific entry IDs | `cx_get(ids: ["uuid1", "uuid2"])` |
 | `cx_update` | Partially update an existing entry | `cx_update(id: "uuid", title: "Updated title")` |
 | `cx_forget` | Soft-delete entries no longer relevant | `cx_forget(ids: ["uuid"])` |
 | `cx_stats` | View store statistics and scope breakdown | `cx_stats()` |
-| `cx_export` | Export entries as JSON for backup | `cx_export(scope: "global/project:helioy")` |
+| `cx_export` | Export entries as JSON for backup | `cx_export(scope: {"kind":"path","path":"global/project:helioy"})` |
 
 ## Context Management Workflow
 

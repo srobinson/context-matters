@@ -377,7 +377,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         (
             "cx_browse",
             "List entries with filters and pagination",
-            r#"`cx_browse(kind: "decision", scope: "global/project:helioy")`"#,
+            r#"`cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})`"#,
         ),
         (
             "cx_get",
@@ -402,7 +402,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         (
             "cx_export",
             "Export entries as JSON for backup",
-            r#"`cx_export(scope: "global/project:helioy")`"#,
+            r#"`cx_export(scope: {"kind":"path","path":"global/project:helioy"})`"#,
         ),
     ];
 
