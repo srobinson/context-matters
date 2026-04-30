@@ -82,7 +82,10 @@ pub enum Commands {
     Browse {
         #[arg(long, help = gh::BROWSE_SCOPE_HELP)]
         scope: Option<String>,
-        #[arg(long, help = gh::BROWSE_CWD_HELP)]
+        #[arg(
+            long,
+            help = "Working directory used for cwd_inferred scope resolution"
+        )]
         cwd: Option<String>,
         #[arg(long, help = gh::BROWSE_INCLUDE_RESOLUTION_HELP)]
         include_resolution: bool,

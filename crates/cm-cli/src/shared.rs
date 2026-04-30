@@ -1,5 +1,6 @@
 //! Helpers specific to the cm-cli MCP adapter layer.
 
+use cm_capabilities::scope::ScopeSelector;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -102,6 +103,19 @@ pub fn parse_params<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, S
             format!("Invalid parameters: {msg}")
         }
     })
+}
+
+pub fn parse_structured_scope_selector(
+    scope: Option<Value>,
+) -> Result<Option<ScopeSelector>, String> {
+    scope.map(parse_scope_selector_value).transpose()
+}
+
+fn parse_scope_selector_value(value: Value) -> Result<ScopeSelector, String> {
+    if value.is_object() {
+        return serde_json::from_value(value).map_err(|e| format!("Invalid scope: {e}"));
+    }
+    serde_json::from_value(value).map_err(|e| format!("Invalid parameters: {e}"))
 }
 
 /// Redirect callers using legacy scope keys to the current `scope` field.

@@ -76,8 +76,10 @@ async fn browse_cwd_inferred_scope_resolves_repo_and_returns_resolution() {
     let result = tools::cx_browse(
         &store,
         &json!({
-            "scope": "cwd_inferred",
-            "cwd": "/tmp/helioy/context-matters",
+            "scope": {
+                "kind": "cwd_inferred",
+                "cwd": "/tmp/helioy/context-matters"
+            },
             "limit": 20
         }),
     )
@@ -150,7 +152,13 @@ async fn browse_scope_stays_exact_without_resolution() {
 
     let result = tools::cx_browse(
         &store,
-        &json!({"scope": "global/project:helioy", "limit": 20}),
+        &json!({
+            "scope": {
+                "kind": "path",
+                "path": "global/project:helioy"
+            },
+            "limit": 20
+        }),
     )
     .await
     .unwrap();
@@ -202,7 +210,7 @@ async fn browse_accepts_structured_subtree_set_and_all_scopes() {
     let subtree = tools::cx_browse(
         &store,
         &json!({
-            "scope": "{\"kind\":\"subtree\",\"path\":\"global/project:helioy\"}",
+            "scope": {"kind":"subtree","path":"global/project:helioy"},
             "limit": 20
         }),
     )
@@ -219,7 +227,10 @@ async fn browse_accepts_structured_subtree_set_and_all_scopes() {
     let set = tools::cx_browse(
         &store,
         &json!({
-            "scope": "{\"kind\":\"set\",\"paths\":[\"global\",\"global/project:attention-matters\"]}",
+            "scope": {
+                "kind": "set",
+                "paths": ["global", "global/project:attention-matters"]
+            },
             "limit": 20
         }),
     )
@@ -233,7 +244,7 @@ async fn browse_accepts_structured_subtree_set_and_all_scopes() {
         set.text
     );
 
-    let all = tools::cx_browse(&store, &json!({"scope": "{\"kind\":\"all\"}", "limit": 20}))
+    let all = tools::cx_browse(&store, &json!({"scope": {"kind":"all"}, "limit": 20}))
         .await
         .unwrap();
     for title in ["Global fact", "Project fact", "Repo fact", "Other fact"] {
@@ -266,7 +277,37 @@ async fn browse_rejects_removed_auto_scope() {
         .unwrap_err();
 
     assert!(
-        err.contains("instead of scope='auto'"),
+        err.contains("invalid type: string") && err.contains("expected internally tagged enum"),
+        "unexpected error: {err}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_rejects_plain_string_scope() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let err = tools::cx_browse(&store, &json!({"scope": "global"}))
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.contains("invalid type: string") && err.contains("expected internally tagged enum"),
+        "unexpected error: {err}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_rejects_top_level_cwd() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let err = tools::cx_browse(&store, &json!({"cwd": "/tmp/helioy/context-matters"}))
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.contains("unknown field `cwd`"),
         "unexpected error: {err}",
     );
 }

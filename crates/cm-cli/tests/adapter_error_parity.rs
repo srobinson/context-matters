@@ -56,31 +56,13 @@ async fn cli_and_mcp_share_adapter_error_strings() {
     .await
     .unwrap_err()
     .to_string();
-    let mcp_error = tools::cx_browse(&store, &json!({ "scope": "workspace" }))
-        .await
-        .unwrap_err();
-    assert_eq!(cli_error, mcp_error, "browse invalid scope path");
-
-    let cli_error = cli::browse::run(
+    let mcp_error = tools::cx_browse(
         &store,
-        None,
-        Some(" ".to_owned()),
-        false,
-        None,
-        None,
-        None,
-        false,
-        None,
-        None,
-        false,
+        &json!({ "scope": { "kind": "path", "path": "workspace" } }),
     )
     .await
-    .unwrap_err()
-    .to_string();
-    let mcp_error = tools::cx_browse(&store, &json!({ "cwd": " " }))
-        .await
-        .unwrap_err();
-    assert_eq!(cli_error, mcp_error, "browse empty cwd");
+    .unwrap_err();
+    assert_eq!(cli_error, mcp_error, "browse invalid scope path");
 
     let cli_error = cli::recall::run(
         &store,
@@ -95,9 +77,12 @@ async fn cli_and_mcp_share_adapter_error_strings() {
     .await
     .unwrap_err()
     .to_string();
-    let mcp_error = tools::cx_recall(&store, &json!({ "query": "query", "scope": "workspace" }))
-        .await
-        .unwrap_err();
+    let mcp_error = tools::cx_recall(
+        &store,
+        &json!({ "query": "query", "scope": { "kind": "path", "path": "workspace" } }),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(cli_error, mcp_error, "recall invalid scope path");
 
     let cli_error = cli::stats::run(&store, Some("recent".to_owned()), false)

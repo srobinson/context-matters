@@ -71,8 +71,6 @@ pub const BROWSE_ABOUT: &str = "Browse entries with filtering and pagination.\n\
 #[rustfmt::skip]
 pub const BROWSE_SCOPE_HELP: &str = "Preferred scope: reserved value cwd_inferred, exact path, or structured subtree/set/all selector";
 #[rustfmt::skip]
-pub const BROWSE_CWD_HELP: &str = "Working directory used for cwd_inferred scope resolution";
-#[rustfmt::skip]
 pub const BROWSE_INCLUDE_RESOLUTION_HELP: &str = "Include scope resolution metadata";
 #[rustfmt::skip]
 pub const BROWSE_KIND_HELP: &str = "Filter by kind: fact, decision, preference, lesson, reference, feedback, pattern, observation";

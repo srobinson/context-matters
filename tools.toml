@@ -135,8 +135,8 @@ cli_flag        = "query"
 
 [[tools.cx_recall.params]]
 name            = "scope"
-type            = "string"
-mcp_description = "Scope selector for recall. Pass structured JSON such as {\"kind\":\"path\",\"path\":\"global/project:helioy\"} or {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}. The cwd inference reserved value is cwd_inferred. cx_recall rejects subtree, set, and all selectors; use cx_search for broad scope queries. Default: {\"kind\":\"path\",\"path\":\"global\"}."
+type            = "object"
+mcp_description = "Structured ScopeSelector object for recall. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"} or {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}. cx_recall rejects subtree, set, and all selectors; use cx_search for broad scope queries. Default: {\"kind\":\"path\",\"path\":\"global\"}. Plain strings are not accepted by MCP."
 cli_help        = "Scope selector: structured path/cwd_inferred JSON; reserved value cwd_inferred means cwd inference. Default: global"
 cli_flag        = "--scope"
 
@@ -464,17 +464,10 @@ output_schema   = '''
 
 [[tools.cx_browse.params]]
 name            = "scope"
-type            = "string"
-mcp_description = "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, pass an exact scope path for exact filtering, or pass structured ScopeSelector JSON for subtree, set, or all selectors. Defaults to \"cwd_inferred\" when scope is omitted."
+type            = "object"
+mcp_description = "Structured ScopeSelector object for browse. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"}, {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}, {\"kind\":\"subtree\",\"path\":\"global/project:helioy\"}, {\"kind\":\"set\",\"paths\":[\"global\",\"global/project:helioy\"]}, or {\"kind\":\"all\"}. Defaults to {\"kind\":\"cwd_inferred\"} when scope is omitted. Plain strings and top-level cwd are not accepted by MCP."
 cli_help        = "Preferred scope: reserved value cwd_inferred, exact path, or structured subtree/set/all selector"
 cli_flag        = "--scope"
-
-[[tools.cx_browse.params]]
-name            = "cwd"
-type            = "string"
-mcp_description = "Filesystem working directory used for scope=\"cwd_inferred\" resolution. The capability defaults this from the process current directory when omitted."
-cli_help        = "Working directory used for cwd_inferred scope resolution"
-cli_flag        = "--cwd"
 
 [[tools.cx_browse.params]]
 name            = "include_resolution"

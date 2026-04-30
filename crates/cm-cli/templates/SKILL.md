@@ -99,7 +99,7 @@ Recall priority context for a single known scope by walking that scope and its a
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix que... |
-| `scope` | string | no | Scope selector for recall. Pass structured JSON such as {"kind":"path","path":"global/project:helioy"} or {"kind":"cw... |
+| `scope` | object | no | Structured ScopeSelector object for recall. Accepted variants: {"kind":"path","path":"global/project:helioy"} or {"ki... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -153,8 +153,7 @@ List entries with filtering and cursor-based pagination. For inventory and explo
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | no | Preferred browse scope. Use the reserved value "cwd_inferred" to infer the most plausible existing local scope from c... |
-| `cwd` | string | no | Filesystem working directory used for scope="cwd_inferred" resolution. The capability defaults this from the process ... |
+| `scope` | object | no | Structured ScopeSelector object for browse. Accepted variants: {"kind":"path","path":"global/project:helioy"}, {"kind... |
 | `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="cwd_inferred". |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | no | Filter by entry kind. |
 | `tag` | string | no | Filter by tag. Entries must have at least one matching tag. |

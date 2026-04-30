@@ -71,13 +71,13 @@ fn protocol_tools_list() {
     let browse_props = browse_tool["inputSchema"]["properties"]
         .as_object()
         .expect("cx_browse inputSchema properties");
-    for expected in ["scope", "cwd", "include_resolution"] {
+    for expected in ["scope", "include_resolution"] {
         assert!(
             browse_props.contains_key(expected),
             "cx_browse inputSchema missing {expected}"
         );
     }
-    for removed in ["scope_path", "scope_mode"] {
+    for removed in ["scope_path", "scope_mode", "cwd"] {
         assert!(
             !browse_props.contains_key(removed),
             "cx_browse inputSchema still exposes removed input {removed}"
@@ -113,6 +113,16 @@ fn protocol_tools_list() {
         search_props["scope"]["type"], "object",
         "cx_search scope input must be a structured ScopeSelector object"
     );
+    for read_tool_name in ["cx_recall", "cx_browse"] {
+        let read_tool = tools
+            .iter()
+            .find(|tool| tool["name"] == read_tool_name)
+            .unwrap_or_else(|| panic!("{read_tool_name} tool is advertised"));
+        assert_eq!(
+            read_tool["inputSchema"]["properties"]["scope"]["type"], "object",
+            "{read_tool_name} scope input must be a structured ScopeSelector object"
+        );
+    }
     assert!(
         search_tool["outputSchema"]["properties"]["header"]["properties"]["next_cursor"]
             .is_object(),
@@ -262,15 +272,21 @@ fn assert_generated_scope_schema_inputs_are_current() {
             props.contains_key("scope"),
             "{relative} missing scope input"
         );
-        let scope_description = props["scope"]["description"]
+        let scope = &props["scope"];
+        let scope_description = scope["description"]
             .as_str()
             .unwrap_or_else(|| panic!("{relative} scope input has description"));
-        assert!(
-            scope_description.contains("reserved value")
-                && scope_description.contains("cwd_inferred"),
-            "{relative} scope input should describe cwd_inferred as reserved value"
-        );
-        if tool == "cx_browse" {
+        if matches!(tool, "cx_recall" | "cx_browse" | "cx_search") {
+            assert_eq!(
+                scope["type"], "object",
+                "{relative} scope input must be structured object JSON"
+            );
+            assert!(
+                scope_description.contains("cwd_inferred"),
+                "{relative} scope input should describe cwd_inferred"
+            );
+        }
+        if tool == "cx_browse" || tool == "cx_search" {
             for vocabulary in ["subtree", "set", "all"] {
                 assert!(
                     scope_description.contains(vocabulary),
@@ -282,6 +298,12 @@ fn assert_generated_scope_schema_inputs_are_current() {
             !scope_description.contains("auto"),
             "{relative} scope input still describes auto inference"
         );
+        if tool == "cx_browse" {
+            assert!(
+                !props.contains_key("cwd"),
+                "{relative} inputSchema still exposes top-level cwd"
+            );
+        }
     }
 }
 

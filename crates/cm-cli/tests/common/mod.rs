@@ -11,6 +11,7 @@
 use cm_core::{ContextStore, MutationSource, NewScope, ScopePath, WriteContext};
 use cm_store::{CmStore, schema};
 use serde_json::Value;
+use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
@@ -56,6 +57,27 @@ pub fn send_request(
         .read_line(&mut response_line)
         .expect("read from stdout");
     serde_json::from_str(&response_line).expect("parse JSON response")
+}
+
+pub fn call_tool(arguments: Value, tool_name: &str, id: u64) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": arguments
+        }
+    })
+}
+
+pub fn tool_error_message(resp: &Value) -> &str {
+    if let Some(message) = resp["error"]["message"].as_str() {
+        return message;
+    }
+    resp["result"]["_meta"]["cm_tool_error"]["message"]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing tool error message: {resp}"))
 }
 
 /// Gracefully close the server by dropping stdin and waiting.

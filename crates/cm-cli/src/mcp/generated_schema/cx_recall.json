@@ -23,8 +23,8 @@
         "type": "string"
       },
       "scope": {
-        "description": "Scope selector for recall. Pass structured JSON such as {\"kind\":\"path\",\"path\":\"global/project:helioy\"} or {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}. The cwd inference reserved value is cwd_inferred. cx_recall rejects subtree, set, and all selectors; use cx_search for broad scope queries. Default: {\"kind\":\"path\",\"path\":\"global\"}.",
-        "type": "string"
+        "description": "Structured ScopeSelector object for recall. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"} or {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}. cx_recall rejects subtree, set, and all selectors; use cx_search for broad scope queries. Default: {\"kind\":\"path\",\"path\":\"global\"}. Plain strings are not accepted by MCP.",
+        "type": "object"
       },
       "tags": {
         "description": "Filter to entries with any of these tags (OR logic). Pass a JSON array: [\"tag1\", \"tag2\"].",

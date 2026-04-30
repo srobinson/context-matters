@@ -11,10 +11,6 @@
         "description": "Opaque pagination cursor from a previous cx_browse response. Pass next_cursor to fetch the next page.",
         "type": "string"
       },
-      "cwd": {
-        "description": "Filesystem working directory used for scope=\"cwd_inferred\" resolution. The capability defaults this from the process current directory when omitted.",
-        "type": "string"
-      },
       "include_resolution": {
         "description": "Include scope resolution metadata in the response. Defaults to true when scope=\"cwd_inferred\".",
         "type": "boolean"
@@ -42,8 +38,8 @@
         "type": "integer"
       },
       "scope": {
-        "description": "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, pass an exact scope path for exact filtering, or pass structured ScopeSelector JSON for subtree, set, or all selectors. Defaults to \"cwd_inferred\" when scope is omitted.",
-        "type": "string"
+        "description": "Structured ScopeSelector object for browse. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"}, {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}, {\"kind\":\"subtree\",\"path\":\"global/project:helioy\"}, {\"kind\":\"set\",\"paths\":[\"global\",\"global/project:helioy\"]}, or {\"kind\":\"all\"}. Defaults to {\"kind\":\"cwd_inferred\"} when scope is omitted. Plain strings and top-level cwd are not accepted by MCP.",
+        "type": "object"
       },
       "tag": {
         "description": "Filter by tag. Entries must have at least one matching tag.",
