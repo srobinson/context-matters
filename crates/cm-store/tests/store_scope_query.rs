@@ -126,6 +126,42 @@ async fn browse_scope_filter_supports_subtree_set_and_all() {
         .await
         .unwrap();
     assert_eq!(all.total, 4);
+
+    let ancestor_walk = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::AncestorWalk(alpha_path)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        sorted_titles(&ancestor_walk.items),
+        vec!["Alpha project entry", "Global entry"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browse_scope_filter_set_with_no_paths_returns_no_rows() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    store
+        .create_entry(
+            new_entry("global", EntryKind::Fact, "Global entry", "At global"),
+            &test_ctx(),
+        )
+        .await
+        .unwrap();
+
+    let result = store
+        .browse(EntryFilter {
+            scope: Some(ScopeFilter::Set(vec![])),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.total, 0);
+    assert!(result.items.is_empty());
 }
 
 fn sorted_titles(entries: &[cm_core::Entry]) -> Vec<&str> {
