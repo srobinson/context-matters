@@ -83,6 +83,18 @@ pub(super) fn cwd_inferred_scope_query(cwd: &str) -> String {
     scope_query(serde_json::json!({ "kind": "cwd_inferred", "cwd": cwd }))
 }
 
+pub(super) fn subtree_scope_query(path: &str) -> String {
+    scope_query(serde_json::json!({ "kind": "subtree", "path": path }))
+}
+
+pub(super) fn set_scope_query(paths: &[&str]) -> String {
+    scope_query(serde_json::json!({ "kind": "set", "paths": paths }))
+}
+
+pub(super) fn all_scope_query() -> String {
+    scope_query(serde_json::json!({ "kind": "all" }))
+}
+
 pub(super) async fn request_json(
     app: Router,
     method: Method,

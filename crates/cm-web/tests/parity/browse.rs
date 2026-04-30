@@ -4,8 +4,8 @@ use cm_core::{BrowseSort, EntryKind, ScopePath};
 use serde_json::json;
 
 use super::support::{
-    capability_browse, cwd_inferred_scope_query, get_json, path_scope_query, seed_entries,
-    test_app, test_store,
+    all_scope_query, capability_browse, cwd_inferred_scope_query, get_json, path_scope_query,
+    seed_entries, set_scope_query, subtree_scope_query, test_app, test_store,
 };
 
 #[tokio::test(flavor = "multi_thread")]
@@ -174,4 +174,90 @@ async fn browse_scope_exact_parity() {
         web.get("resolution").is_none(),
         "Explicit scope should not expose resolution"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_subtree_scope_parity() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let expected = capability_browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::Subtree(
+                ScopePath::parse("global/project:helioy").unwrap(),
+            )),
+            limit: None,
+            sort: BrowseSort::Recent,
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let app = test_app(store);
+    let scope = subtree_scope_query("global/project:helioy");
+    let agent = get_json(app.clone(), &format!("/api/agent/browse?{scope}")).await;
+    let entries = get_json(app, &format!("/api/entries?{scope}")).await;
+
+    assert_eq!(
+        expected, agent,
+        "Agent subtree browse must match capability"
+    );
+    assert_eq!(agent, entries, "Entries subtree browse must match agent");
+    assert!(agent.get("resolution").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_set_scope_parity() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let expected = capability_browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::Set(vec![
+                ScopePath::parse("global").unwrap(),
+                ScopePath::parse("global/project:helioy/repo:cm").unwrap(),
+            ])),
+            limit: None,
+            sort: BrowseSort::Recent,
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let app = test_app(store);
+    let scope = set_scope_query(&["global", "global/project:helioy/repo:cm"]);
+    let agent = get_json(app.clone(), &format!("/api/agent/browse?{scope}")).await;
+    let entries = get_json(app, &format!("/api/entries?{scope}")).await;
+
+    assert_eq!(expected, agent, "Agent set browse must match capability");
+    assert_eq!(agent, entries, "Entries set browse must match agent");
+    assert!(agent.get("resolution").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_all_scope_parity() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let expected = capability_browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::All),
+            limit: None,
+            sort: BrowseSort::Recent,
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let app = test_app(store);
+    let scope = all_scope_query();
+    let agent = get_json(app.clone(), &format!("/api/agent/browse?{scope}")).await;
+    let entries = get_json(app, &format!("/api/entries?{scope}")).await;
+
+    assert_eq!(expected, agent, "Agent all browse must match capability");
+    assert_eq!(agent, entries, "Entries all browse must match agent");
+    assert!(agent.get("resolution").is_none());
 }

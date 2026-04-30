@@ -368,8 +368,8 @@ output_schema   = '''
 [[tools.cx_browse.params]]
 name            = "scope"
 type            = "string"
-mcp_description = "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, or pass an exact scope path for exact filtering. Defaults to \"cwd_inferred\" when scope is omitted."
-cli_help        = "Preferred scope: reserved value cwd_inferred or exact scope path"
+mcp_description = "Preferred browse scope. Use the reserved value \"cwd_inferred\" to infer the most plausible existing local scope from cwd, pass an exact scope path for exact filtering, or pass structured ScopeSelector JSON for subtree, set, or all selectors. Defaults to \"cwd_inferred\" when scope is omitted."
+cli_help        = "Preferred scope: reserved value cwd_inferred, exact path, or structured subtree/set/all selector"
 cli_flag        = "--scope"
 
 [[tools.cx_browse.params]]

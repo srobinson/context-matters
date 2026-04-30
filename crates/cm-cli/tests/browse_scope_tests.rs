@@ -176,6 +176,72 @@ async fn browse_scope_stays_exact_without_resolution() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn browse_accepts_structured_subtree_set_and_all_scopes() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    for (title, scope) in [
+        ("Global fact", "global"),
+        ("Project fact", "global/project:helioy"),
+        ("Repo fact", "global/project:helioy/repo:context-matters"),
+        ("Other fact", "global/project:attention-matters"),
+    ] {
+        tools::cx_store(
+            &store,
+            &json!({
+                "title": title,
+                "body": format!("Body for {title}."),
+                "kind": "fact",
+                "scope": scope
+            }),
+        )
+        .await
+        .unwrap();
+    }
+
+    let subtree = tools::cx_browse(
+        &store,
+        &json!({
+            "scope": "{\"kind\":\"subtree\",\"path\":\"global/project:helioy\"}",
+            "limit": 20
+        }),
+    )
+    .await
+    .unwrap();
+    assert!(subtree.text.contains("Project fact"), "\n{}", subtree.text);
+    assert!(subtree.text.contains("Repo fact"), "\n{}", subtree.text);
+    assert!(
+        !subtree.text.contains("Global fact") && !subtree.text.contains("Other fact"),
+        "\n{}",
+        subtree.text
+    );
+
+    let set = tools::cx_browse(
+        &store,
+        &json!({
+            "scope": "{\"kind\":\"set\",\"paths\":[\"global\",\"global/project:attention-matters\"]}",
+            "limit": 20
+        }),
+    )
+    .await
+    .unwrap();
+    assert!(set.text.contains("Global fact"), "\n{}", set.text);
+    assert!(set.text.contains("Other fact"), "\n{}", set.text);
+    assert!(
+        !set.text.contains("Project fact") && !set.text.contains("Repo fact"),
+        "\n{}",
+        set.text
+    );
+
+    let all = tools::cx_browse(&store, &json!({"scope": "{\"kind\":\"all\"}", "limit": 20}))
+        .await
+        .unwrap();
+    for title in ["Global fact", "Project fact", "Repo fact", "Other fact"] {
+        assert!(all.text.contains(title), "\n{}", all.text);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn browse_rejects_removed_scope_path() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;

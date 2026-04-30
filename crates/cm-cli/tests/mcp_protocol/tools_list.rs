@@ -230,6 +230,14 @@ fn assert_generated_scope_schema_inputs_are_current() {
                 && scope_description.contains("cwd_inferred"),
             "{relative} scope input should describe cwd_inferred as reserved value"
         );
+        if tool == "cx_browse" {
+            for vocabulary in ["subtree", "set", "all"] {
+                assert!(
+                    scope_description.contains(vocabulary),
+                    "{relative} scope input should describe {vocabulary} selectors"
+                );
+            }
+        }
         assert!(
             !scope_description.contains("auto"),
             "{relative} scope input still describes auto inference"

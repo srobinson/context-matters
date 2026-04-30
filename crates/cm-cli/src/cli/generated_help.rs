@@ -54,7 +54,7 @@ pub const DEPOSIT_CREATED_BY_HELP: &str = "Attribution (format: source_type:iden
 #[rustfmt::skip]
 pub const BROWSE_ABOUT: &str = "Browse entries with filtering and pagination.\n\nFor inventory and exploration. Returns metadata and snippet, not full body. Use cx_get for full content.";
 #[rustfmt::skip]
-pub const BROWSE_SCOPE_HELP: &str = "Preferred scope: reserved value cwd_inferred or exact scope path";
+pub const BROWSE_SCOPE_HELP: &str = "Preferred scope: reserved value cwd_inferred, exact path, or structured subtree/set/all selector";
 #[rustfmt::skip]
 pub const BROWSE_CWD_HELP: &str = "Working directory used for cwd_inferred scope resolution";
 #[rustfmt::skip]
