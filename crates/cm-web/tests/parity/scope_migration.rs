@@ -70,6 +70,8 @@ async fn entries_and_agent_search_match_for_all_scope() {
     assert_eq!(agent_status, StatusCode::OK);
     assert_eq!(entries_body, agent_body);
     assert_eq!(entries_body["header"]["routing"], json!("search"));
+    assert_eq!(entries_body["header"]["scope_chain"], json!([]));
+    assert_eq!(entries_body["header"]["tier"], json!(null));
     assert_eq!(entries_body["entries"].as_array().unwrap().len(), 2);
 }
 
@@ -117,6 +119,7 @@ async fn cm_web_rejects_removed_scope_query_fields() {
         "/api/entries/search?query=Smart&scope_mode=resolved",
         "/api/entries/search?query=Smart&cwd=/tmp/helioy/context-matters",
         "/api/entries/search?query=Smart&scope=auto",
+        "/api/entries/search?query=Smart&cursor=abc",
         "/api/entries/recall?query=Smart&scope_path=global",
         "/api/entries/recall?query=Smart&scope_mode=resolved",
         "/api/entries/recall?query=Smart&cwd=/tmp/helioy/context-matters",
@@ -129,6 +132,7 @@ async fn cm_web_rejects_removed_scope_query_fields() {
         "/api/agent/search?query=Smart&scope_mode=resolved",
         "/api/agent/search?query=Smart&cwd=/tmp/helioy/context-matters",
         "/api/agent/search?query=Smart&scope=auto",
+        "/api/agent/search?query=Smart&cursor=abc",
         "/api/agent/browse?scope_path=global",
         "/api/agent/browse?scope_mode=resolved",
         "/api/agent/browse?cwd=/tmp/helioy/context-matters",

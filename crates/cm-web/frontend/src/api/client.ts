@@ -147,7 +147,6 @@ export interface SearchParams {
   kind?: EntryKind;
   tag?: string;
   limit?: number;
-  cursor?: string;
 }
 
 export type AgentSearchParams = SearchParams;
@@ -222,7 +221,6 @@ export const api = {
           kind: params.kind,
           tag: params.tag,
           limit: params.limit,
-          cursor: params.cursor,
         })}`,
       );
     },
@@ -294,7 +292,6 @@ export const api = {
           kind: params.kind,
           tag: params.tag,
           limit: params.limit,
-          cursor: params.cursor,
         })}`,
       );
     },

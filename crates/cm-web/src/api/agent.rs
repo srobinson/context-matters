@@ -181,6 +181,10 @@ pub(crate) async fn execute_search(
         .transpose()?;
     let tags = sq.tag.map(|tag| vec![tag]);
     let scope_selector = sq.scope.unwrap_or(ScopeSelector::All);
+    let include_scope_chain = matches!(
+        &scope_selector,
+        ScopeSelector::Path(_) | ScopeSelector::CwdInferred { .. }
+    );
     let scope_filter = resolve_scope_filter(store, &scope_selector)
         .await
         .map_err(ApiError)?;
@@ -192,13 +196,13 @@ pub(crate) async fn execute_search(
         kinds: kind.map(|kind| vec![kind]),
         tags,
         limit,
-        cursor: sq.cursor,
+        cursor: None,
     };
 
     let page = search::search(store, request.clone())
         .await
         .map_err(ApiError)?;
-    let result = search_page_to_recall_result(store, &request, page).await?;
+    let result = search_page_to_recall_result(store, &request, page, include_scope_chain).await?;
     let request = RecallRequest {
         query: Some(request.query),
         scope: Some(scope_selector),
@@ -215,6 +219,7 @@ async fn search_page_to_recall_result(
     store: &CmStore,
     request: &ContentSearchRequest,
     page: ContentSearchPage,
+    include_scope_chain: bool,
 ) -> Result<RecallResult, ApiError> {
     let entries: Vec<RecallRow> = page
         .items
@@ -233,7 +238,7 @@ async fn search_page_to_recall_result(
         .iter()
         .map(|row| estimate_tokens(&row.entry.body))
         .sum();
-    let (scope_chain, scope_hits) = search_scope_summary(&entries);
+    let (scope_chain, scope_hits) = search_scope_summary(&entries, include_scope_chain);
 
     Ok(RecallResult {
         candidates_before_filter: entries.len(),
@@ -249,7 +254,10 @@ async fn search_page_to_recall_result(
     })
 }
 
-fn search_scope_summary(rows: &[RecallRow]) -> (Vec<String>, Vec<(String, usize)>) {
+fn search_scope_summary(
+    rows: &[RecallRow],
+    include_scope_chain: bool,
+) -> (Vec<String>, Vec<(String, usize)>) {
     let mut seen = std::collections::BTreeMap::<String, usize>::new();
     for row in rows {
         *seen
@@ -262,7 +270,11 @@ fn search_scope_summary(rows: &[RecallRow]) -> (Vec<String>, Vec<(String, usize)
         let depth_b = b.0.matches('/').count();
         depth_b.cmp(&depth_a).then_with(|| a.0.cmp(&b.0))
     });
-    let chain = hits.iter().map(|(scope, _)| scope.clone()).collect();
+    let chain = if include_scope_chain {
+        hits.iter().map(|(scope, _)| scope.clone()).collect()
+    } else {
+        Vec::new()
+    };
     (chain, hits)
 }
 

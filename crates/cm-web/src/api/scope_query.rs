@@ -67,10 +67,9 @@ pub(crate) struct SearchQuery {
     pub kind: Option<String>,
     pub tag: Option<String>,
     pub limit: Option<u32>,
-    pub cursor: Option<String>,
 }
 
-const SEARCH_QUERY_KEYS: &[&str] = &["query", "scope", "kind", "tag", "limit", "cursor"];
+const SEARCH_QUERY_KEYS: &[&str] = &["query", "scope", "kind", "tag", "limit"];
 
 pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiError> {
     let mut q = None;
@@ -78,7 +77,6 @@ pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiEr
     let mut kind = None;
     let mut tag = None;
     let mut limit = None;
-    let mut cursor = None;
 
     for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
         match key.as_ref() {
@@ -96,7 +94,6 @@ pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiEr
                     )))
                 })?)
             }
-            "cursor" => cursor = Some(value.into_owned()),
             other => return Err(err_unknown_query_key(other, SEARCH_QUERY_KEYS)),
         }
     }
@@ -107,6 +104,5 @@ pub(crate) fn parse_search_query(raw: Option<&str>) -> Result<SearchQuery, ApiEr
         kind,
         tag,
         limit,
-        cursor,
     })
 }

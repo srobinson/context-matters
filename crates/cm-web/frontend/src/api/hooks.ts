@@ -72,7 +72,7 @@ export function useStats(options?: Partial<UseQueryOptions<Stats>>) {
   });
 }
 
-export function useSearch(params: Omit<SearchParams, "cursor">) {
+export function useSearch(params: SearchParams) {
   return useQuery({
     queryKey: queryKeys.entries.search(params),
     queryFn: () => api.entries.search(params),

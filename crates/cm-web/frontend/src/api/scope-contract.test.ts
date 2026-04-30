@@ -51,6 +51,12 @@ void api.entries.search({ query: "Scope", cwd: "/tmp/helioy/context-matters" });
 // @ts-expect-error public agent search requests no longer accept top-level cwd
 void api.agent.search({ query: "Scope", cwd: "/tmp/helioy/context-matters" });
 
+// @ts-expect-error public search requests are not paginated until WebRecallView diverges
+void api.entries.search({ query: "Scope", cursor: "opaque" });
+
+// @ts-expect-error public agent search requests are not paginated until WebRecallView diverges
+void api.agent.search({ query: "Scope", cursor: "opaque" });
+
 // @ts-expect-error public recall requests no longer accept top-level cwd
 void api.entries.recall({ query: "Scope", cwd: "/tmp/helioy/context-matters" });
 
