@@ -14,6 +14,13 @@
 
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.12](https://github.com/srobinson/context-matters/compare/v0.2.11...v0.2.12) (2026-04-30)
+
+
+### Features
+
+* add structured scope search and recall routing ([#53](https://github.com/srobinson/context-matters/issues/53)) ([96ccd85](https://github.com/srobinson/context-matters/commit/96ccd8530aa40dbb45e0b431f970d2748a0a537c))
+
 ## [0.2.11](https://github.com/srobinson/context-matters/compare/v0.2.10...v0.2.11) (2026-04-28)
 
 
