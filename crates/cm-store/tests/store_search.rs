@@ -554,3 +554,71 @@ async fn content_search_cursor_round_trip_remains_stable_with_filters() {
     assert_ne!(first.items[0].entry.id, second.items[0].entry.id);
     assert_ne!(first.items[1].entry.id, second.items[0].entry.id);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn content_search_cursor_uses_id_ascending_tie_breaker() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let mut ids = Vec::new();
+    for suffix in ["alpha", "bravo", "charlie"] {
+        let entry = store
+            .create_entry(
+                new_entry(
+                    "global",
+                    EntryKind::Fact,
+                    &format!("sqlite {suffix}"),
+                    &format!("{suffix} body"),
+                ),
+                &test_ctx(),
+            )
+            .await
+            .unwrap();
+        ids.push(entry.id);
+    }
+
+    let shared_updated_at = "2026-04-30T00:00:00.000Z";
+    for id in &ids {
+        sqlx::query("UPDATE entries SET updated_at = ? WHERE id = ?")
+            .bind(shared_updated_at)
+            .bind(id.to_string())
+            .execute(store.write_pool())
+            .await
+            .unwrap();
+    }
+
+    let mut expected_ids = ids;
+    expected_ids.sort();
+
+    let first = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope: ScopeFilter::All,
+            kinds: None,
+            tags: None,
+            limit: 2,
+            cursor: None,
+        })
+        .await
+        .unwrap();
+
+    let second = store
+        .do_content_search(ContentSearchRequest {
+            query: "sqlite".to_owned(),
+            scope: ScopeFilter::All,
+            kinds: None,
+            tags: None,
+            limit: 2,
+            cursor: first.next_cursor.clone(),
+        })
+        .await
+        .unwrap();
+
+    let first_ids: Vec<_> = first.items.iter().map(|item| item.entry.id).collect();
+    let second_ids: Vec<_> = second.items.iter().map(|item| item.entry.id).collect();
+
+    assert_eq!(first_ids, expected_ids[..2]);
+    assert_eq!(second_ids, expected_ids[2..]);
+    assert!(first.next_cursor.is_some());
+    assert!(second.next_cursor.is_none());
+}

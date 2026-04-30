@@ -98,7 +98,7 @@ impl CmStore {
             push_search_cursor_condition(&mut q, cursor);
         }
 
-        q.push(" ORDER BY f.rank ASC, e.updated_at DESC, e.id DESC LIMIT ");
+        q.push(" ORDER BY f.rank ASC, e.updated_at DESC, e.id ASC LIMIT ");
         q.push_bind(request.limit as i64 + 1);
 
         q.build()
@@ -137,7 +137,7 @@ fn push_search_cursor_condition(query: &mut QueryBuilder<'_, Sqlite>, cursor: &S
     query.push_bind(ts.clone());
     query.push(" OR (e.updated_at = ");
     query.push_bind(ts);
-    query.push(" AND e.id < ");
+    query.push(" AND e.id > ");
     query.push_bind(cursor.id.to_string());
     query.push("))))");
 }
