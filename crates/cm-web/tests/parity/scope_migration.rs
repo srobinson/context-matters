@@ -76,6 +76,27 @@ async fn entries_and_agent_search_match_for_all_scope() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn entries_and_agent_search_reject_invalid_fts_queries() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    for query in ["AND", "Smart%20OR"] {
+        let entries_uri = format!("/api/entries/search?query={query}");
+        let agent_uri = format!("/api/agent/search?query={query}");
+        let (entries_status, entries_body) =
+            request_json(app.clone(), Method::GET, &entries_uri, None).await;
+        let (agent_status, agent_body) =
+            request_json(app.clone(), Method::GET, &agent_uri, None).await;
+
+        assert_eq!(entries_status, StatusCode::BAD_REQUEST, "{entries_uri}");
+        assert_eq!(agent_status, StatusCode::BAD_REQUEST, "{agent_uri}");
+        assert_eq!(entries_body, agent_body);
+        assert!(entries_body.to_string().contains("invalid cx_search input"));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn entries_search_omits_scope_chain_for_wide_selectors() {
     let (store, _dir) = test_store().await;
     seed_entries(&store).await;

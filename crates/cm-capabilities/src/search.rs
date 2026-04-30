@@ -23,11 +23,40 @@ async fn search_inner(
     request: ContentSearchRequest,
 ) -> Result<ContentSearchPage, CmError> {
     if FtsQuery::new(&request.query).as_str().is_empty() {
-        return Err(CmError::InvalidOperationInput {
-            op: "cx_search",
-            reason: "query is required; use cx_browse to list or filter without a query".to_owned(),
+        return Err(if request.query.trim().is_empty() {
+            missing_search_query()
+        } else {
+            invalid_search_query()
         });
     }
 
-    store.do_content_search(request).await
+    store
+        .do_content_search(request)
+        .await
+        .map_err(map_content_search_error)
+}
+
+fn map_content_search_error(err: CmError) -> CmError {
+    match err {
+        CmError::Database(message) if is_fts_syntax_error(&message) => invalid_search_query(),
+        other => other,
+    }
+}
+
+fn is_fts_syntax_error(message: &str) -> bool {
+    message.contains("fts5: syntax error")
+}
+
+fn invalid_search_query() -> CmError {
+    CmError::InvalidOperationInput {
+        op: "cx_search",
+        reason: "query is invalid; use cx_browse to list or filter without a query".to_owned(),
+    }
+}
+
+fn missing_search_query() -> CmError {
+    CmError::InvalidOperationInput {
+        op: "cx_search",
+        reason: "query is required; use cx_browse to list or filter without a query".to_owned(),
+    }
 }
