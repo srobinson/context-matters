@@ -92,7 +92,15 @@ async fn entries_and_agent_search_reject_invalid_fts_queries() {
         assert_eq!(entries_status, StatusCode::BAD_REQUEST, "{entries_uri}");
         assert_eq!(agent_status, StatusCode::BAD_REQUEST, "{agent_uri}");
         assert_eq!(entries_body, agent_body);
-        assert!(entries_body.to_string().contains("invalid cx_search input"));
+        let body_text = entries_body.to_string();
+        assert!(
+            body_text.contains("invalid cx_search input"),
+            "{query}: {body_text}"
+        );
+        assert!(
+            body_text.contains("query is invalid"),
+            "{query}: {body_text}"
+        );
     }
 }
 

@@ -25,7 +25,7 @@ async fn search_rejects_empty_query_with_browse_hint() {
     match err {
         CmError::InvalidOperationInput { op, reason } => {
             assert_eq!(op, "cx_search");
-            assert!(reason.contains("query"));
+            assert!(reason.contains("query is required"), "{reason}");
             assert!(reason.contains("cx_browse"));
         }
         other => panic!("unexpected error: {other:?}"),
@@ -43,7 +43,7 @@ async fn search_rejects_operator_only_queries_as_invalid_input() {
         match err {
             CmError::InvalidOperationInput { op, reason } => {
                 assert_eq!(op, "cx_search", "{query}");
-                assert!(reason.contains("query"), "{query}: {reason}");
+                assert!(reason.contains("query is invalid"), "{query}: {reason}");
             }
             other => panic!("{query}: unexpected error: {other:?}"),
         }
@@ -69,7 +69,7 @@ async fn search_maps_fts_parse_errors_to_invalid_input() {
     match err {
         CmError::InvalidOperationInput { op, reason } => {
             assert_eq!(op, "cx_search");
-            assert!(reason.contains("query"));
+            assert!(reason.contains("query is invalid"), "{reason}");
         }
         other => panic!("unexpected error: {other:?}"),
     }
