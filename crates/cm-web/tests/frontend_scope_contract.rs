@@ -96,7 +96,7 @@ fn frontend_api_client_serializes_structured_scope_query_params() {
     let agent_recall = source_between(
         &source,
         "agent: {\n    recall(params: RecallParams): Promise<RecallView>",
-        "browse(params: AgentBrowseParams = {}): Promise<BrowseView>",
+        "search(params: AgentSearchParams): Promise<RecallView>",
     );
     assert!(
         agent_recall.contains("scope: serializeScopeSelector(params.scope),")
@@ -110,7 +110,8 @@ fn frontend_api_client_serializes_structured_scope_query_params() {
         "browse(params: AgentBrowseParams = {}): Promise<BrowseView>",
     );
     assert!(
-        agent_search.contains("scope: serializeScopeSelector(params.scope),"),
+        agent_search.contains("scope: serializeScopeSelector(params.scope),")
+            && !agent_search.contains("cwd: params.cwd,"),
         "agent.search should serialize one structured scope query param"
     );
 
