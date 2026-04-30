@@ -251,3 +251,58 @@ fn frontend_filter_bar_formats_wide_scope_chips() {
         "all chips should render as scope:all"
     );
 }
+
+#[test]
+fn frontend_recall_mode_routes_any_scope_to_search() {
+    let hook = frontend_source("routes/feed/useRecallOrSearch.ts");
+    let feed_page = frontend_source("routes/feed/FeedPage.tsx");
+    let api_hooks = frontend_source("api/hooks.ts");
+
+    assert!(
+        hook.contains("useAgentRecall(") && hook.contains("useAgentSearch("),
+        "useRecallOrSearch should own the recall versus search routing hooks"
+    );
+    assert!(
+        hook.contains("const selector = scope ?? ALL_SCOPE")
+            && hook.contains("selector.kind === \"all\"")
+            && hook.contains("scope: ALL_SCOPE")
+            && hook.contains("query: debouncedQuery"),
+        "Any scope should be normalized to ScopeSelector::All and sent to search with a query"
+    );
+    assert!(
+        hook.contains("enabled: isRecallMode && !isAllScope")
+            && hook.contains("enabled: isRecallMode && isAllScope && debouncedQuery.length > 0"),
+        "recall should stay singular and search should require a non-empty Any scope query"
+    );
+    assert!(
+        hook.contains(
+            "showQueryOrScopeHint: isRecallMode && isAllScope && debouncedQuery.length === 0"
+        ),
+        "Any scope with an empty query should expose a hint state instead of firing a request"
+    );
+    assert!(
+        api_hooks.contains(
+            "search: (params: AgentSearchParams) => [\"agent\", \"search\", params] as const"
+        ) && api_hooks.contains("export function useAgentSearch(")
+            && api_hooks.contains("api.agent.search(params)"),
+        "api hooks should expose the agent search endpoint used by the feed recall view"
+    );
+    assert!(
+        feed_page.contains("useRecallOrSearch(")
+            && feed_page.contains("showQueryOrScopeHint")
+            && !feed_page.contains("useAgentRecall("),
+        "FeedPage should delegate recall mode routing to useRecallOrSearch"
+    );
+}
+
+#[test]
+fn frontend_recall_bar_copy_reflects_selected_operation() {
+    let recall_bar = frontend_source("components/RecallBar.tsx");
+
+    assert!(
+        recall_bar.contains("scope?.kind === \"path\" || scope?.kind === \"cwd_inferred\"")
+            && recall_bar.contains("Cross-scope search via `cx_search`")
+            && recall_bar.contains("Matches `cx_recall`"),
+        "RecallBar helper text should switch between recall and search wording"
+    );
+}

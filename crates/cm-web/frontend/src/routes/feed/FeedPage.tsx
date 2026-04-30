@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BrowseSort } from "@/api/generated/BrowseSort";
 import type { WebBrowseRow } from "@/api/generated/WebBrowseRow";
-import { useAgentRecall, useEntries } from "@/api/hooks";
+import { useEntries } from "@/api/hooks";
 import { BrowsePane } from "@/components/BrowsePane";
 import { FilterBar, type FilterState } from "@/components/FilterBar";
 import { NewEntryEditor } from "@/components/NewEntryEditor";
@@ -18,6 +18,7 @@ import { type FeedSearch, feedScopeFromScopeSelector, scopeSelectorFromFeedScope
 import { useEntryFocus } from "./useEntryFocus";
 import { useMergeSelection } from "./useMergeSelection";
 import { useRecallControls } from "./useRecallControls";
+import { useRecallOrSearch } from "./useRecallOrSearch";
 
 interface FeedPageProps {
   search: FeedSearch;
@@ -129,19 +130,16 @@ export function FeedPage({ search }: FeedPageProps) {
     limit: 20,
   });
 
-  const recallQuery = useAgentRecall(
-    {
-      query: debouncedQuery || undefined,
-      scope: recallScope,
-      kinds: recallKinds,
-      tags: recallTags,
-      limit: recallLimit,
-      max_tokens: recallMaxTokens,
-    },
-    {
-      enabled: isRecallMode,
-    },
-  );
+  const { query: recallQuery, showQueryOrScopeHint } = useRecallOrSearch({
+    isRecallMode,
+    scope: recallScope,
+    query: searchInput,
+    debouncedQuery,
+    kinds: recallKinds,
+    tags: recallTags,
+    limit: recallLimit,
+    maxTokens: recallMaxTokens,
+  });
 
   const browseData = browseQuery.data;
   const browseEntries = useMemo<WebBrowseRow[]>(
@@ -266,7 +264,13 @@ export function FeedPage({ search }: FeedPageProps) {
         />
       )}
 
-      {isRecallMode && (
+      {isRecallMode && showQueryOrScopeHint && (
+        <div className="rounded-lg border border-border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Enter a query or pick a scope.</p>
+        </div>
+      )}
+
+      {isRecallMode && !showQueryOrScopeHint && (
         <RecallResults
           isLoading={recallQuery.isLoading}
           isError={recallQuery.isError}

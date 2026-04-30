@@ -50,6 +50,10 @@ export function RecallBar({
   onClear,
 }: RecallBarProps) {
   const { data: stats } = useStats();
+  const isSingularScope = scope?.kind === "path" || scope?.kind === "cwd_inferred";
+  const helperText = isSingularScope
+    ? "Matches `cx_recall`: optional query, single scope, multi kind, multi tag."
+    : "Cross-scope search via `cx_search`: query required across all scopes.";
   const handleScopeChange = useCallback(
     (nextScope: ScopeSelectorValue | undefined) => {
       if (nextScope == null || nextScope.kind === "path" || nextScope.kind === "cwd_inferred") {
@@ -78,9 +82,7 @@ export function RecallBar({
           <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/60">
             recall
           </p>
-          <p className="text-sm text-muted-foreground">
-            Matches `cx_recall`: optional query, single scope, multi kind, multi tag.
-          </p>
+          <p className="text-sm text-muted-foreground">{helperText}</p>
         </div>
         <button
           type="button"
