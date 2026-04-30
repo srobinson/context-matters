@@ -231,6 +231,47 @@ fn frontend_scope_controls_share_scope_selector_primitives() {
 }
 
 #[test]
+fn frontend_scope_selector_syncs_mode_from_controlled_value() {
+    let controls = frontend_source("components/domain/ScopeSelector.tsx");
+
+    assert!(
+        controls.contains("import { useEffect, useMemo, useState } from \"react\";"),
+        "ScopeSelector needs an effect to resync mode from controlled value changes"
+    );
+
+    let scope_selector = source_between(
+        &controls,
+        "export function ScopeSelector",
+        "function modeFromScope",
+    );
+    assert!(
+        scope_selector
+            .contains("useEffect(() => {\n    setMode(modeFromScope(value));\n  }, [value]);"),
+        "ScopeSelector mode should follow external value changes after URL navigation or parent resets"
+    );
+}
+
+#[test]
+fn frontend_scope_selector_treats_unset_scope_as_neutral_path_mode() {
+    let controls = frontend_source("components/domain/ScopeSelector.tsx");
+    let mode_from_scope = source_between(
+        &controls,
+        "function modeFromScope",
+        "function pathFromScope",
+    );
+    let filter_bar = frontend_source("components/FilterBar.tsx");
+
+    assert!(
+        mode_from_scope.contains("if (scope == null) return \"path\";"),
+        "unset controlled scope should display the neutral exact-scope selector, not explicit all"
+    );
+    assert!(
+        filter_bar.contains("scope: undefined,"),
+        "clear all should reset the controlled scope value"
+    );
+}
+
+#[test]
 fn frontend_filter_bar_formats_wide_scope_chips() {
     let filter_bar = frontend_source("components/FilterBar.tsx");
 

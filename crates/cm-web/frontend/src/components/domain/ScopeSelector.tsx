@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Stats } from "@/api/client";
 import { useStats } from "@/api/hooks";
 import {
@@ -76,6 +76,10 @@ export function ScopeSelector({ value, onChange }: ScopeSelectorProps) {
   const [mode, setMode] = useState<ScopeMode>(modeFromScope(value));
   const path = pathFromScope(value);
   const setPaths = value?.kind === "set" ? value.paths : [];
+
+  useEffect(() => {
+    setMode(modeFromScope(value));
+  }, [value]);
 
   const changeMode = (nextMode: ScopeMode) => {
     setMode(nextMode);
@@ -182,6 +186,7 @@ export function ScopeSelector({ value, onChange }: ScopeSelectorProps) {
 }
 
 function modeFromScope(scope: ScopeSelectorValue | undefined): ScopeMode {
+  if (scope == null) return "path";
   if (scope?.kind === "path" || scope?.kind === "cwd_inferred") return "path";
   if (scope?.kind === "subtree") return "subtree";
   if (scope?.kind === "set") return "set";
