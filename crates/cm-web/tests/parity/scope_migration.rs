@@ -114,7 +114,12 @@ async fn entries_and_agent_search_reject_invalid_repeated_kind_filters() {
     assert_eq!(entries_status, StatusCode::BAD_REQUEST);
     assert_eq!(agent_status, StatusCode::BAD_REQUEST);
     assert_eq!(entries_body, agent_body);
-    assert!(entries_body.to_string().contains("unknown-kind"));
+    assert!(
+        entries_body
+            .to_string()
+            .contains("invalid entry kind: unknown-kind"),
+        "{entries_body}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -144,17 +149,6 @@ async fn entries_and_agent_search_reject_invalid_fts_queries() {
             "{query}: {body_text}"
         );
     }
-}
-
-fn entry_titles(body: &serde_json::Value) -> Vec<&str> {
-    let mut titles: Vec<&str> = body["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|entry| entry["title"].as_str().unwrap())
-        .collect();
-    titles.sort_unstable();
-    titles
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -385,4 +379,15 @@ async fn entry_write_bodies_reject_removed_scope_inputs() {
             assert_eq!(status, StatusCode::BAD_REQUEST, "{uri} returned {body:?}");
         }
     }
+}
+
+fn entry_titles(body: &serde_json::Value) -> Vec<&str> {
+    let mut titles: Vec<&str> = body["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["title"].as_str().unwrap())
+        .collect();
+    titles.sort_unstable();
+    titles
 }
