@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::support::{
     all_scope_query, cwd_inferred_scope_query, path_scope_query, path_scope_value, request_json,
-    seed_entries, test_app, test_store,
+    seed_entries, set_scope_query, subtree_scope_query, test_app, test_store,
 };
 
 #[tokio::test(flavor = "multi_thread")]
@@ -73,6 +73,38 @@ async fn entries_and_agent_search_match_for_all_scope() {
     assert_eq!(entries_body["header"]["scope_chain"], json!([]));
     assert_eq!(entries_body["header"]["tier"], json!(null));
     assert_eq!(entries_body["entries"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn entries_search_omits_scope_chain_for_wide_selectors() {
+    let (store, _dir) = test_store().await;
+    seed_entries(&store).await;
+
+    let app = test_app(store);
+    let cases = [
+        subtree_scope_query("global/project:helioy"),
+        set_scope_query(&["global", "global/project:helioy/repo:context-matters"]),
+    ];
+
+    for scope in cases {
+        let entries_uri = format!("/api/entries/search?query=Smart&{scope}");
+        let agent_uri = format!("/api/agent/search?query=Smart&{scope}");
+        let (entries_status, entries_body) =
+            request_json(app.clone(), Method::GET, &entries_uri, None).await;
+        let (agent_status, agent_body) =
+            request_json(app.clone(), Method::GET, &agent_uri, None).await;
+
+        assert_eq!(entries_status, StatusCode::OK, "{entries_uri}");
+        assert_eq!(agent_status, StatusCode::OK, "{agent_uri}");
+        assert_eq!(entries_body, agent_body, "parity drift on {scope}");
+        assert_eq!(
+            entries_body["header"]["scope_chain"],
+            json!([]),
+            "wide selector should not advertise an ancestor chain on {scope}"
+        );
+        assert_eq!(entries_body["header"]["routing"], json!("search"));
+        assert_eq!(entries_body["header"]["tier"], json!(null));
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
