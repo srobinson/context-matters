@@ -26,26 +26,47 @@ pub struct ScoredEntry {
 /// Request for recall's FTS5 ancestor walk.
 #[derive(Debug, Clone)]
 pub struct AncestorWalkRequest {
+    /// FTS5 query string. Supports prefix queries (`rust*`), phrase queries
+    /// (`"scope path"`), and boolean operators (`AND`, `OR`, `NOT`).
     pub query: String,
+
+    /// Singular scope. Results include entries at this exact scope and its ancestors.
     pub scope: ScopePath,
+
+    /// Maximum number of results.
     pub limit: u32,
 }
 
 /// Request for content-first search across store-level scope predicates.
 #[derive(Debug, Clone)]
 pub struct ContentSearchRequest {
+    /// FTS5 query string.
     pub query: String,
+
+    /// Scope predicate. Unlike [`AncestorWalkRequest`], this can be wide
+    /// (`Subtree`, `Set`, `All`).
     pub scope: ScopeFilter,
+
+    /// Optional kind filter. If `None`, all kinds are included.
     pub kinds: Option<Vec<EntryKind>>,
+
+    /// Optional tag filter. If `None`, all tags are included.
     pub tags: Option<Vec<String>>,
+
+    /// Maximum number of results per page.
     pub limit: u32,
+
+    /// Opaque cursor from a previous [`ContentSearchPage::next_cursor`].
     pub cursor: Option<String>,
 }
 
 /// A page of content-first search results.
 #[derive(Debug, Clone)]
 pub struct ContentSearchPage {
+    /// Scored entries for this page, ordered best-match first.
     pub items: Vec<ScoredEntry>,
+
+    /// Cursor for the next page, or `None` if no more results are available.
     pub next_cursor: Option<String>,
 }
 
@@ -136,10 +157,9 @@ pub trait ContextStore: Send + Sync + 'static {
     /// [`ScoredEntry`], ordered best-match first (most negative `score`
     /// first).
     ///
-    /// # Arguments
-    ///
-    /// The scope is always singular. Results include entries at the requested
-    /// scope and its ancestors, ordered by FTS5 rank.
+    /// The request scope is always singular. Results include entries at the
+    /// requested scope and its ancestors. Wider scope predicates belong on
+    /// [`Self::do_content_search`].
     async fn do_search_ancestor_walk(
         &self,
         request: AncestorWalkRequest,
