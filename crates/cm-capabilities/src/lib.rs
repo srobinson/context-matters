@@ -11,6 +11,7 @@ pub mod scope;
 pub mod search;
 pub mod stats;
 pub mod store;
+mod telemetry;
 pub mod update;
 pub mod validation;
 

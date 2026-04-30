@@ -5,6 +5,7 @@ use cm_core::{CmError, ContextStore, ScopePath};
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
 use crate::scope::{ScopeSelector, resolve_scope_selection};
+use crate::telemetry::RetrievalLog;
 
 mod routing;
 mod types;
@@ -24,6 +25,17 @@ pub async fn recall(
     store: &impl ContextStore,
     request: RecallRequest,
 ) -> Result<RecallResult, CmError> {
+    let mut log = RetrievalLog::from_recall_request(&request);
+    let result = recall_inner(store, request, &mut log).await;
+    log.emit_recall(&result);
+    result
+}
+
+async fn recall_inner(
+    store: &impl ContextStore,
+    request: RecallRequest,
+    log: &mut RetrievalLog,
+) -> Result<RecallResult, CmError> {
     let scope_defaulted = request.scope.is_none();
     let scope_selector = request
         .scope
@@ -31,6 +43,7 @@ pub async fn recall(
         .unwrap_or_else(|| ScopeSelector::Path(ScopePath::global()));
     reject_non_singular_scope(&scope_selector)?;
     let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
+    log.set_resolved_scope(resolved_scope.scope_path.as_ref());
     let scope_path = resolved_scope.scope_path.as_ref();
 
     let has_post_filter = !request.kinds.is_empty() || !request.tags.is_empty();

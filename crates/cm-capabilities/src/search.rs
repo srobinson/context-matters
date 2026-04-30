@@ -2,11 +2,23 @@
 
 use cm_core::{CmError, ContentSearchPage, ContentSearchRequest, ContextStore, FtsQuery};
 
+use crate::telemetry::RetrievalLog;
+
 /// Execute content-first search against the store.
 ///
 /// `cx_search` requires a non-empty FTS query. Use `cx_browse` for
 /// listing or filtering entries without free text.
 pub async fn search(
+    store: &impl ContextStore,
+    request: ContentSearchRequest,
+) -> Result<ContentSearchPage, CmError> {
+    let log = RetrievalLog::from_search_request(&request);
+    let result = search_inner(store, request).await;
+    log.emit_search(&result);
+    result
+}
+
+async fn search_inner(
     store: &impl ContextStore,
     request: ContentSearchRequest,
 ) -> Result<ContentSearchPage, CmError> {
