@@ -22,11 +22,12 @@ fn cm() -> Command {
 // ---------------- Root help surface ----------------
 
 #[test]
-fn root_long_help_lists_all_twelve_subcommands() {
+fn root_long_help_lists_all_thirteen_subcommands() {
     cm().arg("--help")
         .assert()
         .success()
         .stdout(contains("recall"))
+        .stdout(contains("search"))
         .stdout(contains("browse"))
         .stdout(contains("get"))
         .stdout(contains("stats"))
@@ -41,11 +42,12 @@ fn root_long_help_lists_all_twelve_subcommands() {
 }
 
 #[test]
-fn root_short_help_lists_all_twelve_subcommands() {
+fn root_short_help_lists_all_thirteen_subcommands() {
     cm().arg("-h")
         .assert()
         .success()
         .stdout(contains("recall"))
+        .stdout(contains("search"))
         .stdout(contains("browse"))
         .stdout(contains("get"))
         .stdout(contains("stats"))
@@ -99,6 +101,22 @@ fn recall_help_shows_per_arg_descriptions() {
         .stdout(contains("FTS5 search query"))
         .stdout(contains("Scope selector"))
         .stdout(contains("Filter by entry kind"));
+}
+
+#[test]
+fn search_help_shows_per_arg_descriptions() {
+    cm().args(["search", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Required FTS5 search query"))
+        .stdout(contains("exact path"))
+        .stdout(contains("reserved value cwd_inferred"))
+        .stdout(contains("structured subtree/set/all JSON"))
+        .stdout(contains("Filter by entry kind"))
+        .stdout(contains("Filter by tag"))
+        .stdout(contains("Maximum number of results"))
+        .stdout(contains("Pagination cursor"))
+        .stdout(contains("Emit JSON instead of human-readable text"));
 }
 
 #[test]
@@ -210,7 +228,7 @@ fn export_help_shows_per_arg_descriptions() {
 
 #[test]
 fn migrated_scope_help_names_cwd_inferred_as_reserved_value() {
-    for command in ["recall", "store", "deposit", "browse", "export"] {
+    for command in ["recall", "search", "store", "deposit", "browse", "export"] {
         cm().args([command, "--help"])
             .assert()
             .success()

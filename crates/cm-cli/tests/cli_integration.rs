@@ -408,6 +408,72 @@ fn recall_query_finds_seeded_entry_by_keyword() {
 }
 
 #[test]
+fn search_with_explicit_all_scope_finds_seeded_entries() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global/project:helioy",
+            "--exchanges",
+            r#"[{"user":"crossscopekeyword body","assistant":"reply","title":"search project hit"}]"#,
+        ])
+        .assert()
+        .success();
+
+    cm_with_data_dir(dir.path())
+        .args([
+            "search",
+            "crossscopekeyword",
+            "--scope",
+            r#"{"kind":"all"}"#,
+        ])
+        .assert()
+        .success()
+        .stdout(contains("search project hit"));
+}
+
+#[test]
+fn search_json_emits_parseable_header_and_entries() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global/project:helioy",
+            "--exchanges",
+            r#"[{"user":"jsonsearchkeyword body","assistant":"reply","title":"search json hit"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let assert = cm_with_data_dir(dir.path())
+        .args([
+            "search",
+            "jsonsearchkeyword",
+            "--scope",
+            r#"{"kind":"all"}"#,
+            "-j",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    let json: Value = serde_json::from_str(&stdout).expect("search -j must emit valid JSON");
+    assert_eq!(json["header"]["query"], "jsonsearchkeyword");
+    assert_eq!(json["entries"][0]["title"], "search json hit");
+}
+
+#[test]
+fn search_requires_explicit_scope() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["search", "anything"])
+        .assert()
+        .failure()
+        .stderr(contains("required"));
+}
+
+#[test]
 fn recall_without_scope_reports_default_advisory_on_stderr() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())

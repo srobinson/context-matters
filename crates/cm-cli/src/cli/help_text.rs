@@ -14,6 +14,7 @@ pub const HELP_TEMPLATE: &str = "{about-with-newline}\n{before-help}\n";
 pub const SHORT_HELP: &str = cstr!(
     r#"<bold><underline>READ</underline></bold>
   <bold>recall</bold>      Search context entries with FTS5 + scope walk
+  <bold>search</bold>      Content search across explicit scopes
   <bold>browse</bold>      Filtered inventory with pagination
   <bold>get</bold>         Fetch full entry content by ID
   <bold>stats</bold>       Show store statistics and scope tree
@@ -39,6 +40,7 @@ https://github.com/srobinson/context-matters"#
 pub const LONG_HELP: &str = cstr!(
     r#"<bold><underline>READ Commands</underline></bold>
   <bold>recall</bold>      Search context entries with FTS5 + scope walk
+  <bold>search</bold>      Content search across explicit scopes
   <bold>browse</bold>      Filtered inventory with pagination
   <bold>get</bold>         Fetch full entry content by ID
   <bold>stats</bold>       Show store statistics and scope tree
@@ -57,6 +59,7 @@ pub const LONG_HELP: &str = cstr!(
 
 <bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm recall "auth migration"</bold>           <dim># tiered FTS5 with scope walk</dim>
+  <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
   <dim>$</dim> <bold>cm browse --kind decision -j</bold>          <dim># JSON inventory of decisions</dim>
   <dim>$</dim> <bold>cm get 019d09ed-7a4f-7693</bold>             <dim># full entry by id</dim>
   <dim>$</dim> <bold>cm stats</bold>                              <dim># scope tree + counts</dim>
@@ -78,6 +81,15 @@ pub const RECALL_AFTER_HELP: &str = cstr!(
   <dim>$</dim> <bold>cm recall --scope global/project:helioy --tags rust</bold>
   <dim>$</dim> <bold>cm recall --kinds decision,feedback --limit 5</bold>
   <dim>$</dim> <bold>cm recall "topic" -j | jq .entries</bold>                  <dim># JSON to jq</dim>"#
+);
+
+/// `after_help` for `cm search`.
+pub const SEARCH_AFTER_HELP: &str = cstr!(
+    r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>cm search "auth migration" --scope global/project:helioy</bold>
+  <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
+  <dim>$</dim> <bold>cm search "rust*" --scope '{"kind":"subtree","path":"global/project:helioy"}' -j</bold>
+  <dim>$</dim> <bold>cm search "topic" --scope global --limit 5 --cursor eyJ...</bold>"#
 );
 
 /// `after_help` for `cm browse`.

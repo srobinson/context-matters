@@ -20,7 +20,7 @@ pub const SEARCH_ABOUT: &str = "Search cm entries by content across scopes.\n\nR
 #[rustfmt::skip]
 pub const SEARCH_QUERY_HELP: &str = "Required FTS5 search query";
 #[rustfmt::skip]
-pub const SEARCH_SCOPE_HELP: &str = "Structured ScopeSelector JSON";
+pub const SEARCH_SCOPE_HELP: &str = "Scope selector: exact path, reserved value cwd_inferred, or structured subtree/set/all JSON";
 #[rustfmt::skip]
 pub const SEARCH_KINDS_HELP: &str = "Filter by entry kind";
 #[rustfmt::skip]

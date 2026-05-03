@@ -53,7 +53,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-/// Twelve-variant `cm` subcommand surface. The cluster ordering matches
+/// Thirteen-variant `cm` subcommand surface. The cluster ordering matches
 /// the READ / WRITE / ADMIN groups in [`super::help_text::SHORT_HELP`].
 #[derive(Subcommand, Debug)]
 pub enum Commands {
@@ -73,6 +73,25 @@ pub enum Commands {
         limit: Option<u32>,
         #[arg(long, help = gh::RECALL_MAX_TOKENS_HELP)]
         max_tokens: Option<u32>,
+        #[arg(short = 'j', long, help = "Emit JSON instead of human-readable text")]
+        json: bool,
+    },
+
+    /// Search entries by content across explicit scopes.
+    #[command(long_about = gh::SEARCH_ABOUT, after_help = ht::SEARCH_AFTER_HELP)]
+    Search {
+        #[arg(help = gh::SEARCH_QUERY_HELP)]
+        query: String,
+        #[arg(long, required = true, help = gh::SEARCH_SCOPE_HELP)]
+        scope: String,
+        #[arg(long, value_delimiter = ',', help = gh::SEARCH_KINDS_HELP)]
+        kinds: Vec<String>,
+        #[arg(long, value_delimiter = ',', help = gh::SEARCH_TAGS_HELP)]
+        tags: Vec<String>,
+        #[arg(long, help = gh::SEARCH_LIMIT_HELP)]
+        limit: Option<u32>,
+        #[arg(long, help = gh::SEARCH_CURSOR_HELP)]
+        cursor: Option<String>,
         #[arg(short = 'j', long, help = "Emit JSON instead of human-readable text")]
         json: bool,
     },
