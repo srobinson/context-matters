@@ -13,9 +13,9 @@ pub const HELP_TEMPLATE: &str = "{about-with-newline}\n{before-help}\n";
 /// Short summary shown by `cm -h`.
 pub const SHORT_HELP: &str = cstr!(
     r#"<bold><underline>READ</underline></bold>
-  <bold>recall</bold>      Search context entries with FTS5 + scope walk
-  <bold>search</bold>      Content search across explicit scopes
-  <bold>browse</bold>      Filtered inventory with pagination
+  <bold>recall</bold>      Search one scope plus ancestors. Default: global.
+  <bold>search</bold>      Content search across scopes. Requires --scope.
+  <bold>browse</bold>      Filtered inventory with pagination. Default: cwd_inferred.
   <bold>get</bold>         Fetch full entry content by ID
   <bold>stats</bold>       Show store statistics and scope tree
 
@@ -39,9 +39,9 @@ https://github.com/srobinson/context-matters"#
 /// scope-resolution hint.
 pub const LONG_HELP: &str = cstr!(
     r#"<bold><underline>READ Commands</underline></bold>
-  <bold>recall</bold>      Search context entries with FTS5 + scope walk
-  <bold>search</bold>      Content search across explicit scopes
-  <bold>browse</bold>      Filtered inventory with pagination
+  <bold>recall</bold>      Search one scope plus ancestors. Default: global.
+  <bold>search</bold>      Content search across scopes. Requires --scope.
+  <bold>browse</bold>      Filtered inventory with pagination. Default: cwd_inferred.
   <bold>get</bold>         Fetch full entry content by ID
   <bold>stats</bold>       Show store statistics and scope tree
 
@@ -66,8 +66,8 @@ pub const LONG_HELP: &str = cstr!(
   <dim>$</dim> <bold>cm export --scope global/project:helioy</bold> <dim># JSON snapshot of a subtree</dim>
 
 <bold><underline>Scope Resolution</underline></bold>
-  Recall defaults to <bold>global</bold>. Browse defaults to <bold>scope=cwd_inferred</bold>
-  for local inference; use <bold>--scope PATH</bold> for exact filtering.
+  Recall starts at <bold>global</bold>; search requires <bold>--scope</bold>;
+  browse starts at <bold>cwd_inferred</bold>. Use <bold>--scope PATH</bold> for exact filtering.
   Run <bold>cm stats</bold> to discover all scope paths in the store.
 
 https://github.com/srobinson/context-matters"#

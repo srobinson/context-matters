@@ -37,6 +37,16 @@ cm serve
 | `cx_stats` | Store statistics and scope breakdown |
 | `cx_export` | Export entries as JSON for backup |
 
+## CLI read commands
+
+The CLI reads from the same store as the `cx_*` MCP tools.
+
+| Command | Scope contract |
+|---------|----------------|
+| `cm recall` | Search one scope plus ancestors. Default: `global`. |
+| `cm search` | Content search across scopes. Requires `--scope`. |
+| `cm browse` | Filtered inventory with pagination. Default: `cwd_inferred`. |
+
 ## Scope model
 
 Context is hierarchical. Broader scopes are visible at narrower scopes.

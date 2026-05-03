@@ -71,7 +71,40 @@ fn root_long_help_uses_read_write_admin_groups() {
         .stdout(contains("ADMIN Commands"))
         .stdout(contains("Examples"))
         .stdout(contains("Scope Resolution"))
-        .stdout(contains("Browse defaults to scope=cwd_inferred"));
+        .stdout(contains("search requires --scope"))
+        .stdout(contains("browse starts at cwd_inferred"));
+}
+
+#[test]
+fn root_long_help_surfaces_read_scope_contracts() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(contains(
+            "recall      Search one scope plus ancestors. Default: global.",
+        ))
+        .stdout(contains(
+            "search      Content search across scopes. Requires --scope.",
+        ))
+        .stdout(contains(
+            "browse      Filtered inventory with pagination. Default: cwd_inferred.",
+        ));
+}
+
+#[test]
+fn root_short_help_surfaces_read_scope_contracts() {
+    cm().arg("-h")
+        .assert()
+        .success()
+        .stdout(contains(
+            "recall      Search one scope plus ancestors. Default: global.",
+        ))
+        .stdout(contains(
+            "search      Content search across scopes. Requires --scope.",
+        ))
+        .stdout(contains(
+            "browse      Filtered inventory with pagination. Default: cwd_inferred.",
+        ));
 }
 
 #[test]
