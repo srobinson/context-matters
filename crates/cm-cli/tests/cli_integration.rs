@@ -110,6 +110,21 @@ fn store_stub_points_users_to_cm_web() {
 }
 
 #[test]
+fn store_help_describes_cli_stub() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["store", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("cm store is a CLI stub for entry creation."))
+        .stdout(contains("Direct entry creation lives in cm-web."))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("http://localhost:3141/"))
+        .stdout(predicates::str::contains("Store a context entry").not())
+        .stdout(predicates::str::contains("Creates a new entry").not());
+}
+
+#[test]
 fn store_stub_rejects_removed_auto_scope_selector() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())
