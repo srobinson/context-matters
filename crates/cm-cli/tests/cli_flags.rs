@@ -76,6 +76,20 @@ fn root_long_help_uses_read_write_admin_groups() {
 }
 
 #[test]
+fn root_long_help_bridges_cli_and_mcp_names() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(contains(
+            "This CLI mirrors the MCP tool surface. From a shell, use cm <command>.",
+        ))
+        .stdout(contains(
+            "From an MCP client, the same operations are exposed as cx_<command>.",
+        ))
+        .stdout(contains("Run cm serve to start the MCP server on stdio."));
+}
+
+#[test]
 fn root_long_help_surfaces_read_scope_contracts() {
     cm().arg("--help")
         .assert()

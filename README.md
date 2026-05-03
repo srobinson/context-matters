@@ -24,6 +24,10 @@ Runs as a Model Context Protocol server. Ten tools, all prefixed `cx_*`.
 cm serve
 ```
 
+This CLI mirrors the MCP tool surface. From a shell, use `cm <command>`.
+From an MCP client, the same operations are exposed as `cx_<command>`.
+Run `cm serve` to start the MCP server on stdio.
+
 | Tool | Purpose |
 |------|---------|
 | `cx_recall` | Priority context for one known scope via ancestor walk |

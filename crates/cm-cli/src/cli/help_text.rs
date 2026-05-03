@@ -38,7 +38,11 @@ https://github.com/srobinson/context-matters"#
 /// Long help shown by `cm --help`. Adds an examples block and the
 /// scope-resolution hint.
 pub const LONG_HELP: &str = cstr!(
-    r#"<bold><underline>READ Commands</underline></bold>
+    r#"This CLI mirrors the MCP tool surface. From a shell, use <bold>cm <<command>></bold>.
+From an MCP client, the same operations are exposed as <bold>cx_<<command>></bold>.
+Run <bold>cm serve</bold> to start the MCP server on stdio.
+
+<bold><underline>READ Commands</underline></bold>
   <bold>recall</bold>      Search one scope plus ancestors. Default: global.
   <bold>search</bold>      Content search across scopes. Requires --scope.
   <bold>browse</bold>      Filtered inventory with pagination. Default: cwd_inferred.
