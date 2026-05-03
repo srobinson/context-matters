@@ -120,7 +120,7 @@ fn root_long_help_promotes_startup_and_write_examples() {
         .stdout(contains(
             "write config to ~/.context-matters/.cm.config.toml",
         ))
-        .stdout(contains("cm-web --open"))
+        .stdout(contains("cm web --open"))
         .stdout(contains("open http://localhost:3141/"))
         .stdout(contains("cm forget 019d09ed-7a4f-7693"))
         .stdout(contains("mark entry forgotten by id"));
@@ -134,7 +134,7 @@ fn root_long_help_avoids_obsolete_web_guidance() {
         .stdout(predicates::str::contains("Curator").not())
         .stdout(predicates::str::contains("cm serve --web").not())
         .stdout(predicates::str::contains("tiered FTS5").not())
-        .stdout(contains("Create a new entry via cm-web"))
+        .stdout(contains("Create a new entry via the web UI"))
         .stdout(contains("Mark entries forgotten"));
 }
 
@@ -247,7 +247,7 @@ fn store_help_shows_per_arg_descriptions() {
         .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Confidence level"))
         .stdout(contains("Numeric priority"))
-        .stdout(contains("cm-web --open"))
+        .stdout(contains("cm web --open"))
         .stdout(contains("http://localhost:3141/"))
         .stdout(predicates::str::contains("Curator").not())
         .stdout(predicates::str::contains("cm serve --web").not());

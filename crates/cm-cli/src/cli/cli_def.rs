@@ -144,7 +144,7 @@ pub enum Commands {
 
     // ---------------- WRITE ----------------
     /// Store a new entry. The CLI surface mirrors the MCP `cx_store` tool;
-    /// the canonical interactive entry path is `cm-web --open`.
+    /// the canonical interactive entry path is `cm web --open`.
     #[command(long_about = gh::STORE_ABOUT, after_help = ht::STORE_AFTER_HELP)]
     Store {
         #[arg(long, help = gh::STORE_TITLE_HELP)]

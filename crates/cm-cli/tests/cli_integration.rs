@@ -103,8 +103,8 @@ fn store_stub_points_users_to_cm_web() {
         .args(["store"])
         .assert()
         .success()
-        .stdout(contains("cm-web"))
-        .stdout(contains("cm-web --open"))
+        .stdout(contains("web UI"))
+        .stdout(contains("cm web --open"))
         .stdout(contains("http://localhost:3141/"))
         .stdout(predicates::str::contains("cm serve --web").not());
 }
@@ -117,8 +117,8 @@ fn store_help_describes_cli_stub() {
         .assert()
         .success()
         .stdout(contains("cm store is a CLI stub for entry creation."))
-        .stdout(contains("Direct entry creation lives in cm-web."))
-        .stdout(contains("cm-web --open"))
+        .stdout(contains("Direct entry creation lives in the web UI."))
+        .stdout(contains("cm web --open"))
         .stdout(contains("http://localhost:3141/"))
         .stdout(predicates::str::contains("Store a context entry").not())
         .stdout(predicates::str::contains("Creates a new entry").not());
@@ -142,8 +142,8 @@ fn store_stub_accepts_current_scope_selectors() {
             .args(["store", "--scope", scope])
             .assert()
             .success()
-            .stdout(contains("cm-web"))
-            .stdout(contains("cm-web --open"))
+            .stdout(contains("web UI"))
+            .stdout(contains("cm web --open"))
             .stdout(contains("http://localhost:3141/"))
             .stdout(predicates::str::contains("cm serve --web").not());
     }

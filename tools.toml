@@ -265,7 +265,7 @@ cli_flag        = "--cursor"
 [tools.cx_store]
 cli_name        = "store"
 mcp_description = "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry by marking the old one inactive. Returns the new entry ID and content hash."
-cli_about       = "cm store is a CLI stub for entry creation.\n\nDirect entry creation lives in cm-web. Run cm-web --open or open http://localhost:3141/ in your browser. Agents can also call the MCP tool cx_store."
+cli_about       = "cm store is a CLI stub for entry creation.\n\nDirect entry creation lives in the web UI. Run cm web --open or open http://localhost:3141/ in your browser. Agents can also call the MCP tool cx_store."
 
 [[tools.cx_store.params]]
 name            = "title"

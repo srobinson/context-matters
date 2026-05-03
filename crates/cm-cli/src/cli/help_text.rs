@@ -20,7 +20,7 @@ pub const SHORT_HELP: &str = cstr!(
   <bold>stats</bold>       Show store statistics and scope tree
 
 <bold><underline>WRITE</underline></bold>
-  <bold>store</bold>       Create a new entry via cm-web
+  <bold>store</bold>       Create a new entry via the web UI
   <bold>update</bold>      Partially update an entry
   <bold>deposit</bold>     Batch-store conversation exchanges
   <bold>forget</bold>      Mark entries forgotten
@@ -51,7 +51,7 @@ Run <bold>cm serve</bold> to start the MCP server on stdio.
   <bold>stats</bold>       Show store statistics and scope tree
 
 <bold><underline>WRITE Commands</underline></bold>
-  <bold>store</bold>       Create a new entry via cm-web
+  <bold>store</bold>       Create a new entry via the web UI
   <bold>update</bold>      Partially update an entry
   <bold>deposit</bold>     Batch-store conversation exchanges
   <bold>forget</bold>      Mark entries forgotten
@@ -68,7 +68,6 @@ Run <bold>cm serve</bold> to start the MCP server on stdio.
   <dim>$</dim> <bold>cm web --open</bold>                          <dim># open http://localhost:3141/</dim>
   <dim>$</dim> <bold>cm init</bold>                               <dim># write config to ./.cm.config.toml</dim>
   <dim>$</dim> <bold>cm init --global</bold>                      <dim># write config to ~/.context-matters/.cm.config.toml</dim>
-  <dim>$</dim> <bold>cm-web --open</bold>                         <dim># open http://localhost:3141/</dim>
   <dim>$</dim> <bold>cm forget 019d09ed-7a4f-7693</bold>          <dim># mark entry forgotten by id</dim>
   <dim>$</dim> <bold>cm recall "auth migration"</bold>            <dim># FTS5 search with scope walk</dim>
   <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
@@ -133,8 +132,8 @@ pub const STATS_AFTER_HELP: &str = cstr!(
 /// `after_help` for `cm store`.
 pub const STORE_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Web UI</underline></bold>
-  Direct entry creation lives in cm-web. Run:
-  <dim>$</dim> <bold>cm-web --open</bold>                                        <dim># open http://localhost:3141/</dim>
+  Direct entry creation lives in the web UI. Run:
+  <dim>$</dim> <bold>cm web --open</bold>                                        <dim># open http://localhost:3141/</dim>
   Or open <bold>http://localhost:3141/</bold> in your browser."#
 );
 

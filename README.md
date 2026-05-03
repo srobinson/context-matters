@@ -57,7 +57,7 @@ The CLI reads from the same store as the `cx_*` MCP tools.
 cm serve                              # start MCP server on stdio
 cm init                               # write config to ./.cm.config.toml
 cm init --global                      # write config to ~/.context-matters/.cm.config.toml
-cm-web --open                         # open http://localhost:3141/
+cm web --open                         # open http://localhost:3141/
 cm forget 019d09ed-7a4f-7693          # mark entry forgotten by id
 cm recall "auth migration"            # FTS5 search with scope walk
 cm search "auth migration" --scope '{"kind":"all"}'
@@ -69,7 +69,7 @@ cm export --scope global/project:helioy # JSON snapshot of a subtree
 
 ## Web UI
 
-Run `cm-web --open` for browser entry management and monitoring. It serves `http://localhost:3141/` by default.
+Run `cm web --open` for browser entry management and monitoring. It serves `http://localhost:3141/` by default.
 
 ## Scope model
 
@@ -106,7 +106,7 @@ Five crates, clean separation:
 | `cm-store` | SQLite adapter via sqlx. WAL mode, FTS5 search, BLAKE3 dedup. |
 | `cm-capabilities` | Shared request/response types, validation, scope resolution, projections. |
 | `cm-cli` | CLI binary + MCP server. Tool docs generated from `tools.toml`. |
-| `cm-web` | Web monitoring dashboard with Axum and React/Vite. Run `cm-web --open`; default URL: `http://localhost:3141/`. |
+| `cm-web` | Web monitoring dashboard with Axum and React/Vite. Run `cm web --open`; default URL: `http://localhost:3141/`. |
 
 ## Development
 
