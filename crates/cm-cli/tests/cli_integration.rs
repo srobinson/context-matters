@@ -16,6 +16,7 @@ use std::path::Path;
 use assert_cmd::Command;
 use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 use cm_capabilities::validation::{parse_kind, parse_tag_sort};
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -96,14 +97,16 @@ fn round_trip_deposit_recall_get_update_forget_stats() {
 // ---------------- Store stub ----------------
 
 #[test]
-fn store_stub_points_users_to_curator_ui() {
+fn store_stub_points_users_to_cm_web() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())
         .args(["store"])
         .assert()
         .success()
-        .stdout(contains("Curator"))
-        .stdout(contains("cm serve --web"));
+        .stdout(contains("cm-web"))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("http://localhost:3141/"))
+        .stdout(predicates::str::contains("cm serve --web").not());
 }
 
 #[test]
@@ -124,8 +127,10 @@ fn store_stub_accepts_current_scope_selectors() {
             .args(["store", "--scope", scope])
             .assert()
             .success()
-            .stdout(contains("Curator"))
-            .stdout(contains("cm serve --web"));
+            .stdout(contains("cm-web"))
+            .stdout(contains("cm-web --open"))
+            .stdout(contains("http://localhost:3141/"))
+            .stdout(predicates::str::contains("cm serve --web").not());
     }
 }
 

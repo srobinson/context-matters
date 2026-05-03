@@ -1,4 +1,4 @@
-//! `cm store` — discoverable stub that points users at the Curator web UI.
+//! `cm store` — discoverable stub that points users at cm-web.
 //!
 //! Locked decision (ALP-1781): a full CLI handler for entry creation carries
 //! significant UX overhead (multi-line body via `$EDITOR`, flag-heavy
@@ -6,7 +6,7 @@
 //! customer. The clap surface in [`super::cli_def`] is registered with the
 //! generated `STORE_*` help constants so `cm store --help` and
 //! `cm --markdown-help` document every flag. Valid invocations print a short
-//! pointer to the Curator UI and exit 0.
+//! pointer to cm-web and exit 0.
 //!
 //! Accepted flags parse and are dropped after scope selector validation. If a
 //! real handler is ever needed, this file is the hook point.
@@ -38,19 +38,19 @@ pub fn run(scope: Option<String>) -> Result<()> {
     );
     println!();
     println!(
-        "Direct entry creation lives in the {bold}Curator{reset} web UI:",
+        "Direct entry creation lives in {bold}cm-web{reset}:",
         bold = c.bold,
         reset = c.reset,
     );
     println!();
     println!(
-        "    {cyan}cm serve --web{reset}",
+        "    {cyan}cm-web --open{reset}",
         cyan = c.cyan,
         reset = c.reset
     );
     println!();
     println!(
-        "Then open {cyan}http://localhost:7878/curator{reset} in your browser.",
+        "Or open {cyan}http://localhost:3141/{reset} in your browser.",
         cyan = c.cyan,
         reset = c.reset,
     );

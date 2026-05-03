@@ -1,4 +1,4 @@
-//! `cm forget` — soft-delete entries by ID.
+//! `cm forget` — mark entries forgotten by ID.
 //!
 //! Thin CLI handler: packs positional IDs into a [`ForgetRequest`], calls
 //! [`cm_capabilities::forget::forget`] with a `WriteContext` tagged

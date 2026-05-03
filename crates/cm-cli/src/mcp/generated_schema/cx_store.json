@@ -1,5 +1,5 @@
 {
-  "description": "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash.",
+  "description": "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry by marking the old one inactive. Returns the new entry ID and content hash.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -51,7 +51,7 @@
         "type": "string"
       },
       "supersedes": {
-        "description": "ID of an existing entry that this new entry replaces. The old entry is soft-deleted and linked via a 'supersedes' relation.",
+        "description": "ID of an existing entry that this new entry replaces. The old entry is marked inactive and linked via a 'supersedes' relation.",
         "type": "string"
       },
       "tags": {

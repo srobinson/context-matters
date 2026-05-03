@@ -144,8 +144,7 @@ pub enum Commands {
 
     // ---------------- WRITE ----------------
     /// Store a new entry. The CLI surface mirrors the MCP `cx_store` tool;
-    /// the canonical interactive entry path is the Curator UI under
-    /// `cm serve --web`.
+    /// the canonical interactive entry path is `cm-web --open`.
     #[command(long_about = gh::STORE_ABOUT, after_help = ht::STORE_AFTER_HELP)]
     Store {
         #[arg(long, help = gh::STORE_TITLE_HELP)]
@@ -204,7 +203,7 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Soft-delete entries.
+    /// Mark entries forgotten.
     #[command(long_about = gh::FORGET_ABOUT, after_help = ht::FORGET_AFTER_HELP)]
     Forget {
         #[arg(required = true, num_args = 1..=100, help = gh::FORGET_IDS_HELP)]

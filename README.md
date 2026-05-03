@@ -37,7 +37,7 @@ Run `cm serve` to start the MCP server on stdio.
 | `cx_browse` | List entries with filters and cursor pagination |
 | `cx_get` | Fetch full content for specific entry IDs |
 | `cx_update` | Partially update an existing entry |
-| `cx_forget` | Soft-delete entries no longer relevant |
+| `cx_forget` | Mark entries forgotten so active reads skip them |
 | `cx_stats` | Store statistics and scope breakdown |
 | `cx_export` | Export entries as JSON for backup |
 
@@ -50,6 +50,10 @@ The CLI reads from the same store as the `cx_*` MCP tools.
 | `cm recall` | Search one scope plus ancestors. Default: `global`. |
 | `cm search` | Content search across scopes. Requires `--scope`. |
 | `cm browse` | Filtered inventory with pagination. Default: `cwd_inferred`. |
+
+## Web UI
+
+Run `cm-web --open` for browser entry management and monitoring. It serves `http://localhost:3141/` by default.
 
 ## Scope model
 
@@ -86,7 +90,7 @@ Five crates, clean separation:
 | `cm-store` | SQLite adapter via sqlx. WAL mode, FTS5 search, BLAKE3 dedup. |
 | `cm-capabilities` | Shared request/response types, validation, scope resolution, projections. |
 | `cm-cli` | CLI binary + MCP server. Tool docs generated from `tools.toml`. |
-| `cm-web` | Web monitoring dashboard with Axum and React/Vite. |
+| `cm-web` | Web monitoring dashboard with Axum and React/Vite. Run `cm-web --open`; default URL: `http://localhost:3141/`. |
 
 ## Development
 

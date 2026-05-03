@@ -15,7 +15,7 @@ workflow = """
 5. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
 6. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
 7. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
-8. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
+8. **Forget** — `cx_forget(ids)` — mark entries forgotten so active reads skip them.
 
 ### Task Workflow
 
@@ -264,7 +264,7 @@ cli_flag        = "--cursor"
 
 [tools.cx_store]
 cli_name        = "store"
-mcp_description = "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash."
+mcp_description = "Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry by marking the old one inactive. Returns the new entry ID and content hash."
 cli_about       = "Store a context entry.\n\nCreates a new entry with title, body, kind, and optional metadata. Scope chain is auto-created if missing. Use --supersedes to replace an existing entry."
 
 [[tools.cx_store.params]]
@@ -346,8 +346,8 @@ cli_flag        = "--priority"
 [[tools.cx_store.params]]
 name            = "supersedes"
 type            = "string"
-mcp_description = "ID of an existing entry that this new entry replaces. The old entry is soft-deleted and linked via a 'supersedes' relation."
-cli_help        = "ID of entry to supersede (soft-deletes old, creates replacement)"
+mcp_description = "ID of an existing entry that this new entry replaces. The old entry is marked inactive and linked via a 'supersedes' relation."
+cli_help        = "ID of entry to supersede (marks old inactive, creates replacement)"
 cli_flag        = "--supersedes"
 
 [tools.cx_deposit]
@@ -617,8 +617,8 @@ cli_flag        = "--meta"
 
 [tools.cx_forget]
 cli_name        = "forget"
-mcp_description = "Soft-delete entries by marking them as forgotten. Sets superseded_by to the entry's own ID, distinguishing forgotten entries from entries superseded by a replacement. Already-inactive entries are silently skipped. Maximum 100 IDs per request. Partial success is reported."
-cli_about       = "Soft-delete entries.\n\nMarks entries as forgotten (sets superseded_by to own ID). Already-inactive entries are skipped."
+mcp_description = "Mark entries as forgotten. Sets superseded_by to the entry's own ID, distinguishing forgotten entries from entries superseded by a replacement. Already-inactive entries are silently skipped. Maximum 100 IDs per request. Partial success is reported."
+cli_about       = "Mark entries forgotten.\n\nSets superseded_by to own ID so active reads skip them. Already-inactive entries are skipped."
 
 [[tools.cx_forget.params]]
 name            = "ids"

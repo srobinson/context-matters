@@ -106,6 +106,18 @@ fn root_long_help_surfaces_read_scope_contracts() {
 }
 
 #[test]
+fn root_long_help_avoids_obsolete_web_guidance() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Curator").not())
+        .stdout(predicates::str::contains("cm serve --web").not())
+        .stdout(predicates::str::contains("tiered FTS5").not())
+        .stdout(contains("Create a new entry via cm-web"))
+        .stdout(contains("Mark entries forgotten"));
+}
+
+#[test]
 fn root_short_help_surfaces_read_scope_contracts() {
     cm().arg("-h")
         .assert()
@@ -213,7 +225,11 @@ fn store_help_shows_per_arg_descriptions() {
         .stdout(contains("cwd_inferred"))
         .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Confidence level"))
-        .stdout(contains("Numeric priority"));
+        .stdout(contains("Numeric priority"))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("http://localhost:3141/"))
+        .stdout(predicates::str::contains("Curator").not())
+        .stdout(predicates::str::contains("cm serve --web").not());
 }
 
 #[test]

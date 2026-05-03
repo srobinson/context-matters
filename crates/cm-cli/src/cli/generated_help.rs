@@ -53,7 +53,7 @@ pub const STORE_EXPIRES_AT_HELP: &str = "Expiry timestamp (ISO 8601). Entry is c
 #[rustfmt::skip]
 pub const STORE_PRIORITY_HELP: &str = "Numeric priority (higher = surfaces first)";
 #[rustfmt::skip]
-pub const STORE_SUPERSEDES_HELP: &str = "ID of entry to supersede (soft-deletes old, creates replacement)";
+pub const STORE_SUPERSEDES_HELP: &str = "ID of entry to supersede (marks old inactive, creates replacement)";
 
 #[rustfmt::skip]
 pub const DEPOSIT_ABOUT: &str = "Batch-store conversation exchanges.\n\nEach exchange becomes an observation entry. Provide an optional summary to create a linked summary entry.";
@@ -104,7 +104,7 @@ pub const UPDATE_KIND_HELP: &str = "New kind (omit to keep existing). Recomputes
 pub const UPDATE_META_HELP: &str = "Replace metadata (JSON object with tags, confidence, source, expires_at, priority)";
 
 #[rustfmt::skip]
-pub const FORGET_ABOUT: &str = "Soft-delete entries.\n\nMarks entries as forgotten (sets superseded_by to own ID). Already-inactive entries are skipped.";
+pub const FORGET_ABOUT: &str = "Mark entries forgotten.\n\nSets superseded_by to own ID so active reads skip them. Already-inactive entries are skipped.";
 #[rustfmt::skip]
 pub const FORGET_IDS_HELP: &str = "Entry IDs to forget (space-separated, max 100)";
 
