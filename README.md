@@ -51,6 +51,22 @@ The CLI reads from the same store as the `cx_*` MCP tools.
 | `cm search` | Content search across scopes. Requires `--scope`. |
 | `cm browse` | Filtered inventory with pagination. Default: `cwd_inferred`. |
 
+## CLI examples
+
+```bash
+cm serve                              # start MCP server on stdio
+cm init                               # write config to ./.cm.config.toml
+cm init --global                      # write config to ~/.context-matters/.cm.config.toml
+cm-web --open                         # open http://localhost:3141/
+cm forget 019d09ed-7a4f-7693          # mark entry forgotten by id
+cm recall "auth migration"            # FTS5 search with scope walk
+cm search "auth migration" --scope '{"kind":"all"}'
+cm browse --kind decision -j          # JSON inventory of decisions
+cm get 019d09ed-7a4f-7693             # full entry by id
+cm stats                              # scope tree + counts
+cm export --scope global/project:helioy # JSON snapshot of a subtree
+```
+
 ## Web UI
 
 Run `cm-web --open` for browser entry management and monitoring. It serves `http://localhost:3141/` by default.

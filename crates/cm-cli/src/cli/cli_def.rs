@@ -214,7 +214,10 @@ pub enum Commands {
     /// Generate a commented config file with default values.
     #[command(after_help = ht::INIT_AFTER_HELP)]
     Init {
-        #[arg(long, help = "Write to ~/.context-matters/ instead of CWD")]
+        #[arg(
+            long,
+            help = "Write to ~/.context-matters/.cm.config.toml instead of CWD"
+        )]
         global: bool,
         #[arg(long, help = "Overwrite an existing config file")]
         force: bool,

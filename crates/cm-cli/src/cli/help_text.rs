@@ -62,7 +62,12 @@ Run <bold>cm serve</bold> to start the MCP server on stdio.
   <bold>completions</bold> Generate shell completion script
 
 <bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>cm recall "auth migration"</bold>           <dim># FTS5 search with scope walk</dim>
+  <dim>$</dim> <bold>cm serve</bold>                              <dim># start MCP server on stdio</dim>
+  <dim>$</dim> <bold>cm init</bold>                               <dim># write config to ./.cm.config.toml</dim>
+  <dim>$</dim> <bold>cm init --global</bold>                      <dim># write config to ~/.context-matters/.cm.config.toml</dim>
+  <dim>$</dim> <bold>cm-web --open</bold>                         <dim># open http://localhost:3141/</dim>
+  <dim>$</dim> <bold>cm forget 019d09ed-7a4f-7693</bold>          <dim># mark entry forgotten by id</dim>
+  <dim>$</dim> <bold>cm recall "auth migration"</bold>            <dim># FTS5 search with scope walk</dim>
   <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
   <dim>$</dim> <bold>cm browse --kind decision -j</bold>          <dim># JSON inventory of decisions</dim>
   <dim>$</dim> <bold>cm get 019d09ed-7a4f-7693</bold>             <dim># full entry by id</dim>
@@ -166,7 +171,7 @@ pub const EXPORT_AFTER_HELP: &str = cstr!(
 pub const INIT_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm init</bold>                                              <dim># write to ./.cm.config.toml</dim>
-  <dim>$</dim> <bold>cm init --global</bold>                                     <dim># write to ~/.context-matters/</dim>
+  <dim>$</dim> <bold>cm init --global</bold>                                     <dim># write to ~/.context-matters/.cm.config.toml</dim>
   <dim>$</dim> <bold>cm init --force</bold>                                      <dim># overwrite an existing file</dim>"#
 );
 

@@ -106,6 +106,25 @@ fn root_long_help_surfaces_read_scope_contracts() {
 }
 
 #[test]
+fn root_long_help_promotes_startup_and_write_examples() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(contains("cm serve"))
+        .stdout(contains("start MCP server on stdio"))
+        .stdout(contains("cm init"))
+        .stdout(contains("write config to ./.cm.config.toml"))
+        .stdout(contains("cm init --global"))
+        .stdout(contains(
+            "write config to ~/.context-matters/.cm.config.toml",
+        ))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("open http://localhost:3141/"))
+        .stdout(contains("cm forget 019d09ed-7a4f-7693"))
+        .stdout(contains("mark entry forgotten by id"));
+}
+
+#[test]
 fn root_long_help_avoids_obsolete_web_guidance() {
     cm().arg("--help")
         .assert()
@@ -267,6 +286,7 @@ fn init_help_shows_per_arg_descriptions() {
         .assert()
         .success()
         .stdout(contains("Write to ~/.context-matters/"))
+        .stdout(contains("write to ~/.context-matters/.cm.config.toml"))
         .stdout(contains("Overwrite an existing config file"));
 }
 
