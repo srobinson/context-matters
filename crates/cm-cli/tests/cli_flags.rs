@@ -22,11 +22,12 @@ fn cm() -> Command {
 // ---------------- Root help surface ----------------
 
 #[test]
-fn root_long_help_lists_all_twelve_subcommands() {
+fn root_long_help_lists_all_thirteen_subcommands() {
     cm().arg("--help")
         .assert()
         .success()
         .stdout(contains("recall"))
+        .stdout(contains("search"))
         .stdout(contains("browse"))
         .stdout(contains("get"))
         .stdout(contains("stats"))
@@ -41,11 +42,12 @@ fn root_long_help_lists_all_twelve_subcommands() {
 }
 
 #[test]
-fn root_short_help_lists_all_twelve_subcommands() {
+fn root_short_help_lists_all_thirteen_subcommands() {
     cm().arg("-h")
         .assert()
         .success()
         .stdout(contains("recall"))
+        .stdout(contains("search"))
         .stdout(contains("browse"))
         .stdout(contains("get"))
         .stdout(contains("stats"))
@@ -69,7 +71,85 @@ fn root_long_help_uses_read_write_admin_groups() {
         .stdout(contains("ADMIN Commands"))
         .stdout(contains("Examples"))
         .stdout(contains("Scope Resolution"))
-        .stdout(contains("Browse defaults to scope=cwd_inferred"));
+        .stdout(contains("search requires --scope"))
+        .stdout(contains("browse starts at cwd_inferred"));
+}
+
+#[test]
+fn root_long_help_bridges_cli_and_mcp_names() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(contains(
+            "This CLI mirrors the MCP tool surface. From a shell, use cm <command>.",
+        ))
+        .stdout(contains(
+            "From an MCP client, the same operations are exposed as cx_<command>.",
+        ))
+        .stdout(contains("Run cm serve to start the MCP server on stdio."));
+}
+
+#[test]
+fn root_long_help_surfaces_read_scope_contracts() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(contains(
+            "recall      Search one scope plus ancestors. Default: global.",
+        ))
+        .stdout(contains(
+            "search      Content search across scopes. Requires --scope.",
+        ))
+        .stdout(contains(
+            "browse      Filtered inventory with pagination. Default: cwd_inferred.",
+        ));
+}
+
+#[test]
+fn root_long_help_promotes_startup_and_write_examples() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(contains("cm serve"))
+        .stdout(contains("start MCP server on stdio"))
+        .stdout(contains("cm init"))
+        .stdout(contains("write config to ./.cm.config.toml"))
+        .stdout(contains("cm init --global"))
+        .stdout(contains(
+            "write config to ~/.context-matters/.cm.config.toml",
+        ))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("open http://localhost:3141/"))
+        .stdout(contains("cm forget 019d09ed-7a4f-7693"))
+        .stdout(contains("mark entry forgotten by id"));
+}
+
+#[test]
+fn root_long_help_avoids_obsolete_web_guidance() {
+    cm().arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Curator").not())
+        .stdout(predicates::str::contains("cm serve --web").not())
+        .stdout(predicates::str::contains("tiered FTS5").not())
+        .stdout(contains("Create a new entry via cm-web"))
+        .stdout(contains("Mark entries forgotten"));
+}
+
+#[test]
+fn root_short_help_surfaces_read_scope_contracts() {
+    cm().arg("-h")
+        .assert()
+        .success()
+        .stdout(contains(
+            "recall      Search one scope plus ancestors. Default: global.",
+        ))
+        .stdout(contains(
+            "search      Content search across scopes. Requires --scope.",
+        ))
+        .stdout(contains(
+            "browse      Filtered inventory with pagination. Default: cwd_inferred.",
+        ));
 }
 
 #[test]
@@ -99,6 +179,22 @@ fn recall_help_shows_per_arg_descriptions() {
         .stdout(contains("FTS5 search query"))
         .stdout(contains("Scope selector"))
         .stdout(contains("Filter by entry kind"));
+}
+
+#[test]
+fn search_help_shows_per_arg_descriptions() {
+    cm().args(["search", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Required FTS5 search query"))
+        .stdout(contains("exact path"))
+        .stdout(contains("reserved value cwd_inferred"))
+        .stdout(contains("structured subtree/set/all JSON"))
+        .stdout(contains("Filter by entry kind"))
+        .stdout(contains("Filter by tag"))
+        .stdout(contains("Maximum number of results"))
+        .stdout(contains("Pagination cursor"))
+        .stdout(contains("Emit JSON instead of human-readable text"));
 }
 
 #[test]
@@ -148,7 +244,11 @@ fn store_help_shows_per_arg_descriptions() {
         .stdout(contains("cwd_inferred"))
         .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Confidence level"))
-        .stdout(contains("Numeric priority"));
+        .stdout(contains("Numeric priority"))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("http://localhost:3141/"))
+        .stdout(predicates::str::contains("Curator").not())
+        .stdout(predicates::str::contains("cm serve --web").not());
 }
 
 #[test]
@@ -186,6 +286,7 @@ fn init_help_shows_per_arg_descriptions() {
         .assert()
         .success()
         .stdout(contains("Write to ~/.context-matters/"))
+        .stdout(contains("write to ~/.context-matters/.cm.config.toml"))
         .stdout(contains("Overwrite an existing config file"));
 }
 
@@ -210,7 +311,7 @@ fn export_help_shows_per_arg_descriptions() {
 
 #[test]
 fn migrated_scope_help_names_cwd_inferred_as_reserved_value() {
-    for command in ["recall", "store", "deposit", "browse", "export"] {
+    for command in ["recall", "search", "store", "deposit", "browse", "export"] {
         cm().args([command, "--help"])
             .assert()
             .success()

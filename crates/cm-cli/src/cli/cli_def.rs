@@ -53,7 +53,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-/// Twelve-variant `cm` subcommand surface. The cluster ordering matches
+/// Thirteen-variant `cm` subcommand surface. The cluster ordering matches
 /// the READ / WRITE / ADMIN groups in [`super::help_text::SHORT_HELP`].
 #[derive(Subcommand, Debug)]
 pub enum Commands {
@@ -73,6 +73,25 @@ pub enum Commands {
         limit: Option<u32>,
         #[arg(long, help = gh::RECALL_MAX_TOKENS_HELP)]
         max_tokens: Option<u32>,
+        #[arg(short = 'j', long, help = "Emit JSON instead of human-readable text")]
+        json: bool,
+    },
+
+    /// Search entries by content across explicit scopes.
+    #[command(long_about = gh::SEARCH_ABOUT, after_help = ht::SEARCH_AFTER_HELP)]
+    Search {
+        #[arg(help = gh::SEARCH_QUERY_HELP)]
+        query: String,
+        #[arg(long, required = true, help = gh::SEARCH_SCOPE_HELP)]
+        scope: String,
+        #[arg(long, value_delimiter = ',', help = gh::SEARCH_KINDS_HELP)]
+        kinds: Vec<String>,
+        #[arg(long, value_delimiter = ',', help = gh::SEARCH_TAGS_HELP)]
+        tags: Vec<String>,
+        #[arg(long, help = gh::SEARCH_LIMIT_HELP)]
+        limit: Option<u32>,
+        #[arg(long, help = gh::SEARCH_CURSOR_HELP)]
+        cursor: Option<String>,
         #[arg(short = 'j', long, help = "Emit JSON instead of human-readable text")]
         json: bool,
     },
@@ -125,8 +144,7 @@ pub enum Commands {
 
     // ---------------- WRITE ----------------
     /// Store a new entry. The CLI surface mirrors the MCP `cx_store` tool;
-    /// the canonical interactive entry path is the Curator UI under
-    /// `cm serve --web`.
+    /// the canonical interactive entry path is `cm-web --open`.
     #[command(long_about = gh::STORE_ABOUT, after_help = ht::STORE_AFTER_HELP)]
     Store {
         #[arg(long, help = gh::STORE_TITLE_HELP)]
@@ -185,7 +203,7 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Soft-delete entries.
+    /// Mark entries forgotten.
     #[command(long_about = gh::FORGET_ABOUT, after_help = ht::FORGET_AFTER_HELP)]
     Forget {
         #[arg(required = true, num_args = 1..=100, help = gh::FORGET_IDS_HELP)]
@@ -196,7 +214,10 @@ pub enum Commands {
     /// Generate a commented config file with default values.
     #[command(after_help = ht::INIT_AFTER_HELP)]
     Init {
-        #[arg(long, help = "Write to ~/.context-matters/ instead of CWD")]
+        #[arg(
+            long,
+            help = "Write to ~/.context-matters/.cm.config.toml instead of CWD"
+        )]
         global: bool,
         #[arg(long, help = "Overwrite an existing config file")]
         force: bool,

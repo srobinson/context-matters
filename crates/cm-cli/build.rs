@@ -391,7 +391,7 @@ fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolD
         ),
         (
             "cx_forget",
-            "Soft-delete entries no longer relevant",
+            "Mark entries forgotten so active reads skip them",
             r#"`cx_forget(ids: ["uuid"])`"#,
         ),
         (

@@ -13,16 +13,17 @@ pub const HELP_TEMPLATE: &str = "{about-with-newline}\n{before-help}\n";
 /// Short summary shown by `cm -h`.
 pub const SHORT_HELP: &str = cstr!(
     r#"<bold><underline>READ</underline></bold>
-  <bold>recall</bold>      Search context entries with FTS5 + scope walk
-  <bold>browse</bold>      Filtered inventory with pagination
+  <bold>recall</bold>      Search one scope plus ancestors. Default: global.
+  <bold>search</bold>      Content search across scopes. Requires --scope.
+  <bold>browse</bold>      Filtered inventory with pagination. Default: cwd_inferred.
   <bold>get</bold>         Fetch full entry content by ID
   <bold>stats</bold>       Show store statistics and scope tree
 
 <bold><underline>WRITE</underline></bold>
-  <bold>store</bold>       Create a new entry (use the Curator UI)
+  <bold>store</bold>       Create a new entry via cm-web
   <bold>update</bold>      Partially update an entry
   <bold>deposit</bold>     Batch-store conversation exchanges
-  <bold>forget</bold>      Soft-delete entries
+  <bold>forget</bold>      Mark entries forgotten
 
 <bold><underline>ADMIN</underline></bold>
   <bold>init</bold>        Write a default config file
@@ -37,17 +38,22 @@ https://github.com/srobinson/context-matters"#
 /// Long help shown by `cm --help`. Adds an examples block and the
 /// scope-resolution hint.
 pub const LONG_HELP: &str = cstr!(
-    r#"<bold><underline>READ Commands</underline></bold>
-  <bold>recall</bold>      Search context entries with FTS5 + scope walk
-  <bold>browse</bold>      Filtered inventory with pagination
+    r#"This CLI mirrors the MCP tool surface. From a shell, use <bold>cm <<command>></bold>.
+From an MCP client, the same operations are exposed as <bold>cx_<<command>></bold>.
+Run <bold>cm serve</bold> to start the MCP server on stdio.
+
+<bold><underline>READ Commands</underline></bold>
+  <bold>recall</bold>      Search one scope plus ancestors. Default: global.
+  <bold>search</bold>      Content search across scopes. Requires --scope.
+  <bold>browse</bold>      Filtered inventory with pagination. Default: cwd_inferred.
   <bold>get</bold>         Fetch full entry content by ID
   <bold>stats</bold>       Show store statistics and scope tree
 
 <bold><underline>WRITE Commands</underline></bold>
-  <bold>store</bold>       Create a new entry (use the Curator UI)
+  <bold>store</bold>       Create a new entry via cm-web
   <bold>update</bold>      Partially update an entry
   <bold>deposit</bold>     Batch-store conversation exchanges
-  <bold>forget</bold>      Soft-delete entries
+  <bold>forget</bold>      Mark entries forgotten
 
 <bold><underline>ADMIN Commands</underline></bold>
   <bold>init</bold>        Write a default config file
@@ -56,15 +62,21 @@ pub const LONG_HELP: &str = cstr!(
   <bold>completions</bold> Generate shell completion script
 
 <bold><underline>Examples</underline></bold>
-  <dim>$</dim> <bold>cm recall "auth migration"</bold>           <dim># tiered FTS5 with scope walk</dim>
+  <dim>$</dim> <bold>cm serve</bold>                              <dim># start MCP server on stdio</dim>
+  <dim>$</dim> <bold>cm init</bold>                               <dim># write config to ./.cm.config.toml</dim>
+  <dim>$</dim> <bold>cm init --global</bold>                      <dim># write config to ~/.context-matters/.cm.config.toml</dim>
+  <dim>$</dim> <bold>cm-web --open</bold>                         <dim># open http://localhost:3141/</dim>
+  <dim>$</dim> <bold>cm forget 019d09ed-7a4f-7693</bold>          <dim># mark entry forgotten by id</dim>
+  <dim>$</dim> <bold>cm recall "auth migration"</bold>            <dim># FTS5 search with scope walk</dim>
+  <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
   <dim>$</dim> <bold>cm browse --kind decision -j</bold>          <dim># JSON inventory of decisions</dim>
   <dim>$</dim> <bold>cm get 019d09ed-7a4f-7693</bold>             <dim># full entry by id</dim>
   <dim>$</dim> <bold>cm stats</bold>                              <dim># scope tree + counts</dim>
   <dim>$</dim> <bold>cm export --scope global/project:helioy</bold> <dim># JSON snapshot of a subtree</dim>
 
 <bold><underline>Scope Resolution</underline></bold>
-  Recall defaults to <bold>global</bold>. Browse defaults to <bold>scope=cwd_inferred</bold>
-  for local inference; use <bold>--scope PATH</bold> for exact filtering.
+  Recall starts at <bold>global</bold>; search requires <bold>--scope</bold>;
+  browse starts at <bold>cwd_inferred</bold>. Use <bold>--scope PATH</bold> for exact filtering.
   Run <bold>cm stats</bold> to discover all scope paths in the store.
 
 https://github.com/srobinson/context-matters"#
@@ -78,6 +90,15 @@ pub const RECALL_AFTER_HELP: &str = cstr!(
   <dim>$</dim> <bold>cm recall --scope global/project:helioy --tags rust</bold>
   <dim>$</dim> <bold>cm recall --kinds decision,feedback --limit 5</bold>
   <dim>$</dim> <bold>cm recall "topic" -j | jq .entries</bold>                  <dim># JSON to jq</dim>"#
+);
+
+/// `after_help` for `cm search`.
+pub const SEARCH_AFTER_HELP: &str = cstr!(
+    r#"<bold><underline>Examples</underline></bold>
+  <dim>$</dim> <bold>cm search "auth migration" --scope global/project:helioy</bold>
+  <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
+  <dim>$</dim> <bold>cm search "rust*" --scope '{"kind":"subtree","path":"global/project:helioy"}' -j</bold>
+  <dim>$</dim> <bold>cm search "topic" --scope global --limit 5 --cursor eyJ...</bold>"#
 );
 
 /// `after_help` for `cm browse`.
@@ -108,10 +129,10 @@ pub const STATS_AFTER_HELP: &str = cstr!(
 
 /// `after_help` for `cm store`.
 pub const STORE_AFTER_HELP: &str = cstr!(
-    r#"<bold><underline>Curator UI</underline></bold>
-  Direct entry creation lives in the Curator web UI. Run:
-  <dim>$</dim> <bold>cm serve --web</bold>                                       <dim># launch Curator UI</dim>
-  Then open <bold>http://localhost:7878/curator</bold> in your browser."#
+    r#"<bold><underline>Web UI</underline></bold>
+  Direct entry creation lives in cm-web. Run:
+  <dim>$</dim> <bold>cm-web --open</bold>                                        <dim># open http://localhost:3141/</dim>
+  Or open <bold>http://localhost:3141/</bold> in your browser."#
 );
 
 /// `after_help` for `cm update`.
@@ -150,7 +171,7 @@ pub const EXPORT_AFTER_HELP: &str = cstr!(
 pub const INIT_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm init</bold>                                              <dim># write to ./.cm.config.toml</dim>
-  <dim>$</dim> <bold>cm init --global</bold>                                     <dim># write to ~/.context-matters/</dim>
+  <dim>$</dim> <bold>cm init --global</bold>                                     <dim># write to ~/.context-matters/.cm.config.toml</dim>
   <dim>$</dim> <bold>cm init --force</bold>                                      <dim># overwrite an existing file</dim>"#
 );
 

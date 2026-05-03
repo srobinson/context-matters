@@ -20,7 +20,7 @@ pub const SEARCH_ABOUT: &str = "Search cm entries by content across scopes.\n\nR
 #[rustfmt::skip]
 pub const SEARCH_QUERY_HELP: &str = "Required FTS5 search query";
 #[rustfmt::skip]
-pub const SEARCH_SCOPE_HELP: &str = "Structured ScopeSelector JSON";
+pub const SEARCH_SCOPE_HELP: &str = "Scope selector: exact path, reserved value cwd_inferred, or structured subtree/set/all JSON";
 #[rustfmt::skip]
 pub const SEARCH_KINDS_HELP: &str = "Filter by entry kind";
 #[rustfmt::skip]
@@ -31,7 +31,7 @@ pub const SEARCH_LIMIT_HELP: &str = "Maximum number of results";
 pub const SEARCH_CURSOR_HELP: &str = "Pagination cursor from previous cx_search response";
 
 #[rustfmt::skip]
-pub const STORE_ABOUT: &str = "Store a context entry.\n\nCreates a new entry with title, body, kind, and optional metadata. Scope chain is auto-created if missing. Use --supersedes to replace an existing entry.";
+pub const STORE_ABOUT: &str = "cm store is a CLI stub for entry creation.\n\nDirect entry creation lives in cm-web. Run cm-web --open or open http://localhost:3141/ in your browser. Agents can also call the MCP tool cx_store.";
 #[rustfmt::skip]
 pub const STORE_TITLE_HELP: &str = "Entry title (short summary)";
 #[rustfmt::skip]
@@ -53,7 +53,7 @@ pub const STORE_EXPIRES_AT_HELP: &str = "Expiry timestamp (ISO 8601). Entry is c
 #[rustfmt::skip]
 pub const STORE_PRIORITY_HELP: &str = "Numeric priority (higher = surfaces first)";
 #[rustfmt::skip]
-pub const STORE_SUPERSEDES_HELP: &str = "ID of entry to supersede (soft-deletes old, creates replacement)";
+pub const STORE_SUPERSEDES_HELP: &str = "ID of entry to supersede (marks old inactive, creates replacement)";
 
 #[rustfmt::skip]
 pub const DEPOSIT_ABOUT: &str = "Batch-store conversation exchanges.\n\nEach exchange becomes an observation entry. Provide an optional summary to create a linked summary entry.";
@@ -104,7 +104,7 @@ pub const UPDATE_KIND_HELP: &str = "New kind (omit to keep existing). Recomputes
 pub const UPDATE_META_HELP: &str = "Replace metadata (JSON object with tags, confidence, source, expires_at, priority)";
 
 #[rustfmt::skip]
-pub const FORGET_ABOUT: &str = "Soft-delete entries.\n\nMarks entries as forgotten (sets superseded_by to own ID). Already-inactive entries are skipped.";
+pub const FORGET_ABOUT: &str = "Mark entries forgotten.\n\nSets superseded_by to own ID so active reads skip them. Already-inactive entries are skipped.";
 #[rustfmt::skip]
 pub const FORGET_IDS_HELP: &str = "Entry IDs to forget (space-separated, max 100)";
 

@@ -24,6 +24,10 @@ Runs as a Model Context Protocol server. Ten tools, all prefixed `cx_*`.
 cm serve
 ```
 
+This CLI mirrors the MCP tool surface. From a shell, use `cm <command>`.
+From an MCP client, the same operations are exposed as `cx_<command>`.
+Run `cm serve` to start the MCP server on stdio.
+
 | Tool | Purpose |
 |------|---------|
 | `cx_recall` | Priority context for one known scope via ancestor walk |
@@ -33,9 +37,39 @@ cm serve
 | `cx_browse` | List entries with filters and cursor pagination |
 | `cx_get` | Fetch full content for specific entry IDs |
 | `cx_update` | Partially update an existing entry |
-| `cx_forget` | Soft-delete entries no longer relevant |
+| `cx_forget` | Mark entries forgotten so active reads skip them |
 | `cx_stats` | Store statistics and scope breakdown |
 | `cx_export` | Export entries as JSON for backup |
+
+## CLI read commands
+
+The CLI reads from the same store as the `cx_*` MCP tools.
+
+| Command | Scope contract |
+|---------|----------------|
+| `cm recall` | Search one scope plus ancestors. Default: `global`. |
+| `cm search` | Content search across scopes. Requires `--scope`. |
+| `cm browse` | Filtered inventory with pagination. Default: `cwd_inferred`. |
+
+## CLI examples
+
+```bash
+cm serve                              # start MCP server on stdio
+cm init                               # write config to ./.cm.config.toml
+cm init --global                      # write config to ~/.context-matters/.cm.config.toml
+cm-web --open                         # open http://localhost:3141/
+cm forget 019d09ed-7a4f-7693          # mark entry forgotten by id
+cm recall "auth migration"            # FTS5 search with scope walk
+cm search "auth migration" --scope '{"kind":"all"}'
+cm browse --kind decision -j          # JSON inventory of decisions
+cm get 019d09ed-7a4f-7693             # full entry by id
+cm stats                              # scope tree + counts
+cm export --scope global/project:helioy # JSON snapshot of a subtree
+```
+
+## Web UI
+
+Run `cm-web --open` for browser entry management and monitoring. It serves `http://localhost:3141/` by default.
 
 ## Scope model
 
@@ -72,7 +106,7 @@ Five crates, clean separation:
 | `cm-store` | SQLite adapter via sqlx. WAL mode, FTS5 search, BLAKE3 dedup. |
 | `cm-capabilities` | Shared request/response types, validation, scope resolution, projections. |
 | `cm-cli` | CLI binary + MCP server. Tool docs generated from `tools.toml`. |
-| `cm-web` | Web monitoring dashboard with Axum and React/Vite. |
+| `cm-web` | Web monitoring dashboard with Axum and React/Vite. Run `cm-web --open`; default URL: `http://localhost:3141/`. |
 
 ## Development
 

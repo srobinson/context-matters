@@ -23,7 +23,7 @@ This project has a structured context store available via the **`cm` MCP server*
 | `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})` |
 | `cx_get` | Fetch full content for specific entry IDs | `cx_get(ids: ["uuid1", "uuid2"])` |
 | `cx_update` | Partially update an existing entry | `cx_update(id: "uuid", title: "Updated title")` |
-| `cx_forget` | Soft-delete entries no longer relevant | `cx_forget(ids: ["uuid"])` |
+| `cx_forget` | Mark entries forgotten so active reads skip them | `cx_forget(ids: ["uuid"])` |
 | `cx_stats` | View store statistics and scope breakdown | `cx_stats()` |
 | `cx_export` | Export entries as JSON for backup | `cx_export(scope: "global/project:helioy")` |
 
@@ -36,7 +36,7 @@ This project has a structured context store available via the **`cm` MCP server*
 5. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
 6. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
 7. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
-8. **Forget** — `cx_forget(ids)` — soft-delete entries no longer relevant.
+8. **Forget** — `cx_forget(ids)` — mark entries forgotten so active reads skip them.
 
 ### Task Workflow
 
@@ -120,7 +120,7 @@ Search cm entries by content across scopes. Returns FTS5 BM25-ranked hits. Use c
 
 ### `cx_store`
 
-Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry (soft-deletes the old one). Returns the new entry ID and content hash.
+Store a single context entry with structured metadata. Scopes are auto-created if they do not exist. Use 'supersedes' to replace an existing entry by marking the old one inactive. Returns the new entry ID and content hash.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -134,7 +134,7 @@ Store a single context entry with structured metadata. Scopes are auto-created i
 | `source` | string | no | Source URL or file path for reference entries. |
 | `expires_at` | string | no | ISO 8601 expiry timestamp. After this time the entry is considered stale. Stored but not enforced by the storage layer. |
 | `priority` | integer | no | Numeric priority for manual ordering. Higher values surface first in recall results. |
-| `supersedes` | string | no | ID of an existing entry that this new entry replaces. The old entry is soft-deleted and linked via a 'supersedes' rel... |
+| `supersedes` | string | no | ID of an existing entry that this new entry replaces. The old entry is marked inactive and linked via a 'supersedes' ... |
 
 ### `cx_deposit`
 
@@ -184,7 +184,7 @@ Partially update an existing entry. Only provided fields are modified. Changing 
 
 ### `cx_forget`
 
-Soft-delete entries by marking them as forgotten. Sets superseded_by to the entry's own ID, distinguishing forgotten entries from entries superseded by a replacement. Already-inactive entries are silently skipped. Maximum 100 IDs per request. Partial success is reported.
+Mark entries as forgotten. Sets superseded_by to the entry's own ID, distinguishing forgotten entries from entries superseded by a replacement. Already-inactive entries are silently skipped. Maximum 100 IDs per request. Partial success is reported.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

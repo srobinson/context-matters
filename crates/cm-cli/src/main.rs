@@ -65,6 +65,22 @@ async fn run() -> Result<()> {
             }
             Ok(())
         }
+        Some(Commands::Search {
+            query,
+            scope,
+            kinds,
+            tags,
+            limit,
+            cursor,
+            json,
+        }) => {
+            let store = cli::open_store().await?;
+            cli::search::run(&store, query, scope, kinds, tags, limit, cursor, json).await?;
+            if let Err(e) = cm_store::schema::wal_checkpoint(store.write_pool()).await {
+                tracing::debug!(error = %e, "WAL checkpoint failed");
+            }
+            Ok(())
+        }
         Some(Commands::Browse {
             scope,
             cwd,

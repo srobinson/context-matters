@@ -16,6 +16,7 @@ use std::path::Path;
 use assert_cmd::Command;
 use cm_capabilities::recall::RECALL_SCOPE_DEFAULT_ADVISORY;
 use cm_capabilities::validation::{parse_kind, parse_tag_sort};
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -96,14 +97,31 @@ fn round_trip_deposit_recall_get_update_forget_stats() {
 // ---------------- Store stub ----------------
 
 #[test]
-fn store_stub_points_users_to_curator_ui() {
+fn store_stub_points_users_to_cm_web() {
     let dir = tempdir().unwrap();
     cm_with_data_dir(dir.path())
         .args(["store"])
         .assert()
         .success()
-        .stdout(contains("Curator"))
-        .stdout(contains("cm serve --web"));
+        .stdout(contains("cm-web"))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("http://localhost:3141/"))
+        .stdout(predicates::str::contains("cm serve --web").not());
+}
+
+#[test]
+fn store_help_describes_cli_stub() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["store", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("cm store is a CLI stub for entry creation."))
+        .stdout(contains("Direct entry creation lives in cm-web."))
+        .stdout(contains("cm-web --open"))
+        .stdout(contains("http://localhost:3141/"))
+        .stdout(predicates::str::contains("Store a context entry").not())
+        .stdout(predicates::str::contains("Creates a new entry").not());
 }
 
 #[test]
@@ -124,8 +142,10 @@ fn store_stub_accepts_current_scope_selectors() {
             .args(["store", "--scope", scope])
             .assert()
             .success()
-            .stdout(contains("Curator"))
-            .stdout(contains("cm serve --web"));
+            .stdout(contains("cm-web"))
+            .stdout(contains("cm-web --open"))
+            .stdout(contains("http://localhost:3141/"))
+            .stdout(predicates::str::contains("cm serve --web").not());
     }
 }
 
@@ -405,6 +425,72 @@ fn recall_query_finds_seeded_entry_by_keyword() {
         .assert()
         .success()
         .stdout(contains("keyword test"));
+}
+
+#[test]
+fn search_with_explicit_all_scope_finds_seeded_entries() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global/project:helioy",
+            "--exchanges",
+            r#"[{"user":"crossscopekeyword body","assistant":"reply","title":"search project hit"}]"#,
+        ])
+        .assert()
+        .success();
+
+    cm_with_data_dir(dir.path())
+        .args([
+            "search",
+            "crossscopekeyword",
+            "--scope",
+            r#"{"kind":"all"}"#,
+        ])
+        .assert()
+        .success()
+        .stdout(contains("search project hit"));
+}
+
+#[test]
+fn search_json_emits_parseable_header_and_entries() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args([
+            "deposit",
+            "--scope",
+            "global/project:helioy",
+            "--exchanges",
+            r#"[{"user":"jsonsearchkeyword body","assistant":"reply","title":"search json hit"}]"#,
+        ])
+        .assert()
+        .success();
+
+    let assert = cm_with_data_dir(dir.path())
+        .args([
+            "search",
+            "jsonsearchkeyword",
+            "--scope",
+            r#"{"kind":"all"}"#,
+            "-j",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    let json: Value = serde_json::from_str(&stdout).expect("search -j must emit valid JSON");
+    assert_eq!(json["header"]["query"], "jsonsearchkeyword");
+    assert_eq!(json["entries"][0]["title"], "search json hit");
+}
+
+#[test]
+fn search_requires_explicit_scope() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["search", "anything"])
+        .assert()
+        .failure()
+        .stderr(contains("required"));
 }
 
 #[test]
