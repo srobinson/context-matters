@@ -482,7 +482,6 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
- "clap",
  "cm-capabilities",
  "cm-core",
  "cm-store",
@@ -497,7 +496,6 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
- "tracing-subscriber",
  "url",
  "uuid",
 ]
