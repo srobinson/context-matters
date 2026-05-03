@@ -22,6 +22,7 @@ path = "src/main.rs"
 cm-capabilities = { workspace = true }
 cm-core = { workspace = true }
 cm-store = { workspace = true }
+cm-web = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 clap = { workspace = true }

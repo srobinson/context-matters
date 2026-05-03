@@ -22,7 +22,7 @@ fn cm() -> Command {
 // ---------------- Root help surface ----------------
 
 #[test]
-fn root_long_help_lists_all_thirteen_subcommands() {
+fn root_long_help_lists_all_fourteen_subcommands() {
     cm().arg("--help")
         .assert()
         .success()
@@ -37,12 +37,13 @@ fn root_long_help_lists_all_thirteen_subcommands() {
         .stdout(contains("forget"))
         .stdout(contains("init"))
         .stdout(contains("serve"))
+        .stdout(contains("web"))
         .stdout(contains("export"))
         .stdout(contains("completions"));
 }
 
 #[test]
-fn root_short_help_lists_all_thirteen_subcommands() {
+fn root_short_help_lists_all_fourteen_subcommands() {
     cm().arg("-h")
         .assert()
         .success()
@@ -57,6 +58,7 @@ fn root_short_help_lists_all_thirteen_subcommands() {
         .stdout(contains("forget"))
         .stdout(contains("init"))
         .stdout(contains("serve"))
+        .stdout(contains("web"))
         .stdout(contains("export"))
         .stdout(contains("completions"));
 }
@@ -118,7 +120,7 @@ fn root_long_help_promotes_startup_and_write_examples() {
         .stdout(contains(
             "write config to ~/.context-matters/.cm.config.toml",
         ))
-        .stdout(contains("cm-web --open"))
+        .stdout(contains("cm web --open"))
         .stdout(contains("open http://localhost:3141/"))
         .stdout(contains("cm forget 019d09ed-7a4f-7693"))
         .stdout(contains("mark entry forgotten by id"));
@@ -132,7 +134,7 @@ fn root_long_help_avoids_obsolete_web_guidance() {
         .stdout(predicates::str::contains("Curator").not())
         .stdout(predicates::str::contains("cm serve --web").not())
         .stdout(predicates::str::contains("tiered FTS5").not())
-        .stdout(contains("Create a new entry via cm-web"))
+        .stdout(contains("Create a new entry via the web UI"))
         .stdout(contains("Mark entries forgotten"));
 }
 
@@ -245,7 +247,7 @@ fn store_help_shows_per_arg_descriptions() {
         .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Confidence level"))
         .stdout(contains("Numeric priority"))
-        .stdout(contains("cm-web --open"))
+        .stdout(contains("cm web --open"))
         .stdout(contains("http://localhost:3141/"))
         .stdout(predicates::str::contains("Curator").not())
         .stdout(predicates::str::contains("cm serve --web").not());
@@ -296,6 +298,17 @@ fn serve_help_shows_examples_block() {
         .assert()
         .success()
         .stdout(contains("MCP server on stdio"));
+}
+
+#[test]
+fn web_help_shows_per_arg_descriptions() {
+    cm().args(["web", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Start the embedded web UI"))
+        .stdout(contains("Open http://localhost:3141/ after starting"))
+        .stdout(contains("Port to listen on. Defaults to 3141."))
+        .stdout(contains("cm web --port 4000"));
 }
 
 #[test]

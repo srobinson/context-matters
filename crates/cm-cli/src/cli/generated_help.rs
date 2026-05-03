@@ -31,7 +31,7 @@ pub const SEARCH_LIMIT_HELP: &str = "Maximum number of results";
 pub const SEARCH_CURSOR_HELP: &str = "Pagination cursor from previous cx_search response";
 
 #[rustfmt::skip]
-pub const STORE_ABOUT: &str = "cm store is a CLI stub for entry creation.\n\nDirect entry creation lives in cm-web. Run cm-web --open or open http://localhost:3141/ in your browser. Agents can also call the MCP tool cx_store.";
+pub const STORE_ABOUT: &str = "cm store is a CLI stub for entry creation.\n\nDirect entry creation lives in the web UI. Run cm web --open or open http://localhost:3141/ in your browser. Agents can also call the MCP tool cx_store.";
 #[rustfmt::skip]
 pub const STORE_TITLE_HELP: &str = "Entry title (short summary)";
 #[rustfmt::skip]

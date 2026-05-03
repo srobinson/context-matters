@@ -144,7 +144,7 @@ pub enum Commands {
 
     // ---------------- WRITE ----------------
     /// Store a new entry. The CLI surface mirrors the MCP `cx_store` tool;
-    /// the canonical interactive entry path is `cm-web --open`.
+    /// the canonical interactive entry path is `cm web --open`.
     #[command(long_about = gh::STORE_ABOUT, after_help = ht::STORE_AFTER_HELP)]
     Store {
         #[arg(long, help = gh::STORE_TITLE_HELP)]
@@ -226,6 +226,15 @@ pub enum Commands {
     /// Start the MCP server on stdio transport.
     #[command(after_help = ht::SERVE_AFTER_HELP)]
     Serve,
+
+    /// Start the embedded web UI.
+    #[command(after_help = ht::WEB_AFTER_HELP)]
+    Web {
+        #[arg(long, help = "Open http://localhost:3141/ after starting")]
+        open: bool,
+        #[arg(long, help = "Port to listen on. Defaults to 3141.")]
+        port: Option<u16>,
+    },
 
     /// Export entries and scopes as JSON.
     #[command(long_about = gh::EXPORT_ABOUT, after_help = ht::EXPORT_AFTER_HELP)]

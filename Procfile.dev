@@ -1,2 +1,2 @@
-backend: cargo run -p cm-web -- --verbose
+backend: cargo run -p cm-cli -- --verbose web
 frontend: ./scripts/dev-frontend.sh
