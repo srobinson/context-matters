@@ -15,6 +15,13 @@
 * The web UI now launches through `cm web --open`; the standalone `cm-web` command surface is retired.
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.15](https://github.com/srobinson/context-matters/compare/v0.2.14...v0.2.15) (2026-05-03)
+
+
+### Bug Fixes
+
+* retrigger release pipeline after deleted workflow run ([6c26bee](https://github.com/srobinson/context-matters/commit/6c26bee86bc2631c08323a48c3c05708892d066a))
+
 ## [0.2.14](https://github.com/srobinson/context-matters/compare/v0.2.13...v0.2.14) (2026-05-03)
 
 
