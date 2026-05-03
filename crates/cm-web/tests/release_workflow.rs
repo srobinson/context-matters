@@ -45,10 +45,38 @@ fn build_script_builds_frontend_assets_when_dist_is_missing() {
     );
 }
 
+#[test]
+fn changelog_notes_cm_web_command_surface() {
+    let changelog = read_changelog();
+    let unreleased = changelog
+        .split("## [")
+        .next()
+        .expect("changelog should include an unreleased section");
+
+    assert!(
+        unreleased.contains("cm web --open"),
+        "unreleased changelog should announce cm web --open"
+    );
+    assert!(
+        unreleased.contains("cm-web"),
+        "unreleased changelog should note the standalone cm-web surface"
+    );
+    assert!(
+        !changelog.contains("cm-web --open"),
+        "release copy should not recommend cm-web --open"
+    );
+}
+
 fn read_release_workflow() -> String {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let workflow_path = manifest_dir.join("../../.github/workflows/release.yml");
     fs::read_to_string(workflow_path).expect("release workflow should be readable")
+}
+
+fn read_changelog() -> String {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let changelog_path = manifest_dir.join("../../CHANGELOG.md");
+    fs::read_to_string(changelog_path).expect("changelog should be readable")
 }
 
 fn read_build_script() -> String {
