@@ -425,6 +425,7 @@ dependencies = [
  "cm-capabilities",
  "cm-core",
  "cm-store",
+ "cm-web",
  "color-print",
  "futures",
  "indexmap",

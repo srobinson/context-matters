@@ -227,6 +227,15 @@ pub enum Commands {
     #[command(after_help = ht::SERVE_AFTER_HELP)]
     Serve,
 
+    /// Start the embedded web UI.
+    #[command(after_help = ht::WEB_AFTER_HELP)]
+    Web {
+        #[arg(long, help = "Open http://localhost:3141/ after starting")]
+        open: bool,
+        #[arg(long, help = "Port to listen on. Defaults to 3141.")]
+        port: Option<u16>,
+    },
+
     /// Export entries and scopes as JSON.
     #[command(long_about = gh::EXPORT_ABOUT, after_help = ht::EXPORT_AFTER_HELP)]
     Export {

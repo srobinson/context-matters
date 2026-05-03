@@ -22,7 +22,7 @@ fn cm() -> Command {
 // ---------------- Root help surface ----------------
 
 #[test]
-fn root_long_help_lists_all_thirteen_subcommands() {
+fn root_long_help_lists_all_fourteen_subcommands() {
     cm().arg("--help")
         .assert()
         .success()
@@ -37,12 +37,13 @@ fn root_long_help_lists_all_thirteen_subcommands() {
         .stdout(contains("forget"))
         .stdout(contains("init"))
         .stdout(contains("serve"))
+        .stdout(contains("web"))
         .stdout(contains("export"))
         .stdout(contains("completions"));
 }
 
 #[test]
-fn root_short_help_lists_all_thirteen_subcommands() {
+fn root_short_help_lists_all_fourteen_subcommands() {
     cm().arg("-h")
         .assert()
         .success()
@@ -57,6 +58,7 @@ fn root_short_help_lists_all_thirteen_subcommands() {
         .stdout(contains("forget"))
         .stdout(contains("init"))
         .stdout(contains("serve"))
+        .stdout(contains("web"))
         .stdout(contains("export"))
         .stdout(contains("completions"));
 }
@@ -296,6 +298,17 @@ fn serve_help_shows_examples_block() {
         .assert()
         .success()
         .stdout(contains("MCP server on stdio"));
+}
+
+#[test]
+fn web_help_shows_per_arg_descriptions() {
+    cm().args(["web", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Start the embedded web UI"))
+        .stdout(contains("Open http://localhost:3141/ after starting"))
+        .stdout(contains("Port to listen on. Defaults to 3141."))
+        .stdout(contains("cm web --port 4000"));
 }
 
 #[test]

@@ -149,6 +149,21 @@ fn store_stub_accepts_current_scope_selectors() {
     }
 }
 
+// ---------------- Web UI ----------------
+
+#[test]
+fn web_help_describes_embedded_server_options() {
+    let dir = tempdir().unwrap();
+    cm_with_data_dir(dir.path())
+        .args(["web", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("Start the embedded web UI"))
+        .stdout(contains("--open"))
+        .stdout(contains("--port"))
+        .stdout(contains("3141"));
+}
+
 // ---------------- Init ----------------
 
 #[test]

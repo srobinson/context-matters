@@ -173,6 +173,14 @@ async fn run() -> Result<()> {
         // ---------------- ADMIN ----------------
         Some(Commands::Init { global, force }) => cli::cmd_init(global, force),
         Some(Commands::Serve) => cli::cmd_serve().await,
+        Some(Commands::Web { open, port }) => {
+            cm_web::serve(cm_web::ServeOptions {
+                open,
+                port,
+                host: None,
+            })
+            .await
+        }
         Some(Commands::Export { scope, format }) => {
             let store = cli::open_store().await?;
             cli::export::run(&store, scope, format).await?;
