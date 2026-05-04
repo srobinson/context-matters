@@ -37,3 +37,6 @@ url = "2"
 http-body-util = "0.1"
 tempfile = "3"
 tower = "0.5"
+
+[build-dependencies]
+which = "7"

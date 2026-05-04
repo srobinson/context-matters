@@ -50,17 +50,15 @@ fn run_pnpm(frontend_dir: &Path, args: &[&str]) {
 }
 
 fn package_manager_command(args: &[&str]) -> Command {
-    if command_exists("corepack") {
-        let mut command = Command::new("corepack");
+    if let Ok(exe) = which::which("corepack") {
+        let mut command = Command::new(exe);
         command.arg("pnpm").args(args);
         return command;
     }
 
-    let mut command = Command::new("pnpm");
+    let pnpm = which::which("pnpm")
+        .expect("corepack or pnpm must be on PATH to build the cm-web frontend");
+    let mut command = Command::new(pnpm);
     command.args(args);
     command
-}
-
-fn command_exists(program: &str) -> bool {
-    Command::new(program).arg("--version").output().is_ok()
 }
