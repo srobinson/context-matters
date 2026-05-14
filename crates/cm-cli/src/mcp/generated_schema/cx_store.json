@@ -43,8 +43,118 @@
         "type": "integer"
       },
       "scope": {
-        "description": "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'.",
-        "type": "string"
+        "description": "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global.",
+        "oneOf": [
+          {
+            "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred.",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "path"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "cwd_inferred"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "project"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "repo"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "repo"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "session"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "session"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "source": {
         "description": "Source URL or file path for reference entries.",
@@ -73,5 +183,51 @@
     ],
     "type": "object"
   },
-  "name": "cx_store"
+  "name": "cx_store",
+  "outputSchema": {
+    "description": "Store receipt: created entry id, resolved scope path, entry kind, content hash, and scope creation status.",
+    "properties": {
+      "content_hash": {
+        "description": "Full BLAKE3 content hash.",
+        "type": "string"
+      },
+      "id": {
+        "description": "Created entry id.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "fact",
+          "decision",
+          "preference",
+          "lesson",
+          "reference",
+          "feedback",
+          "pattern",
+          "observation"
+        ],
+        "type": "string"
+      },
+      "scope_created": {
+        "description": "True when this write created at least one missing scope in the chain.",
+        "type": "boolean"
+      },
+      "scope_path": {
+        "description": "Resolved canonical scope path.",
+        "type": "string"
+      },
+      "superseded_id": {
+        "description": "Entry id superseded by this write, or null when absent."
+      }
+    },
+    "required": [
+      "id",
+      "scope_path",
+      "kind",
+      "content_hash",
+      "scope_created"
+    ],
+    "type": "object"
+  }
 }

@@ -5,9 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MIGRATED_SCOPE_TOOLS: [&str; 5] = [
+const MIGRATED_SCOPE_TOOLS: [&str; 6] = [
     "cx_browse",
     "cx_recall",
+    "cx_search",
     "cx_store",
     "cx_deposit",
     "cx_export",
@@ -109,18 +110,18 @@ fn protocol_tools_list() {
         json!(["query", "scope"]),
         "cx_search must require query and structured scope"
     );
-    assert_eq!(
-        search_props["scope"]["type"], "object",
-        "cx_search scope input must be a structured ScopeSelector object"
+    assert!(
+        search_props["scope"]["oneOf"].is_array(),
+        "cx_search scope input must model ScopeInput variants"
     );
     for read_tool_name in ["cx_recall", "cx_browse"] {
         let read_tool = tools
             .iter()
             .find(|tool| tool["name"] == read_tool_name)
             .unwrap_or_else(|| panic!("{read_tool_name} tool is advertised"));
-        assert_eq!(
-            read_tool["inputSchema"]["properties"]["scope"]["type"], "object",
-            "{read_tool_name} scope input must be a structured ScopeSelector object"
+        assert!(
+            read_tool["inputSchema"]["properties"]["scope"]["oneOf"].is_array(),
+            "{read_tool_name} scope input must model ScopeInput variants"
         );
     }
     assert!(
@@ -168,28 +169,25 @@ fn protocol_tools_list() {
         );
     }
 
-    // ALP-1759: read tools advertise outputSchema so MCP 2025-06-18 clients can
-    // validate structuredContent. Write tools stay text-only (no structured
-    // receipt payload to describe).
-    let read_tools = [
+    // Every tool that emits structuredContent advertises outputSchema so MCP
+    // clients can validate both read projections and write receipts.
+    let structured_tools = [
         "cx_recall",
         "cx_search",
         "cx_browse",
         "cx_get",
         "cx_stats",
         "cx_export",
+        "cx_store",
+        "cx_deposit",
+        "cx_update",
+        "cx_forget",
     ];
-    let write_tools = ["cx_store", "cx_deposit", "cx_update", "cx_forget"];
     for tool in tools {
         let name = tool["name"].as_str().unwrap();
         let has_output_schema = tool.get("outputSchema").is_some_and(|v| v.is_object());
-        if read_tools.contains(&name) {
-            assert!(has_output_schema, "read tool {name} missing outputSchema");
-        } else if write_tools.contains(&name) {
-            assert!(
-                !has_output_schema,
-                "write tool {name} unexpectedly declares outputSchema"
-            );
+        if structured_tools.contains(&name) {
+            assert!(has_output_schema, "tool {name} missing outputSchema");
         }
     }
 
@@ -276,18 +274,23 @@ fn assert_generated_scope_schema_inputs_are_current() {
         let scope_description = scope["description"]
             .as_str()
             .unwrap_or_else(|| panic!("{relative} scope input has description"));
-        if matches!(tool, "cx_recall" | "cx_browse" | "cx_search") {
-            assert_eq!(
-                scope["type"], "object",
-                "{relative} scope input must be structured object JSON"
+        if matches!(
+            tool,
+            "cx_recall" | "cx_browse" | "cx_search" | "cx_store" | "cx_deposit" | "cx_export"
+        ) {
+            assert!(
+                scope["oneOf"].is_array(),
+                "{relative} scope input should model ScopeInput variants with oneOf"
             );
+        }
+        if matches!(tool, "cx_recall" | "cx_browse" | "cx_search") {
             assert!(
                 scope_description.contains("cwd_inferred"),
                 "{relative} scope input should describe cwd_inferred"
             );
         }
         if tool == "cx_browse" || tool == "cx_search" {
-            for vocabulary in ["subtree", "set", "all"] {
+            for vocabulary in ["descendants", "set", "all"] {
                 assert!(
                     scope_description.contains(vocabulary),
                     "{relative} scope input should describe {vocabulary} selectors"
@@ -323,7 +326,7 @@ fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
         "Public requests select scope through the `scope` field.",
         r#"cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})"#,
         "`cwd_inferred` resolves linked git worktrees to the source repository identity.",
-        "Persisted entries, export rows, and response payloads include a `scope_path` field",
+        "Persisted entries and export rows include `scope_path`.",
     ] {
         assert!(
             content.contains(required),

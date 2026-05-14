@@ -45,7 +45,7 @@ fn protocol_read_scope_tools_accept_structured_exact_scope() {
 }
 
 #[test]
-fn protocol_read_scope_tools_reject_plain_string_scope() {
+fn protocol_read_scope_tools_accept_plain_string_scope() {
     let dir = tempfile::tempdir().unwrap();
     let (child, mut stdin, mut stdout) = spawn_server(&dir);
 
@@ -55,17 +55,31 @@ fn protocol_read_scope_tools_reject_plain_string_scope() {
         &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
     );
 
-    for (id, tool) in [(2, "cx_recall"), (3, "cx_browse")] {
+    let store_resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &call_tool(
+            json!({
+                "title": "Exact scope fact",
+                "body": "Body.",
+                "kind": "fact",
+                "scope": "global/project:helioy"
+            }),
+            "cx_store",
+            2,
+        ),
+    );
+    assert!(store_resp["error"].is_null(), "store failed: {store_resp}");
+
+    for (id, tool) in [(3, "cx_recall"), (4, "cx_browse")] {
         let resp = send_request(
             &mut stdin,
             &mut stdout,
             &call_tool(json!({"scope": "global/project:helioy"}), tool, id),
         );
-        let message = tool_error_message(&resp);
         assert!(
-            message.contains("invalid type: string")
-                && message.contains("expected internally tagged enum"),
-            "{tool} should reject plain string scope, got {message:?}"
+            resp["error"].is_null(),
+            "{tool} should accept plain string scope, got {resp}"
         );
     }
 

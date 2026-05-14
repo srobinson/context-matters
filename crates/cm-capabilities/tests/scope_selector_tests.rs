@@ -50,6 +50,53 @@ fn scope_selector_parses_structured_path() {
 }
 
 #[test]
+fn scope_selector_parses_plain_scope_path() {
+    let selector = ScopeSelector::parse("global/project:helioy/repo:context-matters").unwrap();
+
+    assert_eq!(selector, ScopeSelector::Path(repo_scope()));
+}
+
+#[test]
+fn scope_selector_parses_project_repo_session_sugar() {
+    let cases = [
+        (
+            json!({"kind": "project", "project": "helioy"}),
+            "global/project:helioy",
+        ),
+        (
+            json!({"kind": "repo", "project": "helioy", "repo": "context-matters"}),
+            "global/project:helioy/repo:context-matters",
+        ),
+        (
+            json!({
+                "kind": "session",
+                "project": "helioy",
+                "repo": "context-matters",
+                "session": "analysis"
+            }),
+            "global/project:helioy/repo:context-matters/session:analysis",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let selector: ScopeSelector = serde_json::from_value(input).unwrap();
+        assert_eq!(
+            selector,
+            ScopeSelector::Path(ScopePath::parse(expected).unwrap())
+        );
+    }
+}
+
+#[test]
+fn scope_selector_parses_descendants_alias() {
+    let selector: ScopeSelector =
+        serde_json::from_value(json!({"kind": "descendants", "path": "global/project:helioy"}))
+            .unwrap();
+
+    assert_eq!(selector, ScopeSelector::Subtree(project_scope()));
+}
+
+#[test]
 fn scope_selector_round_trips_structured_variants() {
     let cwd = PathBuf::from("/tmp/helioy/context-matters");
     let path = ScopeSelector::Path(repo_scope());
@@ -109,13 +156,6 @@ fn scope_selector_rejects_removed_auto_value() {
     let err = ScopeSelector::parse("auto").unwrap_err();
 
     assert!(err.to_string().contains("cwd_inferred"));
-}
-
-#[test]
-fn scope_selector_rejects_legacy_plain_scope_path() {
-    let err = ScopeSelector::parse(repo_scope().as_str()).unwrap_err();
-
-    assert!(err.to_string().contains("JSON"));
 }
 
 #[test]

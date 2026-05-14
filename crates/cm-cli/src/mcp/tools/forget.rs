@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::mcp::{
-    ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, yaml_response,
+    ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
 };
 
 #[derive(Debug, Deserialize)]
@@ -25,10 +25,22 @@ pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         .await
         .map_err(cm_err_to_string)?;
 
-    yaml_response(format_forget_ack(
+    let text = format_forget_ack(
         result.forgotten,
         result.already_inactive,
         result.not_found,
         &result.errors,
-    ))
+    );
+    let errors: Vec<_> = result
+        .errors
+        .iter()
+        .map(|error| serde_json::json!({"id": error.id, "error": error.error}))
+        .collect();
+    let structured = serde_json::json!({
+        "forgotten": result.forgotten,
+        "already_inactive": result.already_inactive,
+        "not_found": result.not_found,
+        "errors": errors
+    });
+    dual_response(text, &structured)
 }

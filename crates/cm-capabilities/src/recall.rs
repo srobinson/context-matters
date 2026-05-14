@@ -89,7 +89,7 @@ fn reject_non_singular_scope(selector: &ScopeSelector) -> Result<(), CmError> {
         ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => {
             Err(CmError::InvalidOperationInput {
                 op: "cx_recall",
-                reason: "scope must resolve to one path; use cx_search for subtree, set, or all scope queries"
+                reason: "scope must resolve to one path; use cx_search for descendants, set, or all scope queries"
                     .to_owned(),
             })
         }

@@ -87,6 +87,44 @@ fn store_request_deserializes_exact_scope_selector() {
 }
 
 #[test]
+fn store_request_deserializes_plain_scope_path() {
+    let request = request(json!({
+        "title": "Scoped store",
+        "body": "Body.",
+        "kind": "fact",
+        "scope": "global/project:helioy/repo:context-matters"
+    }));
+
+    assert_eq!(
+        request.scope,
+        Some(ScopeSelector::Path(
+            ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+        ))
+    );
+}
+
+#[test]
+fn store_request_deserializes_repo_scope_sugar() {
+    let request = request(json!({
+        "title": "Scoped store",
+        "body": "Body.",
+        "kind": "fact",
+        "scope": {
+            "kind": "repo",
+            "project": "helioy",
+            "repo": "context-matters"
+        }
+    }));
+
+    assert_eq!(
+        request.scope,
+        Some(ScopeSelector::Path(
+            ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+        ))
+    );
+}
+
+#[test]
 fn store_request_rejects_removed_scope_path_input() {
     let err = serde_json::from_value::<StoreRequest>(json!({
         "title": "Legacy store",

@@ -34,7 +34,11 @@ When storing entries, use the narrowest appropriate scope. \
 Global scope is for cross-project knowledge (user preferences, universal patterns). \
 Project scope is for project-level decisions and conventions. \
 Repo scope is for codebase-specific facts. \
-Session scope is for ephemeral task context.
+Session scope is for ephemeral task context. \
+Canonical scope paths returned by read tools can be passed directly to write tools. \
+Example scoped write: cx_store(scope='global/project:helioy/repo:context-matters', title='...', body='...', kind='decision'). \
+Example scoped deposit: cx_deposit(scope='global/project:helioy/repo:context-matters', exchanges=[...]). \
+Structured singular selectors are also accepted: {kind:'repo', project:'helioy', repo:'context-matters'}.
 
 PRINCIPLES:
 - Be selective. Store genuinely reusable knowledge, not routine observations.

@@ -15,10 +15,10 @@
 //! shape in one place is what makes that contract enforceable.
 
 use chrono::{DateTime, Utc};
-use cm_core::{CmError, ContextStore, Entry, Scope};
+use cm_core::{CmError, ContextStore, Entry, Scope, ScopeFilter, ScopePath};
 use serde::Serialize;
 
-use crate::scope::{ScopeSelector, resolve_scope_selection};
+use crate::scope::{ScopeSelector, resolve_scope_filter, resolve_scope_selection};
 
 /// Inputs to [`export`].
 #[derive(Debug, Clone)]
@@ -45,10 +45,9 @@ pub struct ExportRequest {
 ///    figure without parsing the full array
 #[derive(Debug, Serialize)]
 pub struct ExportView {
-    /// Active entries in the requested subtree.
+    /// Active entries in the requested scope filter.
     pub entries: Vec<Entry>,
-    /// Scopes in the requested subtree (prefix match against the scope
-    /// path string when [`ExportRequest::scope`] is `Some`).
+    /// Scopes in the requested scope filter.
     pub scopes: Vec<Scope>,
     /// Server-side snapshot timestamp.
     pub exported_at: DateTime<Utc>,
@@ -64,16 +63,9 @@ pub struct ExportView {
 /// other values are rejected with a message mirroring the MCP handler
 /// this was lifted from.
 ///
-/// Scope filtering happens in two layers:
-///
-/// * `store.export(scope_path)` filters entries server-side by exact scope.
-/// * `list_scopes(None)` returns every scope, then a string `starts_with`
-///   prefix match keeps only those inside the requested subtree.
-///
-/// The two-layer scheme matches the legacy MCP behaviour exactly. A
-/// future optimisation could push the scope filter into the store, but
-/// the current cost is negligible (scope rows are small) and parity is
-/// the immediate goal.
+/// Exact selectors are pushed into the store. Broad selectors load active
+/// entries once and filter them in memory, matching the existing all-scope
+/// export path while preserving `descendants`, `set`, and `all` semantics.
 pub async fn export(
     store: &impl ContextStore,
     request: ExportRequest,
@@ -85,24 +77,35 @@ pub async fn export(
         )));
     }
 
-    let scope_path = match request.scope.as_ref() {
-        Some(selector) => Some(resolve_scope_selection(store, selector).await?),
-        None => None,
+    let scope_filter = match request.scope.as_ref() {
+        Some(selector @ (ScopeSelector::Path(_) | ScopeSelector::CwdInferred { .. })) => {
+            let selection = resolve_scope_selection(store, selector).await?;
+            ScopeFilter::Exact(selection.read_scope_path()?.clone())
+        }
+        Some(
+            selector @ (ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All),
+        ) => resolve_scope_filter(store, selector).await?,
+        None => ScopeFilter::All,
     };
-    let scope_path = scope_path
-        .as_ref()
-        .map(|selection| selection.read_scope_path())
-        .transpose()?;
 
-    let entries = store.export(scope_path).await?;
+    let entries = match &scope_filter {
+        ScopeFilter::Exact(scope_path) => store.export(Some(scope_path)).await?,
+        ScopeFilter::All => store.export(None).await?,
+        filter => store
+            .export(None)
+            .await?
+            .into_iter()
+            .filter(|entry| scope_filter_matches(filter, &entry.scope_path))
+            .collect(),
+    };
 
     let all_scopes = store.list_scopes(None).await?;
-    let scopes: Vec<Scope> = match scope_path {
-        Some(sp) => all_scopes
+    let scopes: Vec<Scope> = match &scope_filter {
+        ScopeFilter::All => all_scopes,
+        filter => all_scopes
             .into_iter()
-            .filter(|s| s.path.as_str().starts_with(sp.as_str()))
+            .filter(|scope| scope_filter_matches(filter, &scope.path))
             .collect(),
-        None => all_scopes,
     };
 
     let count = entries.len();
@@ -113,4 +116,23 @@ pub async fn export(
         exported_at: Utc::now(),
         count,
     })
+}
+
+fn scope_filter_matches(filter: &ScopeFilter, path: &ScopePath) -> bool {
+    match filter {
+        ScopeFilter::Exact(scope_path) | ScopeFilter::AncestorWalk(scope_path) => {
+            path == scope_path
+        }
+        ScopeFilter::Subtree(scope_path) => scope_path_contains(scope_path, path),
+        ScopeFilter::Set(scope_paths) => scope_paths.iter().any(|scope_path| scope_path == path),
+        ScopeFilter::All => true,
+    }
+}
+
+fn scope_path_contains(root: &ScopePath, candidate: &ScopePath) -> bool {
+    candidate == root
+        || candidate
+            .as_str()
+            .strip_prefix(root.as_str())
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }

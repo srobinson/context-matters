@@ -39,5 +39,24 @@
     ],
     "type": "object"
   },
-  "name": "cx_update"
+  "name": "cx_update",
+  "outputSchema": {
+    "description": "Update receipt: updated entry id and new content hash.",
+    "properties": {
+      "content_hash": {
+        "description": "Full BLAKE3 content hash after update.",
+        "type": "string"
+      },
+      "id": {
+        "description": "Updated entry id.",
+        "format": "uuid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "content_hash"
+    ],
+    "type": "object"
+  }
 }

@@ -277,23 +277,24 @@ async fn browse_rejects_removed_auto_scope() {
         .unwrap_err();
 
     assert!(
-        err.contains("invalid type: string") && err.contains("expected internally tagged enum"),
+        err.contains("instead of scope='auto'"),
         "unexpected error: {err}",
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_rejects_plain_string_scope() {
+async fn browse_accepts_plain_string_scope() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;
 
-    let err = tools::cx_browse(&store, &json!({"scope": "global"}))
+    let result = tools::cx_browse(&store, &json!({"scope": "global"}))
         .await
-        .unwrap_err();
+        .unwrap();
 
     assert!(
-        err.contains("invalid type: string") && err.contains("expected internally tagged enum"),
-        "unexpected error: {err}",
+        result.text.contains("query: scope=global"),
+        "plain string scope should select the exact scope:\n{}",
+        result.text,
     );
 }
 

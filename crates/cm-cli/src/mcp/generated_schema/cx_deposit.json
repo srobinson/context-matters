@@ -27,8 +27,118 @@
         "type": "array"
       },
       "scope": {
-        "description": "Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created if missing. Default: 'global'.",
-        "type": "string"
+        "description": "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global.",
+        "oneOf": [
+          {
+            "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred.",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "path"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "cwd_inferred"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "project"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "repo"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "repo"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "session"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "session"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "summary": {
         "description": "Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates' relations.",
@@ -40,5 +150,36 @@
     ],
     "type": "object"
   },
-  "name": "cx_deposit"
+  "name": "cx_deposit",
+  "outputSchema": {
+    "description": "Deposit receipt: count, created exchange ids, optional summary id, and resolved scope path.",
+    "properties": {
+      "deposited": {
+        "description": "Number of exchange entries created.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "entry_ids": {
+        "description": "Created exchange entry ids.",
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "scope_path": {
+        "description": "Resolved canonical scope path.",
+        "type": "string"
+      },
+      "summary_id": {
+        "description": "Created summary entry id, or null when no summary was provided."
+      }
+    },
+    "required": [
+      "deposited",
+      "entry_ids",
+      "scope_path"
+    ],
+    "type": "object"
+  }
 }

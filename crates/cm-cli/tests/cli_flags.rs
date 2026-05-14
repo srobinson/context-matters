@@ -190,8 +190,8 @@ fn search_help_shows_per_arg_descriptions() {
         .success()
         .stdout(contains("Required FTS5 search query"))
         .stdout(contains("exact path"))
-        .stdout(contains("reserved value cwd_inferred"))
-        .stdout(contains("structured subtree/set/all JSON"))
+        .stdout(contains("cwd_inferred"))
+        .stdout(contains("structured descendants/set/all JSON"))
         .stdout(contains("Filter by entry kind"))
         .stdout(contains("Filter by tag"))
         .stdout(contains("Maximum number of results"))
@@ -316,19 +316,19 @@ fn export_help_shows_per_arg_descriptions() {
     cm().args(["export", "--help"])
         .assert()
         .success()
-        .stdout(contains("Filter export to scope selector"))
+        .stdout(contains("Filter export scope"))
         .stdout(contains("cwd_inferred"))
         .stdout(predicates::str::contains("--scope-path").not())
         .stdout(contains("Export format"));
 }
 
 #[test]
-fn migrated_scope_help_names_cwd_inferred_as_reserved_value() {
+fn migrated_scope_help_names_cwd_inferred() {
     for command in ["recall", "search", "store", "deposit", "browse", "export"] {
         cm().args([command, "--help"])
             .assert()
             .success()
-            .stdout(contains("reserved value cwd_inferred"));
+            .stdout(contains("cwd_inferred"));
     }
 }
 

@@ -25,6 +25,12 @@ impl ScopeSelector {
                 "use scope='{{\"kind\":\"{CWD_INFERRED_SCOPE}\"}}' instead of scope='auto'"
             )));
         }
+        if scope == CWD_INFERRED_SCOPE {
+            return Ok(Self::CwdInferred { cwd: None });
+        }
+        if !scope.starts_with('{') {
+            return Ok(Self::Path(ScopePath::parse(scope)?));
+        }
         let value: serde_json::Value = serde_json::from_str(scope).map_err(|err| {
             CmError::Validation(format!(
                 "scope must be structured JSON with a kind field: {err}"
@@ -79,6 +85,16 @@ impl ScopeSelector {
             Self::All => "all".to_owned(),
         }
     }
+
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            Self::Path(_) => "path",
+            Self::CwdInferred { .. } => CWD_INFERRED_SCOPE,
+            Self::Subtree(_) => "subtree",
+            Self::Set(_) => "set",
+            Self::All => "all",
+        }
+    }
 }
 
 fn validate_cwd(cwd: Option<PathBuf>) -> Result<Option<PathBuf>, CmError> {
@@ -111,22 +127,75 @@ enum ScopeSelectorWire {
     Subtree {
         path: ScopePath,
     },
+    Descendants {
+        path: ScopePath,
+    },
     Set {
         paths: Vec<ScopePath>,
+    },
+    Project {
+        project: String,
+    },
+    Repo {
+        project: String,
+        repo: String,
+    },
+    Session {
+        project: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        repo: Option<String>,
+        session: String,
     },
     All,
 }
 
-impl From<ScopeSelectorWire> for ScopeSelector {
-    fn from(value: ScopeSelectorWire) -> Self {
+impl TryFrom<ScopeSelectorWire> for ScopeSelector {
+    type Error = CmError;
+
+    fn try_from(value: ScopeSelectorWire) -> Result<Self, Self::Error> {
         match value {
-            ScopeSelectorWire::Path { path } => Self::Path(path),
-            ScopeSelectorWire::CwdInferred { cwd } => Self::CwdInferred { cwd },
-            ScopeSelectorWire::Subtree { path } => Self::Subtree(path),
-            ScopeSelectorWire::Set { paths } => Self::Set(paths),
-            ScopeSelectorWire::All => Self::All,
+            ScopeSelectorWire::Path { path } => Ok(Self::Path(path)),
+            ScopeSelectorWire::CwdInferred { cwd } => Ok(Self::CwdInferred { cwd }),
+            ScopeSelectorWire::Subtree { path } | ScopeSelectorWire::Descendants { path } => {
+                Ok(Self::Subtree(path))
+            }
+            ScopeSelectorWire::Set { paths } => Ok(Self::Set(paths)),
+            ScopeSelectorWire::Project { project } => {
+                Ok(Self::Path(scope_path_from_parts(&[("project", &project)])?))
+            }
+            ScopeSelectorWire::Repo { project, repo } => Ok(Self::Path(scope_path_from_parts(&[
+                ("project", &project),
+                ("repo", &repo),
+            ])?)),
+            ScopeSelectorWire::Session {
+                project,
+                repo,
+                session,
+            } => {
+                let path = match repo {
+                    Some(repo) => scope_path_from_parts(&[
+                        ("project", &project),
+                        ("repo", &repo),
+                        ("session", &session),
+                    ])?,
+                    None => scope_path_from_parts(&[("project", &project), ("session", &session)])?,
+                };
+                Ok(Self::Path(path))
+            }
+            ScopeSelectorWire::All => Ok(Self::All),
         }
     }
+}
+
+fn scope_path_from_parts(parts: &[(&str, &str)]) -> Result<ScopePath, CmError> {
+    let mut path = "global".to_owned();
+    for (kind, id) in parts {
+        path.push('/');
+        path.push_str(kind);
+        path.push(':');
+        path.push_str(id);
+    }
+    Ok(ScopePath::parse(&path)?)
 }
 
 impl From<&ScopeSelector> for ScopeSelectorWire {
@@ -157,7 +226,12 @@ impl<'de> Deserialize<'de> for ScopeSelector {
     where
         D: serde::Deserializer<'de>,
     {
-        ScopeSelectorWire::deserialize(deserializer).map(Into::into)
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let serde_json::Value::String(scope) = value {
+            return ScopeSelector::parse(&scope).map_err(serde::de::Error::custom);
+        }
+        let wire = ScopeSelectorWire::deserialize(value).map_err(serde::de::Error::custom)?;
+        ScopeSelector::try_from(wire).map_err(serde::de::Error::custom)
     }
 }
 

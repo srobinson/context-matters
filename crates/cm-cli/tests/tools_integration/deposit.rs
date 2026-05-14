@@ -61,6 +61,42 @@ async fn deposit_with_summary_creates_relations() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn deposit_accepts_structured_repo_scope_and_returns_structured_receipt() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let result = tools::cx_deposit(
+        &store,
+        &json!({
+            "exchanges": [
+                {"user": "What did we decide?", "assistant": "Use a unified scope input."}
+            ],
+            "scope": {
+                "kind": "repo",
+                "project": "helioy",
+                "repo": "context-matters"
+            }
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        result
+            .text
+            .contains("scope: global/project:helioy/repo:context-matters")
+    );
+    let structured = result.structured.expect("cx_deposit structured receipt");
+    assert_eq!(
+        structured["scope_path"],
+        "global/project:helioy/repo:context-matters"
+    );
+    assert_eq!(structured["deposited"], 1);
+    assert_eq!(structured["entry_ids"].as_array().unwrap().len(), 1);
+    assert!(structured["summary_id"].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn deposit_rejects_empty_exchanges() {
     let (store, _dir) = test_store().await;
     let result = tools::cx_deposit(&store, &json!({"exchanges": []})).await;

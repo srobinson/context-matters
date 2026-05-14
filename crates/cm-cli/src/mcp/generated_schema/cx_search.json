@@ -23,8 +23,175 @@
         "type": "string"
       },
       "scope": {
-        "description": "Structured ScopeSelector JSON. Accepted variants: {\"kind\":\"path\",\"path\":\"global/project:helioy\"}, {\"kind\":\"cwd_inferred\",\"cwd\":\"/path/to/repo\"}, {\"kind\":\"subtree\",\"path\":\"global/project:helioy\"}, {\"kind\":\"set\",\"paths\":[\"global\",\"global/project:helioy\"]}, or {\"kind\":\"all\"}. Plain strings and top-level cwd are not accepted.",
-        "type": "object"
+        "description": "Scope input for content search. Pass a canonical scope path string, a singular selector such as cwd_inferred, project, repo, or session, or a broad selector: descendants, subtree, set, or all. descendants and subtree match the exact scope plus child scopes.",
+        "oneOf": [
+          {
+            "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred.",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "path"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "cwd_inferred"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "project"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "repo"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "repo"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "session"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "session"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "descendants",
+                  "subtree"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "set"
+                ],
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "paths"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "all"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "tags": {
         "description": "Filter to entries with any of these tags (OR logic). Pass a JSON array: [\"tag1\", \"tag2\"].",
