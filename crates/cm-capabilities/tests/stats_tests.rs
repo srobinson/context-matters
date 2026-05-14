@@ -1,6 +1,6 @@
 //! Capability-level tests for stats aggregation, scope tree, and tag sorting.
 
-use cm_capabilities::stats::{StatsRequest, TagSort, stats};
+use cm_capabilities::stats::{StatsRequest, StatsResult, TagSort, stats};
 use cm_core::{
     ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope, ScopePath, WriteContext,
 };
@@ -57,7 +57,7 @@ async fn seed_tagged_entries(store: &CmStore) {
             "Delta",
             "fact",
             "global/project:helioy",
-            vec!["architecture", "database"],
+            vec!["infra", "database"],
         ),
     ];
 
@@ -82,6 +82,15 @@ async fn seed_tagged_entries(store: &CmStore) {
     }
 }
 
+fn tag_counts(result: &StatsResult) -> Vec<(&str, u64)> {
+    result
+        .stats
+        .entries_by_tag
+        .iter()
+        .map(|tc| (tc.tag.as_str(), tc.count))
+        .collect()
+}
+
 // ── Tests ────────────────────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread")]
@@ -97,6 +106,19 @@ async fn stats_returns_base_counts() {
     assert_eq!(*result.stats.entries_by_kind.get("fact").unwrap(), 2);
     assert_eq!(*result.stats.entries_by_kind.get("decision").unwrap(), 1);
     assert_eq!(*result.stats.entries_by_kind.get("lesson").unwrap(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stats_default_tag_sort_returns_descending_count_order() {
+    let (store, _dir) = test_store().await;
+    seed_tagged_entries(&store).await;
+
+    let result = stats(&store, StatsRequest::default()).await.unwrap();
+
+    assert_eq!(
+        tag_counts(&result),
+        vec![("infra", 3), ("database", 2), ("architecture", 1)]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -211,11 +233,10 @@ async fn tag_sort_count_returns_descending_count_order() {
         );
     }
 
-    // infra=2, database=2, architecture=2 (all equal in this fixture)
-    // Verify all three tags present with correct counts
-    for tc in &result.stats.entries_by_tag {
-        assert_eq!(tc.count, 2, "Tag '{}' should appear in 2 entries", tc.tag);
-    }
+    assert_eq!(
+        tag_counts(&result),
+        vec![("infra", 3), ("database", 2), ("architecture", 1)]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

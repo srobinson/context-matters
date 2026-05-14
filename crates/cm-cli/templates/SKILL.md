@@ -214,7 +214,7 @@ View aggregate statistics about the context store. Returns active/superseded ent
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tag_sort` | enum: name \| count | no | Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first. |
+| `tag_sort` | enum: name \| count | no | Sort order for tag breakdown. 'count': most used tags first (default). 'name': alphabetical ascending. |
 
 ### `cx_export`
 

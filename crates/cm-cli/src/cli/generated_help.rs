@@ -111,7 +111,7 @@ pub const FORGET_IDS_HELP: &str = "Entry IDs to forget (space-separated, max 100
 #[rustfmt::skip]
 pub const STATS_ABOUT: &str = "Show store statistics.\n\nDisplays entry counts by kind, scope, and tag, relation count, database size, and scope tree.";
 #[rustfmt::skip]
-pub const STATS_TAG_SORT_HELP: &str = "Tag sort order: name (alphabetical, default) or count (most used first)";
+pub const STATS_TAG_SORT_HELP: &str = "Tag sort order: count (most used first, default) or name (alphabetical)";
 
 #[rustfmt::skip]
 pub const EXPORT_ABOUT: &str = "Export entries and scopes as JSON.\n\nExports all active entries and scopes. Use --scope to filter with an exact path, cwd_inferred, or structured descendants selector.";

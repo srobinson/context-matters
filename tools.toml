@@ -725,8 +725,8 @@ output_schema   = '''
 name            = "tag_sort"
 type            = "string"
 enum            = ["name", "count"]
-mcp_description = "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first."
-cli_help        = "Tag sort order: name (alphabetical, default) or count (most used first)"
+mcp_description = "Sort order for tag breakdown. 'count': most used tags first (default). 'name': alphabetical ascending."
+cli_help        = "Tag sort order: count (most used first, default) or name (alphabetical)"
 cli_flag        = "--tag-sort"
 
 [tools.cx_export]

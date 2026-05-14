@@ -21,7 +21,7 @@ use crate::cli::errors::{capability_error, string_error};
 /// [`super::cli_def`]. The destructure happens at the call site in
 /// `main.rs`; this keeps the handler decoupled from the clap surface.
 pub async fn run(store: &impl ContextStore, tag_sort: Option<String>, json: bool) -> Result<()> {
-    let tag_sort = parse_tag_sort(tag_sort.as_deref().unwrap_or("name")).map_err(string_error)?;
+    let tag_sort = parse_tag_sort(tag_sort.as_deref().unwrap_or("count")).map_err(string_error)?;
 
     let result = stats::stats(store, StatsRequest { tag_sort })
         .await
