@@ -1,6 +1,6 @@
 //! Handler for the `cx_store` tool.
 
-use cm_capabilities::projection::format_store_ack;
+use cm_capabilities::projection::{format_store_ack, project_store_receipt};
 use cm_capabilities::store::{StoreRequest, store as store_entry};
 use cm_capabilities::validation::MetaInput;
 use cm_core::{ContextStore, MutationSource, ScopePath, WriteContext};
@@ -65,20 +65,13 @@ pub async fn cx_store(store: &impl ContextStore, args: &Value) -> Result<ToolRes
     let result = store_entry(store, request, &ctx)
         .await
         .map_err(cm_err_to_string)?;
+    let receipt = project_store_receipt(&result);
     let text = format_store_ack(
-        &result.entry_id,
-        &result.scope_path,
-        result.kind.as_str(),
-        &result.content_hash,
-        result.superseded_id.as_deref(),
+        &receipt.id,
+        &receipt.scope_path,
+        &receipt.kind,
+        &receipt.content_hash,
+        receipt.superseded_id.as_deref(),
     );
-    let structured = serde_json::json!({
-        "id": result.entry_id,
-        "scope_path": result.scope_path,
-        "kind": result.kind.as_str(),
-        "content_hash": result.content_hash,
-        "superseded_id": result.superseded_id,
-        "scope_created": result.scope_created
-    });
-    dual_response(text, &structured)
+    dual_response(text, &receipt)
 }

@@ -553,7 +553,7 @@ fn contract_metadata(tool_name: &str) -> Result<ContractMetadata, String> {
         "cx_update" => ContractMetadata {
             short_description: "Partially update an existing entry",
             scope_policy: ScopePolicy::SingularWrite,
-            output_type: "WebUpdateView",
+            output_type: "UpdateReceipt",
             examples: &[r#"cx_update(id: "uuid", title: "Updated title")"#],
         },
         "cx_forget" => ContractMetadata {

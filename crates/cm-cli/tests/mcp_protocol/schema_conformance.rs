@@ -5,7 +5,7 @@ use crate::common::{
 };
 use serde_json::{Value, json};
 
-/// Snapshot every read tool's `structuredContent` against its declared
+/// Snapshot every dual-channel tool's `structuredContent` against its declared
 /// `outputSchema`, loaded live from the same `tools/list` response a
 /// real MCP client would consume. This is the load-bearing test for
 /// ALP-1761: it locks in that ALP-1759 (outputSchema declarations) and
@@ -14,10 +14,11 @@ use serde_json::{Value, json};
 /// tools.toml without updating the projection struct, this test fails
 /// with a precise tool/key/type diagnostic.
 ///
-/// Coverage: cx_recall, cx_browse, cx_get, cx_stats. cx_export is
-/// covered by `protocol_tools_call_cx_export` above; its envelope
-/// shape (empty content array, structured-only payload) is unique
-/// enough to deserve a dedicated test rather than a generic loop.
+/// Coverage includes all read projections plus the cx_store, cx_update,
+/// cx_deposit, and cx_forget write receipts. cx_export is covered by
+/// `protocol_tools_call_cx_export` above; its envelope shape (empty
+/// content array, structured-only payload) is unique enough to deserve
+/// a dedicated test rather than a generic loop.
 #[test]
 fn protocol_structuredcontent_conforms_to_outputschema() {
     let dir = tempfile::tempdir().unwrap();

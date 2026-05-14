@@ -1,6 +1,6 @@
 //! Handler for the `cx_update` tool.
 
-use cm_capabilities::projection::format_update_ack;
+use cm_capabilities::projection::{format_update_ack, project_update_receipt};
 use cm_capabilities::update::{self, UpdateRequest};
 use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde_json::Value;
@@ -18,10 +18,7 @@ pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         .await
         .map_err(cm_err_to_string)?;
 
-    let text = format_update_ack(&result.updated_id, &result.content_hash);
-    let structured = serde_json::json!({
-        "id": result.updated_id,
-        "content_hash": result.content_hash
-    });
-    dual_response(text, &structured)
+    let receipt = project_update_receipt(&result);
+    let text = format_update_ack(&receipt.id, &receipt.content_hash);
+    dual_response(text, &receipt)
 }

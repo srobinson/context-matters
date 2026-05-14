@@ -1,11 +1,8 @@
-//! `cx_*` write-tool ack YAML-text formatters (`store`, `update`, `deposit`,
-//! `forget`).
+//! `cx_*` write-tool ack receipts and YAML text formatters (`store`,
+//! `update`, `deposit`, `forget`).
 //!
-//! Consumed by the write-tool wire-swap sub (ALP-1737) to replace the
-//! `serde_json!` blobs built in `crates/cm-cli/src/mcp/tools/{store,
-//! update, deposit, forget}.rs` with compact, agent-legible YAML envelopes.
-//! The target shapes live in
-//! `research/cx-response-payload-redesign-context-matters.md` §5.3.
+//! Structured receipts back the MCP `structuredContent` payloads. YAML
+//! formatters provide the parallel text channel for agents and older clients.
 //!
 //! Unlike the read-tool formatters in the sibling view modules, write acks
 //! surface a small fixed set of identifiers and counters, not paginated
@@ -20,8 +17,15 @@
 
 use std::fmt::Write as _;
 
+use serde::{Deserialize, Serialize};
+
 use super::{fmt_with_commas, hex_prefix};
-use crate::forget::ForgetError;
+use crate::{
+    deposit::DepositResult,
+    forget::{ForgetError, ForgetResult},
+    store::StoreResult,
+    update::UpdateResult,
+};
 
 /// Byte-prefix width used to slice the BLAKE3 content hash for display.
 /// Eight hex chars is enough to catch routine dedup collisions during
@@ -29,6 +33,120 @@ use crate::forget::ForgetError;
 /// wire payload; callers that need the full hash can fetch the entry
 /// via `cx_get`.
 const CONTENT_HASH_WIDTH: usize = 8;
+
+/// Structured receipt emitted by `cx_store`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoreReceipt {
+    pub id: String,
+    pub scope_path: String,
+    pub kind: String,
+    pub content_hash: String,
+    pub superseded_id: Option<String>,
+    pub scope_created: bool,
+}
+
+impl From<&StoreResult> for StoreReceipt {
+    fn from(result: &StoreResult) -> Self {
+        Self {
+            id: result.entry_id.clone(),
+            scope_path: result.scope_path.clone(),
+            kind: result.kind.as_str().to_owned(),
+            content_hash: result.content_hash.clone(),
+            superseded_id: result.superseded_id.clone(),
+            scope_created: result.scope_created,
+        }
+    }
+}
+
+pub fn project_store_receipt(result: &StoreResult) -> StoreReceipt {
+    StoreReceipt::from(result)
+}
+
+/// Structured receipt emitted by `cx_deposit`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DepositReceipt {
+    pub deposited: usize,
+    pub entry_ids: Vec<String>,
+    pub summary_id: Option<String>,
+    pub scope_path: String,
+}
+
+impl From<&DepositResult> for DepositReceipt {
+    fn from(result: &DepositResult) -> Self {
+        let entry_ids: Vec<String> = result.entry_ids.iter().map(ToString::to_string).collect();
+
+        Self {
+            deposited: entry_ids.len(),
+            entry_ids,
+            summary_id: result.summary_id.map(|id| id.to_string()),
+            scope_path: result.scope_path.clone(),
+        }
+    }
+}
+
+pub fn project_deposit_receipt(result: &DepositResult) -> DepositReceipt {
+    DepositReceipt::from(result)
+}
+
+/// Structured receipt emitted by `cx_update`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateReceipt {
+    pub id: String,
+    pub content_hash: String,
+}
+
+impl From<&UpdateResult> for UpdateReceipt {
+    fn from(result: &UpdateResult) -> Self {
+        Self {
+            id: result.updated_id.clone(),
+            content_hash: result.content_hash.clone(),
+        }
+    }
+}
+
+pub fn project_update_receipt(result: &UpdateResult) -> UpdateReceipt {
+    UpdateReceipt::from(result)
+}
+
+/// One failed row in a `cx_forget` receipt.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForgetReceiptError {
+    pub id: String,
+    pub error: String,
+}
+
+impl From<&ForgetError> for ForgetReceiptError {
+    fn from(error: &ForgetError) -> Self {
+        Self {
+            id: error.id.clone(),
+            error: error.error.clone(),
+        }
+    }
+}
+
+/// Structured receipt emitted by `cx_forget`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ForgetReceipt {
+    pub forgotten: u32,
+    pub already_inactive: u32,
+    pub not_found: u32,
+    pub errors: Vec<ForgetReceiptError>,
+}
+
+impl From<&ForgetResult> for ForgetReceipt {
+    fn from(result: &ForgetResult) -> Self {
+        Self {
+            forgotten: result.forgotten,
+            already_inactive: result.already_inactive,
+            not_found: result.not_found,
+            errors: result.errors.iter().map(ForgetReceiptError::from).collect(),
+        }
+    }
+}
+
+pub fn project_forget_receipt(result: &ForgetResult) -> ForgetReceipt {
+    ForgetReceipt::from(result)
+}
 
 /// Render a `cx_store` ack as YAML text. The `superseded` parameter carries
 /// the prior entry's id when this write supersedes an existing entry;

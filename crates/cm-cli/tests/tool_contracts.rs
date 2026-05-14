@@ -1,6 +1,12 @@
+mod common;
+
+use cm_capabilities::projection::{
+    DepositReceipt, ForgetReceipt, ForgetReceiptError, StoreReceipt, UpdateReceipt,
+};
 use cm_cli::tool_contracts::{
     ParamShape, ScopeFragment, ScopeInputShape, ScopePolicy, contract_registry,
 };
+use common::assert_top_level_conformance;
 use serde_json::json;
 
 #[test]
@@ -49,6 +55,69 @@ fn registry_models_write_tool_contract() {
 
     let scope = store.param("scope").expect("scope param exists");
     assert_eq!(&scope.shape, &ParamShape::Scope(ScopeInputShape::Singular));
+
+    let update = registry
+        .get("cx_update")
+        .expect("cx_update contract exists");
+    assert_eq!(update.output.type_name, "UpdateReceipt");
+}
+
+#[test]
+fn write_receipt_structs_match_contract_output_schemas() {
+    let registry = contract_registry();
+    let receipts = [
+        (
+            "cx_store",
+            serde_json::to_value(StoreReceipt {
+                id: "01950000-0000-7000-8000-000000000001".to_owned(),
+                scope_path: "global".to_owned(),
+                kind: "fact".to_owned(),
+                content_hash: "a".repeat(64),
+                superseded_id: None,
+                scope_created: false,
+            })
+            .expect("store receipt serializes"),
+        ),
+        (
+            "cx_deposit",
+            serde_json::to_value(DepositReceipt {
+                deposited: 1,
+                entry_ids: vec!["01950000-0000-7000-8000-000000000002".to_owned()],
+                summary_id: None,
+                scope_path: "global".to_owned(),
+            })
+            .expect("deposit receipt serializes"),
+        ),
+        (
+            "cx_update",
+            serde_json::to_value(UpdateReceipt {
+                id: "01950000-0000-7000-8000-000000000003".to_owned(),
+                content_hash: "b".repeat(64),
+            })
+            .expect("update receipt serializes"),
+        ),
+        (
+            "cx_forget",
+            serde_json::to_value(ForgetReceipt {
+                forgotten: 1,
+                already_inactive: 2,
+                not_found: 3,
+                errors: vec![ForgetReceiptError {
+                    id: "01950000-0000-7000-8000-000000000004".to_owned(),
+                    error: "storage error".to_owned(),
+                }],
+            })
+            .expect("forget receipt serializes"),
+        ),
+    ];
+
+    for (tool_name, value) in receipts {
+        let schema = registry
+            .get(tool_name)
+            .and_then(|tool| tool.output.schema.as_ref())
+            .unwrap_or_else(|| panic!("{tool_name} output schema exists"));
+        assert_top_level_conformance(tool_name, schema, &value);
+    }
 }
 
 #[test]
