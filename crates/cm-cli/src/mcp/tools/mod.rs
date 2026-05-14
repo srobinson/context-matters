@@ -26,4 +26,4 @@ pub use stats::cx_stats;
 pub use store::cx_store;
 pub use update::cx_update;
 
-pub(crate) use crate::shared::{default_created_by, default_scope};
+pub(crate) use crate::shared::default_created_by;

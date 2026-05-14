@@ -33,7 +33,7 @@ struct ToolDef {
     /// entry alongside `inputSchema`. Read tools (`cx_recall`, `cx_browse`,
     /// `cx_get`, `cx_stats`, `cx_export`) advertise an outputSchema so
     /// clients can validate `structuredContent` payloads (ALP-1759 +
-    /// ALP-1760). Write tools omit the field entirely.
+    /// ALP-1760). Write tools use this for structured receipts.
     output_schema: Option<String>,
 }
 
@@ -47,6 +47,9 @@ struct ParamDef {
     #[serde(rename = "enum")]
     enum_values: Option<Vec<String>>,
     mcp_description: String,
+    /// Optional raw JSON schema for MCP input. Used when a parameter needs
+    /// oneOf/anyOf or another shape that cannot be represented by `type`.
+    mcp_schema: Option<String>,
     cli_help: Option<String>,
     #[allow(dead_code)]
     cli_flag: Option<String>,
@@ -156,35 +159,46 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(Strin
         let mut required: Vec<String> = Vec::new();
 
         for param in &tool.params {
-            let mut prop = serde_json::Map::new();
-
-            // Handle array types with items
-            if param.type_ == "array" {
-                prop.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("array".to_string()),
-                );
-                let items_schema = match &param.items_type {
-                    // Scalar array: items_type specifies the element type (e.g. "string")
-                    Some(scalar) => serde_json::json!({"type": scalar}),
-                    // Object array: no items_type means inline object schema.
-                    // Currently only `exchanges` uses this pattern.
-                    None => serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "user": {"type": "string"},
-                            "assistant": {"type": "string"}
-                        },
-                        "required": ["user", "assistant"]
-                    }),
-                };
-                prop.insert("items".to_string(), items_schema);
+            let mut prop = if let Some(raw_schema) = &param.mcp_schema {
+                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(raw_schema)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "mcp_schema for param `{}` on tool `{tool_name}` is not valid JSON object: {e}",
+                            param.name
+                        )
+                    })
             } else {
-                prop.insert(
-                    "type".to_string(),
-                    serde_json::Value::String(param.type_.clone()),
-                );
-            }
+                let mut prop = serde_json::Map::new();
+
+                // Handle array types with items
+                if param.type_ == "array" {
+                    prop.insert(
+                        "type".to_string(),
+                        serde_json::Value::String("array".to_string()),
+                    );
+                    let items_schema = match &param.items_type {
+                        // Scalar array: items_type specifies the element type (e.g. "string")
+                        Some(scalar) => serde_json::json!({"type": scalar}),
+                        // Object array: no items_type means inline object schema.
+                        // Currently only `exchanges` uses this pattern.
+                        None => serde_json::json!({
+                            "type": "object",
+                            "properties": {
+                                "user": {"type": "string"},
+                                "assistant": {"type": "string"}
+                            },
+                            "required": ["user", "assistant"]
+                        }),
+                    };
+                    prop.insert("items".to_string(), items_schema);
+                } else {
+                    prop.insert(
+                        "type".to_string(),
+                        serde_json::Value::String(param.type_.clone()),
+                    );
+                }
+                prop
+            };
 
             prop.insert(
                 "description".to_string(),
@@ -228,10 +242,9 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(Strin
             "description": tool.mcp_description,
             "inputSchema": input_schema
         });
-        // Per-tool outputSchema is optional. Read tools declare one so
-        // MCP clients can validate `structuredContent` against the
-        // expected response shape; write tools (`cx_store`, `cx_deposit`,
-        // `cx_update`, `cx_forget`) omit it entirely. Parse the raw
+        // Per-tool outputSchema is optional. Tools declare one so MCP
+        // clients can validate `structuredContent` against the
+        // expected response shape. Parse the raw
         // JSON string from tools.toml and panic with a tool-keyed error
         // on malformed schemas so build failures pinpoint the offender.
         if let Some(output_schema_raw) = &tool.output_schema {

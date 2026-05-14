@@ -48,7 +48,7 @@ impl Colors {
         }
     }
 
-    const fn enabled() -> Self {
+    pub(crate) const fn enabled() -> Self {
         Self {
             bold: "\x1b[1m",
             dim: "\x1b[2m",

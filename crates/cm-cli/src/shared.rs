@@ -13,9 +13,10 @@ use serde_json::Value;
 /// - `structuredContent` — machine-readable JSON matching the tool's
 ///   declared `outputSchema`
 ///
-/// Write tools emit text only. Read tools emit both. `cx_export` emits
-/// structured only (`text` is empty; the envelope builder in
-/// `mcp/mod.rs` emits `content: []` in that case).
+/// Most tools emit both text and structured JSON. `cx_export` emits
+/// structured only (`text` is empty; the envelope builder in `mcp/mod.rs`
+/// emits `content: []` in that case). Legacy callers can still construct
+/// text-only results for tools without a structured projection.
 #[derive(Debug, Clone)]
 pub struct ToolResult {
     pub text: String,
@@ -23,8 +24,8 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
-    /// Text-only result. Used by write tools whose response is a pure
-    /// YAML acknowledgement with no structured projection.
+    /// Text-only result. Used by tools whose response is a pure YAML
+    /// acknowledgement with no structured projection.
     pub fn text_only(text: String) -> Self {
         Self {
             text,
@@ -32,8 +33,8 @@ impl ToolResult {
         }
     }
 
-    /// Dual-channel result. Used by read tools that emit YAML text plus
-    /// a JSON projection matching the declared `outputSchema`.
+    /// Dual-channel result. Used by tools that emit YAML text plus a JSON
+    /// projection matching the declared `outputSchema`.
     pub fn dual(text: String, structured: Value) -> Self {
         Self {
             text,
@@ -67,7 +68,7 @@ pub fn json_response(value: Value) -> Result<ToolResult, String> {
 ///
 /// Sibling to [`json_response`] and [`dual_response`] for tools that
 /// emit a pure YAML acknowledgement via
-/// `cm_capabilities::projection::format_*_ack` (write tools only).
+/// `cm_capabilities::projection::format_*_ack`.
 pub fn yaml_response(text: String) -> Result<ToolResult, String> {
     Ok(ToolResult::text_only(text))
 }
@@ -75,10 +76,10 @@ pub fn yaml_response(text: String) -> Result<ToolResult, String> {
 /// Wrap a YAML text body plus a serialisable structured view as a
 /// dual-channel tool result.
 ///
-/// Used by read tools (`cx_recall`, `cx_browse`, `cx_get`, `cx_stats`)
-/// which emit both the LLM-facing YAML snippet and a JSON projection
-/// matching the tool's declared `outputSchema`. Serialises the view
-/// with `serde_json::to_value`; returns a parse-error string on failure.
+/// Used by tools that emit both the LLM-facing YAML snippet and a JSON
+/// projection matching the tool's declared `outputSchema`. Serialises
+/// the view with `serde_json::to_value`; returns a parse-error string on
+/// failure.
 /// Failure is practically impossible because every projection type
 /// derives `Serialize` on plain data, but the fallible return keeps the
 /// handler signature uniform with the other response helpers and lets
@@ -112,10 +113,7 @@ pub fn parse_structured_scope_selector(
 }
 
 fn parse_scope_selector_value(value: Value) -> Result<ScopeSelector, String> {
-    if value.is_object() {
-        return serde_json::from_value(value).map_err(|e| format!("Invalid scope: {e}"));
-    }
-    serde_json::from_value(value).map_err(|e| format!("Invalid parameters: {e}"))
+    serde_json::from_value(value).map_err(|e| format!("Invalid scope: {e}"))
 }
 
 /// Redirect callers using legacy scope keys to the current `scope` field.
@@ -146,11 +144,6 @@ pub fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), Strin
 }
 
 // ── Serde Defaults ────────────────────────────────────────────────
-
-/// Serde default for scope fields.
-pub fn default_scope() -> String {
-    normalize_scope_selector_input("global")
-}
 
 /// Serde default for created_by fields.
 pub fn default_created_by() -> String {

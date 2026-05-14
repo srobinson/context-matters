@@ -431,25 +431,9 @@ fn protocol_migrated_scope_tools_reject_auto_scope() {
         &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
     );
 
-    let read_cases = [
+    let cases = [
         ("cx_browse", json!({"scope": "auto"})),
         ("cx_recall", json!({"scope": "auto"})),
-    ];
-    for (index, (tool, args)) in read_cases.into_iter().enumerate() {
-        let resp = send_request(
-            &mut stdin,
-            &mut stdout,
-            &call_tool(args, tool, 20 + index as u64),
-        );
-        let message = tool_error_message(&resp);
-        assert!(
-            message.contains("invalid type: string")
-                && message.contains("expected internally tagged enum"),
-            "{tool} error should reject plain string scope, got {message:?}"
-        );
-    }
-
-    let write_cases = [
         (
             "cx_store",
             json!({"title": "Bad", "body": "Body.", "kind": "fact", "scope": "auto"}),
@@ -461,11 +445,11 @@ fn protocol_migrated_scope_tools_reject_auto_scope() {
         ("cx_export", json!({"scope": "auto"})),
     ];
 
-    for (index, (tool, args)) in write_cases.into_iter().enumerate() {
+    for (index, (tool, args)) in cases.into_iter().enumerate() {
         let resp = send_request(
             &mut stdin,
             &mut stdout,
-            &call_tool(args, tool, 30 + index as u64),
+            &call_tool(args, tool, 20 + index as u64),
         );
         let message = tool_error_message(&resp);
         assert!(
@@ -620,9 +604,7 @@ fn protocol_store_and_recall_roundtrip() {
     assert!(recall_text.contains("Protocol test fact"));
 
     // ALP-1760: recall also emits `structuredContent` shaped as
-    // WebRecallView (header + entries + advisories). `cx_store`
-    // deliberately skips this channel; write tools are text-only,
-    // so the store-half above is asserted on `content` alone.
+    // WebRecallView (header + entries + advisories).
     let recall_structured = &recall_resp["result"]["structuredContent"];
     assert!(
         recall_structured.is_object(),

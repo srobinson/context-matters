@@ -84,7 +84,7 @@ pub fn apply_cap_for_tool(tool_name: &str, text: String) -> String {
 /// - `content: [{type: "text", text: ...}]` for tools with a non-empty
 ///   text channel, or `content: []` for structured-only tools (`cx_export`)
 /// - `structuredContent: {...}` when the tool supplies a JSON projection;
-///   omitted entirely for text-only write tools
+///   omitted only when a tool returns no structured projection
 ///
 /// The text channel is clipped via [`apply_cap_for_tool`] to protect LLM
 /// context bytes. The structured channel is uncapped; MCP clients consume it

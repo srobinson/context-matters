@@ -76,6 +76,68 @@ fn protocol_structuredcontent_conforms_to_outputschema() {
         .as_str()
         .expect("cx_store ack carries text channel");
     let stored_id = extract_stored_id(store_text);
+    assert_top_level_conformance(
+        "cx_store",
+        schema_map
+            .get("cx_store")
+            .expect("cx_store outputSchema advertised"),
+        &store_resp["result"]["structuredContent"],
+    );
+
+    let update_resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "cx_update",
+                "arguments": {
+                    "id": &stored_id,
+                    "title": "Schema conformance updated"
+                }
+            }
+        }),
+    );
+    assert!(
+        update_resp["error"].is_null(),
+        "cx_update failed: {update_resp}"
+    );
+    assert_top_level_conformance(
+        "cx_update",
+        schema_map
+            .get("cx_update")
+            .expect("cx_update outputSchema advertised"),
+        &update_resp["result"]["structuredContent"],
+    );
+
+    let deposit_resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "cx_deposit",
+                "arguments": {
+                    "exchanges": [{"user": "u", "assistant": "a"}]
+                }
+            }
+        }),
+    );
+    assert!(
+        deposit_resp["error"].is_null(),
+        "cx_deposit failed: {deposit_resp}"
+    );
+    assert_top_level_conformance(
+        "cx_deposit",
+        schema_map
+            .get("cx_deposit")
+            .expect("cx_deposit outputSchema advertised"),
+        &deposit_resp["result"]["structuredContent"],
+    );
 
     // Drive every read tool through tools/call and validate its
     // structuredContent against the schema loaded from tools/list.
@@ -88,7 +150,7 @@ fn protocol_structuredcontent_conforms_to_outputschema() {
             json!({"query": "schema conformance", "scope": {"kind": "all"}}),
         ),
         ("cx_browse", json!({})),
-        ("cx_get", json!({"ids": [stored_id]})),
+        ("cx_get", json!({"ids": [&stored_id]})),
         ("cx_stats", json!({})),
     ];
     for (i, (tool, args)) in cases.iter().enumerate() {
@@ -133,6 +195,33 @@ fn protocol_structuredcontent_conforms_to_outputschema() {
             .unwrap_or_else(|| panic!("{tool}: tools/list did not advertise an outputSchema"));
         assert_top_level_conformance(tool, schema, structured);
     }
+
+    let forget_resp = send_request(
+        &mut stdin,
+        &mut stdout,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": {
+                "name": "cx_forget",
+                "arguments": {
+                    "ids": [&stored_id]
+                }
+            }
+        }),
+    );
+    assert!(
+        forget_resp["error"].is_null(),
+        "cx_forget failed: {forget_resp}"
+    );
+    assert_top_level_conformance(
+        "cx_forget",
+        schema_map
+            .get("cx_forget")
+            .expect("cx_forget outputSchema advertised"),
+        &forget_resp["result"]["structuredContent"],
+    );
 
     shutdown(child, stdin);
 }

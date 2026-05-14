@@ -23,5 +23,5 @@ pub(crate) use cm_capabilities::error::cm_err_to_string;
 
 pub(crate) use crate::shared::{
     ToolResult, dual_response, json_response, parse_params, reject_removed_scope_inputs,
-    reject_unknown_fields, yaml_response,
+    reject_unknown_fields,
 };

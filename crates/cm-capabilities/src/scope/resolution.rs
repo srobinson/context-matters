@@ -43,7 +43,9 @@ pub async fn resolve_scope_selection(
         }
         ScopeSelector::Subtree(_) | ScopeSelector::Set(_) | ScopeSelector::All => {
             Err(CmError::Validation(format!(
-                "scope kind '{}' does not resolve to a single scope path",
+                "scope kind '{}' selects multiple scopes and cannot be used as a single write target; use scope: \"{}\" or {{\"kind\":\"path\",\"path\":\"{}\"}} for one target",
+                selector.kind_label(),
+                selector.requested_scope(),
                 selector.requested_scope()
             )))
         }

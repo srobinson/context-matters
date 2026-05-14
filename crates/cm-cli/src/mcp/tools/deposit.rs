@@ -8,18 +8,17 @@
 
 use cm_capabilities::deposit::{self, DepositRequest, Exchange};
 use cm_capabilities::projection::format_deposit_ack;
-use cm_capabilities::scope::ScopeSelector;
-use cm_core::{ContextStore, MutationSource, WriteContext};
+use cm_core::{ContextStore, MutationSource, ScopePath, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::mcp::{
-    ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, yaml_response,
+    ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
 };
-use crate::shared::normalize_scope_selector_input;
+use crate::shared::parse_structured_scope_selector;
 
-use super::{default_created_by, default_scope};
+use super::default_created_by;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,8 +31,8 @@ struct CxDepositParams {
     summary: Option<String>,
 
     /// Target scope selector. Default: "global".
-    #[serde(default = "default_scope")]
-    scope: String,
+    #[serde(default)]
+    scope: Option<Value>,
 
     /// Attribution. Default: "agent:claude-code".
     #[serde(default = "default_created_by")]
@@ -44,12 +43,13 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolR
     let ctx = WriteContext::new(MutationSource::Mcp);
     reject_removed_scope_inputs(args)?;
     let params: CxDepositParams = parse_params(args)?;
-    let scope = normalize_scope_selector_input(&params.scope);
+    let scope = parse_structured_scope_selector(params.scope)?
+        .unwrap_or_else(|| cm_capabilities::scope::ScopeSelector::Path(ScopePath::global()));
 
     let request = DepositRequest {
         exchanges: params.exchanges,
         summary: params.summary,
-        scope: Some(ScopeSelector::parse(&scope).map_err(cm_err_to_string)?),
+        scope: Some(scope),
         created_by: params.created_by,
     };
 
@@ -59,9 +59,12 @@ pub async fn cx_deposit(store: &impl ContextStore, args: &Value) -> Result<ToolR
 
     let id_strings: Vec<String> = result.entry_ids.iter().map(Uuid::to_string).collect();
     let summary_str = result.summary_id.map(|id| id.to_string());
-    yaml_response(format_deposit_ack(
-        &id_strings,
-        summary_str.as_deref(),
-        &result.scope_path,
-    ))
+    let text = format_deposit_ack(&id_strings, summary_str.as_deref(), &result.scope_path);
+    let structured = serde_json::json!({
+        "deposited": id_strings.len(),
+        "entry_ids": id_strings,
+        "summary_id": summary_str,
+        "scope_path": result.scope_path
+    });
+    dual_response(text, &structured)
 }

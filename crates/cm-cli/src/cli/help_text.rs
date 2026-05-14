@@ -74,7 +74,7 @@ Run <bold>cm serve</bold> to start the MCP server on stdio.
   <dim>$</dim> <bold>cm browse --kind decision -j</bold>          <dim># JSON inventory of decisions</dim>
   <dim>$</dim> <bold>cm get 019d09ed-7a4f-7693</bold>             <dim># full entry by id</dim>
   <dim>$</dim> <bold>cm stats</bold>                              <dim># scope tree + counts</dim>
-  <dim>$</dim> <bold>cm export --scope global/project:helioy</bold> <dim># JSON snapshot of a subtree</dim>
+  <dim>$</dim> <bold>cm export --scope '{"kind":"descendants","path":"global/project:helioy"}'</bold> <dim># subtree snapshot</dim>
 
 <bold><underline>Scope Resolution</underline></bold>
   Recall starts at <bold>global</bold>; search requires <bold>--scope</bold>;
@@ -99,7 +99,7 @@ pub const SEARCH_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm search "auth migration" --scope global/project:helioy</bold>
   <dim>$</dim> <bold>cm search "auth migration" --scope '{"kind":"all"}'</bold>
-  <dim>$</dim> <bold>cm search "rust*" --scope '{"kind":"subtree","path":"global/project:helioy"}' -j</bold>
+	  <dim>$</dim> <bold>cm search "rust*" --scope '{"kind":"descendants","path":"global/project:helioy"}' -j</bold>
   <dim>$</dim> <bold>cm search "topic" --scope global --limit 5 --cursor eyJ...</bold>"#
 );
 
@@ -165,7 +165,7 @@ pub const FORGET_AFTER_HELP: &str = cstr!(
 pub const EXPORT_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm export</bold>                                            <dim># full snapshot to stdout</dim>
-  <dim>$</dim> <bold>cm export --scope global/project:helioy &gt; backup.json</bold>
+	  <dim>$</dim> <bold>cm export --scope '{"kind":"descendants","path":"global/project:helioy"}' &gt; backup.json</bold>
   <dim>$</dim> <bold>cm export --format json</bold>                              <dim># default and currently the only format</dim>"#
 );
 

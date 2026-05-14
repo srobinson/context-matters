@@ -45,7 +45,7 @@ This project has a structured context store available via the **`cm` MCP server*
 2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
    → retrieve priority context for THIS known scope and its ancestors
 3. Work on the task
-4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy")
+4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy/repo:nancyr")
    → persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
    → preserve conversation at session end for continuity
@@ -66,20 +66,22 @@ global/project:helioy/repo:nancyr               — codebase-specific facts
 global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
 ```
 
-Public requests select scope through the `scope` field. Structured selectors:
+Public requests select scope through the `scope` field. The canonical scope path string returned by read tools can be passed directly to write tools.
 
 ```
-{ "scope": {"kind":"path","path":"global"} }       exact scope for recall or search
-{ "scope": {"kind":"cwd_inferred","cwd":"/repo"} } structured cwd inference
-{ "scope": {"kind":"subtree","path":"global/project:helioy"} } subtree match
-{ "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set
-{ "scope": {"kind":"all"} }                        no scope filter
+{ "scope": "global/project:helioy/repo:nancyr" }   exact scope path shortcut
+{ "scope": {"kind":"path","path":"global/project:helioy/repo:nancyr"} } exact scope
+{ "scope": {"kind":"repo","project":"helioy","repo":"nancyr"} } repo scope sugar
+{ "scope": {"kind":"cwd_inferred","cwd":"/repo"} } cwd inference
+{ "scope": {"kind":"descendants","path":"global/project:helioy"} } descendants filter for broad reads
+{ "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set for broad reads
+{ "scope": {"kind":"all"} }                        no scope filter for broad reads
 ```
 
-`cx_recall` accepts only `path` and `cwd_inferred` selectors. Use `cx_search` for `subtree`, `set`, and `all`.
+`cx_store`, `cx_deposit`, and `cx_recall` accept singular scopes only: string path, path, cwd_inferred, project, repo, or session. Use `cx_search`, `cx_browse`, or `cx_export` for descendants, set, and all selectors.
 For cwd based browse resolution, call `cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
 
-Persisted entries, export rows, and response payloads include a `scope_path` field that identifies the exact stored scope of each row.
+Persisted entries and export rows include `scope_path`. Read projections use `scope` for compact row output.
 
 ### Two-Phase Retrieval
 
@@ -94,12 +96,12 @@ This keeps initial responses compact while allowing selective deep reads.
 
 ### `cx_recall`
 
-Recall priority context for a single known scope by walking that scope and its ancestors. Call after receiving a task with a summary of what you are working on. With a query, uses FTS5 inside the ancestor walk. Without a query, returns all entries visible at the target scope. Use cx_search when you need content search across subtree, set, or all scopes. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.
+Recall priority context for a single known scope by walking that scope and its ancestors. Call after receiving a task with a summary of what you are working on. With a query, uses FTS5 inside the ancestor walk. Without a query, returns all entries visible at the target scope. Use cx_search when you need content search across descendants, set, or all scopes. Returns metadata + snippet for two-phase retrieval; use cx_get for full body. IMPORTANT: The query uses FTS5 with implicit AND between words. Use 1-3 keywords, not full sentences. More words = fewer results. Examples: 'auth migration' (good), 'how does the authentication migration work' (too many words, likely 0 results). Use OR for alternatives: 'auth OR authentication'. Use prefix matching: 'migrat*'.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix que... |
-| `scope` | object | no | Structured ScopeSelector object for recall. Accepted variants: {"kind":"path","path":"global/project:helioy"} or {"ki... |
+| `scope` | string | object | no | Singular scope input for recall. Pass a canonical scope path string returned by read tools, or a structured singular ... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -112,7 +114,7 @@ Search cm entries by content across scopes. Returns FTS5 BM25-ranked hits. Use c
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | yes | Required FTS5 search query. Use 1-3 keywords. Supports prefix queries (rust*), phrase queries ("scope path"), and boo... |
-| `scope` | object | yes | Structured ScopeSelector JSON. Accepted variants: {"kind":"path","path":"global/project:helioy"}, {"kind":"cwd_inferr... |
+| `scope` | string | object | yes | Scope input for content search. Pass a canonical scope path string, a singular selector such as cwd_inferred, project... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -127,7 +129,7 @@ Store a single context entry with structured metadata. Scopes are auto-created i
 | `title` | string | yes | Short summary of the entry. Displayed in search results and browse listings. |
 | `body` | string | yes | Full content body in markdown. |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | yes | Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rat... |
-| `scope` | string | no | Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created ... |
+| `scope` | string | object | no | Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: p... |
 | `created_by` | string | no | Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolid... |
 | `tags` | array<string> | no | Freeform tags for categorization and filtering. Pass a JSON array: ["tag1", "tag2"]. |
 | `confidence` | enum: high \| medium \| low | no | Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level. |
@@ -144,7 +146,7 @@ Batch-store conversation exchanges for future context. Each exchange (user/assis
 |-----------|------|----------|-------------|
 | `exchanges` | array<object> | yes | Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optio... |
 | `summary` | string | no | Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates'... |
-| `scope` | string | no | Target scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Exact scope chains are created ... |
+| `scope` | string | object | no | Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: p... |
 | `created_by` | string | no | Attribution string. Default: 'agent:claude-code'. |
 
 ### `cx_browse`
@@ -153,7 +155,7 @@ List entries with filtering and cursor-based pagination. For inventory and explo
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | object | no | Structured ScopeSelector object for browse. Accepted variants: {"kind":"path","path":"global/project:helioy"}, {"kind... |
+| `scope` | string | object | no | Scope input for browse. Pass a canonical scope path string, a singular selector, or a broad selector: descendants, su... |
 | `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="cwd_inferred". |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | no | Filter by entry kind. |
 | `tag` | string | no | Filter by tag. Entries must have at least one matching tag. |
@@ -200,11 +202,11 @@ View aggregate statistics about the context store. Returns active/superseded ent
 
 ### `cx_export`
 
-Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter with a scope selector.
+Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and matching scopes. Relations are excluded in v1. Optionally filter with a scope selector, including descendants for subtree backup.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | no | Filter export to a scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Omit to export ever... |
+| `scope` | string | object | no | Filter export to a scope input. Pass a canonical scope path string for exact export, cwd_inferred for current scope, ... |
 | `format` | enum: json | no | Export format. Currently only 'json' is supported. Default: 'json'. |
 
 ## Rules

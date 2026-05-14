@@ -1,5 +1,5 @@
 {
-  "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and their scopes. Relations are excluded in v1. Optionally filter with a scope selector.",
+  "description": "Export entries and scopes as JSON for backup or migration. Returns all active entries (superseded excluded) and matching scopes. Relations are excluded in v1. Optionally filter with a scope selector, including descendants for subtree backup.",
   "inputSchema": {
     "additionalProperties": false,
     "properties": {
@@ -11,8 +11,175 @@
         "type": "string"
       },
       "scope": {
-        "description": "Filter export to a scope selector. Pass an exact scope path or the reserved value 'cwd_inferred'. Omit to export everything.",
-        "type": "string"
+        "description": "Filter export to a scope input. Pass a canonical scope path string for exact export, cwd_inferred for current scope, or descendants/subtree for exact scope plus child scopes. Omit to export everything.",
+        "oneOf": [
+          {
+            "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred.",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "path"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "cwd_inferred"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "project"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "repo"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "repo"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "session"
+                ],
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "project",
+              "session"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "descendants",
+                  "subtree"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "set"
+                ],
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "paths"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "all"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
       }
     },
     "type": "object"

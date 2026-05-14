@@ -6,7 +6,7 @@ use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde_json::Value;
 
 use crate::mcp::{
-    ToolResult, cm_err_to_string, parse_params, reject_removed_scope_inputs, yaml_response,
+    ToolResult, cm_err_to_string, dual_response, parse_params, reject_removed_scope_inputs,
 };
 
 pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolResult, String> {
@@ -18,5 +18,10 @@ pub async fn cx_update(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         .await
         .map_err(cm_err_to_string)?;
 
-    yaml_response(format_update_ack(&result.updated_id, &result.content_hash))
+    let text = format_update_ack(&result.updated_id, &result.content_hash);
+    let structured = serde_json::json!({
+        "id": result.updated_id,
+        "content_hash": result.content_hash
+    });
+    dual_response(text, &structured)
 }

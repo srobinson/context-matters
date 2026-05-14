@@ -85,6 +85,42 @@ async fn store_exact_scope_creates_scope_chain() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn store_accepts_structured_repo_scope_and_returns_structured_receipt() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    let result = tools::cx_store(
+        &store,
+        &json!({
+            "title": "Repo-level decision",
+            "body": "Use sqlx for database access.",
+            "kind": "decision",
+            "scope": {
+                "kind": "repo",
+                "project": "helioy",
+                "repo": "context-matters"
+            }
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        result
+            .text
+            .contains("scope: global/project:helioy/repo:context-matters")
+    );
+    let structured = result.structured.expect("cx_store structured receipt");
+    assert_eq!(
+        structured["scope_path"],
+        "global/project:helioy/repo:context-matters"
+    );
+    assert_eq!(structured["kind"], "decision");
+    assert!(structured["id"].as_str().is_some_and(|id| id.len() > 10));
+    assert!(structured["content_hash"].as_str().is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn store_with_supersedes() {
     let (store, _dir) = test_store().await;
     create_global(&store).await;

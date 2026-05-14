@@ -64,7 +64,7 @@ cm search "auth migration" --scope '{"kind":"all"}'
 cm browse --kind decision -j          # JSON inventory of decisions
 cm get 019d09ed-7a4f-7693             # full entry by id
 cm stats                              # scope tree + counts
-cm export --scope global/project:helioy # JSON snapshot of a subtree
+cm export --scope '{"kind":"descendants","path":"global/project:helioy"}' # JSON snapshot of a subtree
 ```
 
 ## Web UI
@@ -82,19 +82,29 @@ global/project:helioy/repo:fmm               codebase-specific facts
 global/project:helioy/repo:fmm/session:abc   ephemeral task context
 ```
 
-Public request inputs select scope with structured `scope` JSON:
+Public request inputs select scope with `scope`. A canonical scope path returned by a read tool can be passed directly to a write tool:
+
+```json
+{ "scope": "global/project:helioy/repo:fmm" }
+```
+
+Structured singular selectors are accepted too:
 
 ```json
 { "scope": { "kind": "path", "path": "global/project:helioy/repo:fmm" } }
 ```
 
 ```json
+{ "scope": { "kind": "repo", "project": "helioy", "repo": "fmm" } }
+```
+
+```json
 { "scope": { "kind": "cwd_inferred", "cwd": "/path/to/repo" } }
 ```
 
-Other read selectors include `subtree`, `set`, and `all`. `cx_recall` accepts only `path` and `cwd_inferred`; use `cx_search` for broad content search. `cwd_inferred` uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory.
+Broad read and export selectors include `descendants`, `subtree`, `set`, and `all`. `cx_store`, `cx_deposit`, and `cx_recall` accept only singular scopes; use `cx_search`, `cx_browse`, or `cx_export` for broad scope operations. `cwd_inferred` uses git metadata when available, so linked worktrees resolve to the source repository identity instead of the transient worktree directory.
 
-Persisted entries, export rows, response payloads, and internal exact path types include a `scope_path` field that identifies the exact stored scope of each row.
+Persisted entries and export rows include `scope_path`. Read projections use `scope` for compact row output.
 
 ## Architecture
 

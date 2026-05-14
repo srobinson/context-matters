@@ -16,5 +16,47 @@
     ],
     "type": "object"
   },
-  "name": "cx_forget"
+  "name": "cx_forget",
+  "outputSchema": {
+    "description": "Forget receipt: disposition counts and per-row errors.",
+    "properties": {
+      "already_inactive": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "errors": {
+        "items": {
+          "properties": {
+            "error": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "error"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "forgotten": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "not_found": {
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "forgotten",
+      "already_inactive",
+      "not_found",
+      "errors"
+    ],
+    "type": "object"
+  }
 }
