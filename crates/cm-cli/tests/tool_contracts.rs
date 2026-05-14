@@ -6,8 +6,12 @@ use cm_capabilities::projection::{
 use cm_cli::tool_contracts::{
     ParamShape, ScopeFragment, ScopeInputShape, ScopePolicy, contract_registry,
 };
+use cm_cli::tool_docs::{
+    render_generated_instructions_rs, render_readme_md, render_server_instructions, render_skill_md,
+};
 use common::assert_top_level_conformance;
 use serde_json::json;
+use std::{fs, path::PathBuf};
 
 #[test]
 fn registry_models_read_tool_contract() {
@@ -186,4 +190,42 @@ fn broad_scope_schema_prefers_descendants_and_keeps_subtree_alias() {
         variants[6]["properties"]["kind"]["enum"],
         json!(["descendants", "subtree"])
     );
+}
+
+#[test]
+fn generated_contract_docs_are_fresh() {
+    let registry = contract_registry();
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest
+        .parent()
+        .expect("cm-cli lives under crates")
+        .parent()
+        .expect("crates lives under workspace");
+
+    let instructions = render_server_instructions(registry.tools());
+    let expected = [
+        (
+            manifest.join("templates/SKILL.md"),
+            render_skill_md(registry.skill(), registry.tools()),
+        ),
+        (
+            manifest.join("src/mcp/generated_instructions.rs"),
+            render_generated_instructions_rs(&instructions),
+        ),
+        (
+            workspace.join("README.md"),
+            render_readme_md(registry.tools()),
+        ),
+    ];
+
+    for (path, expected_content) in expected {
+        let actual = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        assert_eq!(
+            actual,
+            expected_content,
+            "{} is stale against the contract registry",
+            path.display()
+        );
+    }
 }

@@ -200,13 +200,25 @@ fn public_scope_artifacts_do_not_expose_removed_request_terms() {
     assert_generated_scope_schema_inputs_are_current();
 
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for relative in [
-        "src/cli/generated_help.rs",
-        "templates/SKILL.md",
-        "src/mcp/generated_schema.rs",
+    let workspace = workspace_root();
+    for (relative, path) in [
+        (
+            "src/cli/generated_help.rs",
+            manifest.join("src/cli/generated_help.rs"),
+        ),
+        ("templates/SKILL.md", manifest.join("templates/SKILL.md")),
+        (
+            "src/mcp/generated_schema.rs",
+            manifest.join("src/mcp/generated_schema.rs"),
+        ),
+        (
+            "src/mcp/generated_instructions.rs",
+            manifest.join("src/mcp/generated_instructions.rs"),
+        ),
+        ("README.md", workspace.join("README.md")),
     ] {
-        let content = fs::read_to_string(manifest.join(relative))
-            .unwrap_or_else(|e| panic!("failed to read {relative}: {e}"));
+        let content =
+            fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {relative}: {e}"));
         assert_no_public_scope_stale_terms(relative, &content);
     }
     assert_skill_doc_explains_scope_request_boundary(&manifest);
