@@ -125,7 +125,7 @@ pub const GET_AFTER_HELP: &str = cstr!(
 pub const STATS_AFTER_HELP: &str = cstr!(
     r#"<bold><underline>Examples</underline></bold>
   <dim>$</dim> <bold>cm stats</bold>                                            <dim># human-readable</dim>
-  <dim>$</dim> <bold>cm stats --tag-sort count</bold>                            <dim># tags by usage</dim>
+  <dim>$</dim> <bold>cm stats --tag-sort name</bold>                             <dim># tags alphabetically</dim>
   <dim>$</dim> <bold>cm stats -j</bold>                                          <dim># JSON for tooling</dim>"#
 );
 

@@ -5,11 +5,11 @@ use cm_core::{CmError, ContextStore, StoreStats};
 /// How to sort the `entries_by_tag` list in the result.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TagSort {
-    /// Alphabetical by tag name.
-    #[default]
-    Name,
     /// By count descending (store default ordering).
+    #[default]
     Count,
+    /// Alphabetical by tag name.
+    Name,
 }
 
 /// Input for a stats operation.

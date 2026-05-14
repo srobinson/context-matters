@@ -368,6 +368,46 @@ async fn stats_returns_correct_counts() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn stats_default_top_tags_are_ordered_by_count() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+
+    for (title, tags) in [
+        ("Alpha tag", json!(["zeta", "alpha"])),
+        ("Beta tag one", json!(["zeta", "beta"])),
+        ("Beta tag two", json!(["zeta", "beta"])),
+    ] {
+        let body = format!("Body for {title}.");
+        tools::cx_store(
+            &store,
+            &json!({
+                "title": title,
+                "body": body,
+                "kind": "fact",
+                "tags": tags,
+            }),
+        )
+        .await
+        .unwrap();
+    }
+
+    let result = tools::cx_stats(&store, &json!({})).await.unwrap();
+    let structured = result
+        .structured
+        .as_ref()
+        .expect("cx_stats emits structured content");
+
+    assert_eq!(
+        structured["top_tags"],
+        json!([
+            {"tag": "zeta", "count": 3},
+            {"tag": "beta", "count": 2},
+            {"tag": "alpha", "count": 1},
+        ])
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn stats_rejects_invalid_tag_sort_with_capability_error() {
     let (store, _dir) = test_store().await;
     let err = tools::cx_stats(&store, &json!({"tag_sort": "recent"}))

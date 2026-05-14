@@ -4,7 +4,7 @@
     "additionalProperties": false,
     "properties": {
       "tag_sort": {
-        "description": "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first.",
+        "description": "Sort order for tag breakdown. 'count': most used tags first (default). 'name': alphabetical ascending.",
         "enum": [
           "name",
           "count"

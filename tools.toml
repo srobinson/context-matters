@@ -1,75 +1,42 @@
 # Single source of truth for all tool documentation.
 # build.rs reads this file and generates:
-#   src/mcp/generated_schema.rs  — MCP tool list JSON
-#   src/cli/generated_help.rs    — CLI help string constants
-#   templates/SKILL.md           — Claude Code skill documentation
+#   src/mcp/generated_schema.rs       - MCP tool list JSON
+#   src/mcp/generated_instructions.rs - MCP server instructions
+#   src/cli/generated_help.rs         - CLI help string constants
+#   templates/SKILL.md                - Claude Code skill documentation
+#   README.md                         - public tool documentation
 
 [skill]
 workflow = """
 ## Context Management Workflow
 
-1. **Recall** — `cx_recall(query: "topic")` — priority context for one known scope by walking ancestors.
-2. **Search** — `cx_search(query: "topic", scope: {"kind":"all"})` — content search across wide or unknown scopes.
-3. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
-4. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
-5. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
-6. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
-7. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
-8. **Forget** — `cx_forget(ids)` — mark entries forgotten so active reads skip them.
+1. **Recall**: `cx_recall(query: "topic")` retrieves priority context for one known scope by walking ancestors.
+2. **Search**: `cx_search(query: "topic", scope: {"kind":"all"})` searches across wide or unknown scopes.
+3. **Store**: `cx_store(title, body, kind)` persists facts, decisions, preferences, lessons.
+4. **Deposit**: `cx_deposit(exchanges)` batch stores conversation exchanges for future reference.
+5. **Browse**: `cx_browse(kind: "decision")` lists entries with filters and pagination.
+6. **Get**: `cx_get(ids)` fetches full content for specific entries.
+7. **Update**: `cx_update(id, title: "new")` partially updates an existing entry.
+8. **Forget**: `cx_forget(ids)` marks entries forgotten so active reads skip them.
 
 ### Task Workflow
 
 ```
 1. Receive task from user or orchestrator
 2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
-   → retrieve priority context for THIS known scope and its ancestors
+   retrieve priority context for this known scope and its ancestors
 3. Work on the task
 4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy/repo:nancyr")
-   → persist reusable knowledge when discovered
+   persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
-   → preserve conversation at session end for continuity
+   preserve conversation at session end for continuity
 ```
 
 Key: use cx_recall for a single known scope. Use cx_search when the right scope is unknown, broad, or cross-repo.
 When the user corrects you, store it immediately as kind: "feedback" (highest recall priority).
-
-### Scope Model
-
-Scopes form a hierarchy: global > project > repo > session.
-Context at broader scopes is visible at narrower scopes (ancestor walk).
-
-```
-global                                          — cross-project knowledge
-global/project:helioy                           — project-level decisions
-global/project:helioy/repo:nancyr               — codebase-specific facts
-global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
-```
-
-Public requests select scope through the `scope` field. The canonical scope path string returned by read tools can be passed directly to write tools.
-
-```
-{ "scope": "global/project:helioy/repo:nancyr" }   exact scope path shortcut
-{ "scope": {"kind":"path","path":"global/project:helioy/repo:nancyr"} } exact scope
-{ "scope": {"kind":"repo","project":"helioy","repo":"nancyr"} } repo scope sugar
-{ "scope": {"kind":"cwd_inferred","cwd":"/repo"} } cwd inference
-{ "scope": {"kind":"descendants","path":"global/project:helioy"} } descendants filter for broad reads
-{ "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set for broad reads
-{ "scope": {"kind":"all"} }                        no scope filter for broad reads
-```
-
-`cx_store`, `cx_deposit`, and `cx_recall` accept singular scopes only: string path, path, cwd_inferred, project, repo, or session. Use `cx_search`, `cx_browse`, or `cx_export` for descendants, set, and all selectors.
-For cwd based browse resolution, call `cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
-
-Persisted entries and export rows include `scope_path`. Read projections use `scope` for compact row output.
-
-### Two-Phase Retrieval
-
-cx_recall, cx_search, and cx_browse return metadata + snippet (first 200 chars of body).
-Use cx_get with returned IDs to fetch full body content.
-This keeps initial responses compact while allowing selective deep reads.
 """
 
-# Tool order matches the MCP tools/list response order — do not reorder.
+# Tool order matches the MCP tools/list response order. Do not reorder.
 
 [tools.cx_recall]
 cli_name        = "recall"
@@ -77,7 +44,7 @@ mcp_description = "Recall priority context for a single known scope by walking t
 cli_about       = "Recall priority context for a single known scope.\n\nWalks the target scope and its ancestors. Use search for descendants, set, or all-scope content search."
 # JSON Schema mirrors `WebRecallView` (crates/cm-capabilities/src/projection/web_view.rs:272).
 # `query`, `tier`, `score` are `skip_serializing_if = Option::is_none` and omitted from the
-# JSON when absent — they are listed in `properties` but not in `required`.
+# JSON when absent. They are listed in `properties` but not in `required`.
 output_schema   = '''
 {
   "type": "object",
@@ -139,18 +106,7 @@ cli_flag        = "query"
 name            = "scope"
 type            = "string | object"
 mcp_description = "Singular scope input for recall. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. cx_recall rejects descendants, subtree, set, and all selectors; use cx_search for broad scope queries. Default: global."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}}
-  ]
-}
-'''
+scope_schema    = "singular"
 cli_help        = "Scope selector: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
 
@@ -243,21 +199,7 @@ name            = "scope"
 type            = "string | object"
 required        = true
 mcp_description = "Scope input for content search. Pass a canonical scope path string, a singular selector such as cwd_inferred, project, repo, or session, or a broad selector: descendants, subtree, set, or all. descendants and subtree match the exact scope plus child scopes."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["descendants", "subtree"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "paths"], "properties": {"kind": {"type": "string", "enum": ["set"]}, "paths": {"type": "array", "items": {"type": "string"}}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["all"]}}}
-  ]
-}
-'''
+scope_schema    = "broad"
 cli_help        = "Scope selector: exact path, cwd_inferred, or structured descendants/set/all JSON"
 cli_flag        = "--scope"
 
@@ -340,18 +282,7 @@ cli_flag        = "--kind"
 name            = "scope"
 type            = "string | object"
 mcp_description = "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}}
-  ]
-}
-'''
+scope_schema    = "singular"
 cli_help        = "Target scope: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
 
@@ -443,18 +374,7 @@ cli_flag        = "--summary"
 name            = "scope"
 type            = "string | object"
 mcp_description = "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}}
-  ]
-}
-'''
+scope_schema    = "singular"
 cli_help        = "Target scope: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
 
@@ -547,21 +467,7 @@ output_schema   = '''
 name            = "scope"
 type            = "string | object"
 mcp_description = "Scope input for browse. Pass a canonical scope path string, a singular selector, or a broad selector: descendants, subtree, set, or all. Defaults to cwd_inferred when omitted. Top-level cwd is not accepted; put cwd inside the cwd_inferred selector."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["descendants", "subtree"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "paths"], "properties": {"kind": {"type": "string", "enum": ["set"]}, "paths": {"type": "array", "items": {"type": "string"}}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["all"]}}}
-  ]
-}
-'''
+scope_schema    = "broad"
 cli_help        = "Preferred scope: cwd_inferred, exact path, or structured descendants/set/all selector"
 cli_flag        = "--scope"
 
@@ -620,7 +526,7 @@ cli_name        = "get"
 mcp_description = "Fetch full content for specific entry IDs. Phase 2 of two-phase retrieval. Use after cx_recall or cx_browse to load full body content. Accepts full hyphenated UUIDv7 strings only. IDs that do not exist are silently omitted. Maximum 100 IDs per request."
 cli_about       = "Fetch full entry content by ID.\n\nReturns complete entries including body. Use after cx_recall or cx_browse for full content."
 # JSON Schema mirrors the structured shape that `crates/cm-capabilities/src/projection/get_view.rs::format_get_view`
-# renders to YAML today. `WebGetView` itself is not yet a Rust type — the §3 parity pass only produced
+# renders to YAML today. `WebGetView` itself is not yet a Rust type. The section 3 parity pass only produced
 # `WebBrowseView` and `WebRecallView`. This schema documents the byte-for-byte shape ALP-1760 must produce
 # when it wires `structuredContent` for cx_get; the sibling sub-issue is expected to introduce the struct.
 # Optional row fields (`tags`, `confidence`) follow the same `skip_serializing_if` convention as
@@ -764,7 +670,7 @@ cli_name        = "stats"
 mcp_description = "View aggregate statistics about the context store. Returns active/superseded entry counts, scope count, relation count, breakdown by kind, by scope, and by tag, database file size, and scope tree. Diagnostic tool for understanding what context exists."
 cli_about       = "Show store statistics.\n\nDisplays entry counts by kind, scope, and tag, relation count, database size, and scope tree."
 # JSON Schema documents the structured shape the stats projection will expose via
-# `structuredContent` once ALP-1760 wires dual-channel. `WebStatsView` is not yet a Rust type —
+# `structuredContent` once ALP-1760 wires dual-channel. `WebStatsView` is not yet a Rust type.
 # today `crates/cm-capabilities/src/projection/stats_view.rs::format_stats_view` takes a
 # `cm_capabilities::stats::StatsResult` (which wraps `cm_core::StoreStats` + a `Vec<ScopeTreeNode>`)
 # and renders YAML directly. The fields below are a flattened projection of `StatsResult` +
@@ -819,8 +725,8 @@ output_schema   = '''
 name            = "tag_sort"
 type            = "string"
 enum            = ["name", "count"]
-mcp_description = "Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first."
-cli_help        = "Tag sort order: name (alphabetical, default) or count (most used first)"
+mcp_description = "Sort order for tag breakdown. 'count': most used tags first (default). 'name': alphabetical ascending."
+cli_help        = "Tag sort order: count (most used first, default) or name (alphabetical)"
 cli_flag        = "--tag-sort"
 
 [tools.cx_export]
@@ -898,21 +804,7 @@ output_schema   = '''
 name            = "scope"
 type            = "string | object"
 mcp_description = "Filter export to a scope input. Pass a canonical scope path string for exact export, cwd_inferred for current scope, or descendants/subtree for exact scope plus child scopes. Omit to export everything."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["descendants", "subtree"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "paths"], "properties": {"kind": {"type": "string", "enum": ["set"]}, "paths": {"type": "array", "items": {"type": "string"}}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["all"]}}}
-  ]
-}
-'''
+scope_schema    = "broad"
 cli_help        = "Filter export scope: exact path, cwd_inferred, or structured descendants/set/all JSON"
 cli_flag        = "--scope"
 

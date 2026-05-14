@@ -8,18 +8,18 @@ description: >
   with conversation deposits.
 ---
 
-# Context Matters — Structured Context Store
+# Context Matters: Structured Context Store
 
 This project has a structured context store available via the **`cm` MCP server**. All tools are prefixed `cx_*`. Use them to persist and retrieve project knowledge across sessions.
 
 ## MCP Tools
 
 | Tool | Purpose | Example |
-|------|---------|--------|
+|------|---------|---------|
 | `cx_recall` | Priority context for one known scope | `cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})` |
 | `cx_search` | Content search across wide or unknown scopes | `cx_search(query: "auth decisions", scope: {"kind":"all"})` |
 | `cx_store` | Persist a fact, decision, preference, or lesson | `cx_store(title: "Use UUIDv7", body: "...", kind: "decision")` |
-| `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{user: "...", assistant: "..."}])` |
+| `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{"user":"...","assistant":"..."}])` |
 | `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})` |
 | `cx_get` | Fetch full content for specific entry IDs | `cx_get(ids: ["uuid1", "uuid2"])` |
 | `cx_update` | Partially update an existing entry | `cx_update(id: "uuid", title: "Updated title")` |
@@ -29,26 +29,26 @@ This project has a structured context store available via the **`cm` MCP server*
 
 ## Context Management Workflow
 
-1. **Recall** — `cx_recall(query: "topic")` — priority context for one known scope by walking ancestors.
-2. **Search** — `cx_search(query: "topic", scope: {"kind":"all"})` — content search across wide or unknown scopes.
-3. **Store** — `cx_store(title, body, kind)` — persist facts, decisions, preferences, lessons.
-4. **Deposit** — `cx_deposit(exchanges)` — batch-store conversation exchanges for future reference.
-5. **Browse** — `cx_browse(kind: "decision")` — filtered inventory with pagination.
-6. **Get** — `cx_get(ids)` — fetch full content for specific entries (two-phase retrieval).
-7. **Update** — `cx_update(id, title: "new")` — partial update of existing entries.
-8. **Forget** — `cx_forget(ids)` — mark entries forgotten so active reads skip them.
+1. **Recall**: `cx_recall(query: "topic")` retrieves priority context for one known scope by walking ancestors.
+2. **Search**: `cx_search(query: "topic", scope: {"kind":"all"})` searches across wide or unknown scopes.
+3. **Store**: `cx_store(title, body, kind)` persists facts, decisions, preferences, lessons.
+4. **Deposit**: `cx_deposit(exchanges)` batch stores conversation exchanges for future reference.
+5. **Browse**: `cx_browse(kind: "decision")` lists entries with filters and pagination.
+6. **Get**: `cx_get(ids)` fetches full content for specific entries.
+7. **Update**: `cx_update(id, title: "new")` partially updates an existing entry.
+8. **Forget**: `cx_forget(ids)` marks entries forgotten so active reads skip them.
 
 ### Task Workflow
 
 ```
 1. Receive task from user or orchestrator
 2. cx_recall(query: "summary of task", scope: {"kind":"path","path":"global/project:helioy/repo:nancyr"})
-   → retrieve priority context for THIS known scope and its ancestors
+   retrieve priority context for this known scope and its ancestors
 3. Work on the task
 4. cx_store(title: "...", body: "...", kind: "decision", scope: "global/project:helioy/repo:nancyr")
-   → persist reusable knowledge when discovered
+   persist reusable knowledge when discovered
 5. cx_deposit(exchanges: [...], summary: "...")
-   → preserve conversation at session end for continuity
+   preserve conversation at session end for continuity
 ```
 
 Key: use cx_recall for a single known scope. Use cx_search when the right scope is unknown, broad, or cross-repo.
@@ -56,37 +56,53 @@ When the user corrects you, store it immediately as kind: "feedback" (highest re
 
 ### Scope Model
 
-Scopes form a hierarchy: global > project > repo > session.
-Context at broader scopes is visible at narrower scopes (ancestor walk).
+Scopes form a hierarchy. Context at broader scopes is visible at narrower scopes.
 
-```
-global                                          — cross-project knowledge
-global/project:helioy                           — project-level decisions
-global/project:helioy/repo:nancyr               — codebase-specific facts
-global/project:helioy/repo:nancyr/session:abc   — ephemeral task context
+```text
+global                                           cross-project knowledge
+global/project:helioy                           project-level decisions
+global/project:helioy/repo:context-matters      codebase-specific facts
+global/project:helioy/repo:context-matters/session:abc   task context
 ```
 
 Public requests select scope through the `scope` field. The canonical scope path string returned by read tools can be passed directly to write tools.
 
-```
-{ "scope": "global/project:helioy/repo:nancyr" }   exact scope path shortcut
-{ "scope": {"kind":"path","path":"global/project:helioy/repo:nancyr"} } exact scope
-{ "scope": {"kind":"repo","project":"helioy","repo":"nancyr"} } repo scope sugar
-{ "scope": {"kind":"cwd_inferred","cwd":"/repo"} } cwd inference
-{ "scope": {"kind":"descendants","path":"global/project:helioy"} } descendants filter for broad reads
-{ "scope": {"kind":"set","paths":["global","global/project:helioy"]} } explicit set for broad reads
-{ "scope": {"kind":"all"} }                        no scope filter for broad reads
-```
+### Singular Selectors
 
-`cx_store`, `cx_deposit`, and `cx_recall` accept singular scopes only: string path, path, cwd_inferred, project, repo, or session. Use `cx_search`, `cx_browse`, or `cx_export` for descendants, set, and all selectors.
-For cwd based browse resolution, call `cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})`. `cwd_inferred` resolves linked git worktrees to the source repository identity.
+| Selector | Request example |
+|----------|-----------------|
+| canonical path string | `{ "scope": "global/project:helioy/repo:context-matters" }` |
+| path | `{ "scope": { "kind": "path", "path": "global/project:helioy/repo:context-matters" } }` |
+| cwd_inferred | `{ "scope": { "kind": "cwd_inferred", "cwd": "/path/to/repo" } }` |
+| project | `{ "scope": { "kind": "project", "project": "helioy" } }` |
+| repo | `{ "scope": { "kind": "repo", "project": "helioy", "repo": "context-matters" } }` |
+| session | `{ "scope": { "kind": "session", "project": "helioy", "repo": "context-matters", "session": "abc" } }` |
 
-Persisted entries and export rows include `scope_path`. Read projections use `scope` for compact row output.
+### Broad Selectors
+
+| Selector | Request example |
+|----------|-----------------|
+| descendants, subtree alias accepted | `{ "scope": { "kind": "descendants", "path": "global/project:helioy" } }` |
+| set | `{ "scope": { "kind": "set", "paths": ["global", "global/project:helioy"] } }` |
+| all | `{ "scope": { "kind": "all" } }` |
+
+### Tool Scope Boundaries
+
+| Tool | Scope request |
+|------|---------------|
+| `cx_recall` | Optional singular scope selector |
+| `cx_search` | Required singular or broad scope selector |
+| `cx_store` | Optional singular scope selector |
+| `cx_deposit` | Optional singular scope selector |
+| `cx_browse` | Optional singular or broad scope selector |
+| `cx_export` | Optional singular or broad scope selector |
+
+For cwd based browse resolution, call `cx_browse(scope: {"kind":"cwd_inferred","cwd":"/path/to/repo"})`.
+`cwd_inferred` resolves linked git worktrees to the source repository identity. Persisted entries and export rows include `scope_path`. Read projections use `scope` for compact row output.
 
 ### Two-Phase Retrieval
 
-cx_recall, cx_search, and cx_browse return metadata + snippet (first 200 chars of body).
-Use cx_get with returned IDs to fetch full body content.
+`cx_recall`, `cx_search`, `cx_browse` return metadata plus snippets. Use `cx_get` with returned IDs to fetch full body content.
 This keeps initial responses compact while allowing selective deep reads.
 
 
@@ -198,7 +214,7 @@ View aggregate statistics about the context store. Returns active/superseded ent
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tag_sort` | enum: name \| count | no | Sort order for tag breakdown. 'name': alphabetical ascending (default). 'count': most used tags first. |
+| `tag_sort` | enum: name \| count | no | Sort order for tag breakdown. 'count': most used tags first (default). 'name': alphabetical ascending. |
 
 ### `cx_export`
 
@@ -212,11 +228,11 @@ Export entries and scopes as JSON for backup or migration. Returns all active en
 ## Rules
 
 1. **Call `cx_recall` after receiving a task** with a summary of what you are working on
-2. **Store selectively** — persist genuinely reusable knowledge, not routine observations
-3. **Classify accurately** — the `kind` field drives recall priority and filtering
-4. **Use specific `scope` selectors**. Overly broad scoping pollutes recall for unrelated work
-5. **Two-phase retrieval** — `cx_recall`/`cx_browse` return snippets; use `cx_get` for full body
-6. **Store feedback immediately** — when the user corrects you, `kind: "feedback"` gets highest recall priority
+2. **Store selectively**. Persist genuinely reusable knowledge, not routine observations
+3. **Classify accurately**. The `kind` field drives recall priority and filtering
+4. **Use specific `scope` selectors**. Broad selectors are reserved for `cx_search`, `cx_browse`, `cx_export`
+5. **Two-phase retrieval**. Use `cx_get` when a snippet is not enough
+6. **Store feedback immediately**. When the user corrects you, `kind: "feedback"` gets highest recall priority
 7. **Do not mention the context system** to the user unless asked
 
 ## CLI Fallback

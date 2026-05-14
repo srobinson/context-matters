@@ -1,7 +1,7 @@
 //! Handler for the `cx_forget` tool.
 
 use cm_capabilities::forget::{self, ForgetRequest};
-use cm_capabilities::projection::format_forget_ack;
+use cm_capabilities::projection::{format_forget_ack, project_forget_receipt};
 use cm_core::{ContextStore, MutationSource, WriteContext};
 use serde::Deserialize;
 use serde_json::Value;
@@ -25,22 +25,12 @@ pub async fn cx_forget(store: &impl ContextStore, args: &Value) -> Result<ToolRe
         .await
         .map_err(cm_err_to_string)?;
 
+    let receipt = project_forget_receipt(&result);
     let text = format_forget_ack(
-        result.forgotten,
-        result.already_inactive,
-        result.not_found,
+        receipt.forgotten,
+        receipt.already_inactive,
+        receipt.not_found,
         &result.errors,
     );
-    let errors: Vec<_> = result
-        .errors
-        .iter()
-        .map(|error| serde_json::json!({"id": error.id, "error": error.error}))
-        .collect();
-    let structured = serde_json::json!({
-        "forgotten": result.forgotten,
-        "already_inactive": result.already_inactive,
-        "not_found": result.not_found,
-        "errors": errors
-    });
-    dual_response(text, &structured)
+    dual_response(text, &receipt)
 }

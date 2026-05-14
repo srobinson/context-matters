@@ -17,7 +17,7 @@ pub async fn cx_stats(store: &impl ContextStore, args: &Value) -> Result<ToolRes
     let tag_sort_str = args
         .get("tag_sort")
         .and_then(Value::as_str)
-        .unwrap_or("name");
+        .unwrap_or("count");
 
     let tag_sort = parse_tag_sort(tag_sort_str)?;
 

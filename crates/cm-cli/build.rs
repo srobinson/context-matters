@@ -1,68 +1,35 @@
-//! Build script — reads tools.toml and generates:
-//!   src/mcp/generated_schema.rs  — MCP tool list JSON
-//!   src/cli/generated_help.rs    — CLI help string constants
-//!   templates/SKILL.md           — Claude Code skill documentation
+//! Build script: reads tools.toml and generates:
+//!   src/mcp/generated_schema.rs  - MCP tool list JSON
+//!   src/mcp/generated_instructions.rs - MCP server instructions
+//!   src/cli/generated_help.rs    - CLI help string constants
+//!   templates/SKILL.md           - Claude Code skill documentation
+//!   ../../README.md              - public tool documentation
 
-use indexmap::IndexMap;
-use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-#[derive(Deserialize)]
-struct ToolsToml {
-    skill: Option<SkillConfig>,
-    tools: IndexMap<String, ToolDef>,
-}
+#[allow(dead_code)]
+#[path = "src/tool_contracts.rs"]
+mod tool_contracts;
+#[path = "src/tool_docs.rs"]
+mod tool_docs;
+#[allow(dead_code)]
+#[path = "src/tool_examples.rs"]
+mod tool_examples;
 
-#[derive(Deserialize)]
-struct SkillConfig {
-    workflow: String,
-}
-
-#[derive(Deserialize)]
-struct ToolDef {
-    cli_name: String,
-    mcp_description: String,
-    cli_about: String,
-    #[serde(default)]
-    params: Vec<ParamDef>,
-    /// Optional MCP `outputSchema` for the tool, expressed as a raw JSON
-    /// string (TOML triple-quoted block). When present, build.rs parses
-    /// it with `serde_json::from_str` and injects it into the tools/list
-    /// entry alongside `inputSchema`. Read tools (`cx_recall`, `cx_browse`,
-    /// `cx_get`, `cx_stats`, `cx_export`) advertise an outputSchema so
-    /// clients can validate `structuredContent` payloads (ALP-1759 +
-    /// ALP-1760). Write tools use this for structured receipts.
-    output_schema: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ParamDef {
-    name: String,
-    #[serde(rename = "type")]
-    type_: String,
-    #[serde(default)]
-    required: bool,
-    #[serde(rename = "enum")]
-    enum_values: Option<Vec<String>>,
-    mcp_description: String,
-    /// Optional raw JSON schema for MCP input. Used when a parameter needs
-    /// oneOf/anyOf or another shape that cannot be represented by `type`.
-    mcp_schema: Option<String>,
-    cli_help: Option<String>,
-    #[allow(dead_code)]
-    cli_flag: Option<String>,
-    /// For array params, the scalar type of each element (e.g. "string").
-    /// When absent on an array param, the items schema is an inline object
-    /// (currently only `exchanges` uses this).
-    items_type: Option<String>,
-}
+use tool_contracts::{ToolContract, ToolContractRegistry};
+use tool_docs::{
+    render_generated_instructions_rs, render_readme_md, render_server_instructions, render_skill_md,
+};
 
 fn main() {
     // tools.toml lives at workspace root, two levels up from cm-cli
     println!("cargo:rerun-if-changed=../../tools.toml");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/tool_contracts.rs");
+    println!("cargo:rerun-if-changed=src/tool_examples.rs");
+    println!("cargo:rerun-if-changed=src/tool_docs.rs");
     println!("cargo:rerun-if-env-changed=CONTEXT_MATTERS_GIT_SHA");
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
@@ -72,17 +39,24 @@ fn main() {
     let content = fs::read_to_string(&tools_toml_path)
         .unwrap_or_else(|e| panic!("Failed to read tools.toml: {e}"));
 
-    let parsed: ToolsToml =
-        toml::from_str(&content).unwrap_or_else(|e| panic!("Failed to parse tools.toml: {e}"));
+    let registry = ToolContractRegistry::from_toml_str(&content)
+        .unwrap_or_else(|e| panic!("Failed to parse tools.toml: {e}"));
 
-    // Generate all three outputs.
-    let (schema_rs, schema_files) = generate_mcp_schema(&parsed.tools);
-    let help_rs = generate_cli_help(&parsed.tools);
-    let skill_md = generate_skill_md(parsed.skill.as_ref(), &parsed.tools);
+    // Generate all contract-backed outputs.
+    let (schema_rs, schema_files) = generate_mcp_schema(registry.tools());
+    let help_rs = generate_cli_help(registry.tools());
+    let skill_md = render_skill_md(registry.skill(), registry.tools());
+    let instructions = render_server_instructions(registry.tools());
+    let instructions_rs = render_generated_instructions_rs(&instructions);
+    let readme_md = render_readme_md(registry.tools());
 
     write_if_changed(
         &Path::new(&manifest_dir).join("src/mcp/generated_schema.rs"),
         &schema_rs,
+    );
+    write_if_changed(
+        &Path::new(&manifest_dir).join("src/mcp/generated_instructions.rs"),
+        &instructions_rs,
     );
     let schema_dir = Path::new(&manifest_dir).join("src/mcp/generated_schema");
     fs::create_dir_all(&schema_dir)
@@ -106,6 +80,10 @@ fn main() {
         .unwrap_or_else(|e| panic!("Failed to create templates/: {e}"));
 
     write_if_changed(&templates_dir.join("SKILL.md"), &skill_md);
+    write_if_changed(
+        &Path::new(&manifest_dir).join("../../README.md"),
+        &readme_md,
+    );
 }
 
 fn emit_version() {
@@ -150,55 +128,17 @@ fn remove_stale_generated_files(dir: &Path, expected: &HashSet<&str>) {
 // MCP schema generator
 // ---------------------------------------------------------------------------
 
-fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(String, String)>) {
+fn generate_mcp_schema(tools: &[ToolContract]) -> (String, Vec<(String, String)>) {
     let mut include_lines = Vec::new();
     let mut schema_files = Vec::new();
 
-    for (tool_name, tool) in tools {
+    for tool in tools {
+        let tool_name = &tool.name;
         let mut properties = serde_json::Map::new();
         let mut required: Vec<String> = Vec::new();
 
         for param in &tool.params {
-            let mut prop = if let Some(raw_schema) = &param.mcp_schema {
-                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(raw_schema)
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "mcp_schema for param `{}` on tool `{tool_name}` is not valid JSON object: {e}",
-                            param.name
-                        )
-                    })
-            } else {
-                let mut prop = serde_json::Map::new();
-
-                // Handle array types with items
-                if param.type_ == "array" {
-                    prop.insert(
-                        "type".to_string(),
-                        serde_json::Value::String("array".to_string()),
-                    );
-                    let items_schema = match &param.items_type {
-                        // Scalar array: items_type specifies the element type (e.g. "string")
-                        Some(scalar) => serde_json::json!({"type": scalar}),
-                        // Object array: no items_type means inline object schema.
-                        // Currently only `exchanges` uses this pattern.
-                        None => serde_json::json!({
-                            "type": "object",
-                            "properties": {
-                                "user": {"type": "string"},
-                                "assistant": {"type": "string"}
-                            },
-                            "required": ["user", "assistant"]
-                        }),
-                    };
-                    prop.insert("items".to_string(), items_schema);
-                } else {
-                    prop.insert(
-                        "type".to_string(),
-                        serde_json::Value::String(param.type_.clone()),
-                    );
-                }
-                prop
-            };
+            let mut prop = param.input_schema_object();
 
             prop.insert(
                 "description".to_string(),
@@ -239,25 +179,18 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(Strin
 
         let mut tool_entry = serde_json::json!({
             "name": tool_name,
-            "description": tool.mcp_description,
+            "description": tool.descriptions.mcp,
             "inputSchema": input_schema
         });
-        // Per-tool outputSchema is optional. Tools declare one so MCP
-        // clients can validate `structuredContent` against the
-        // expected response shape. Parse the raw
-        // JSON string from tools.toml and panic with a tool-keyed error
-        // on malformed schemas so build failures pinpoint the offender.
-        if let Some(output_schema_raw) = &tool.output_schema {
-            let parsed: serde_json::Value =
-                serde_json::from_str(output_schema_raw).unwrap_or_else(|e| {
-                    panic!("output_schema for tool `{tool_name}` is not valid JSON: {e}")
-                });
+        // Per-tool outputSchema is optional. The typed registry parses it
+        // up front so malformed schemas fail before artifacts render.
+        if let Some(parsed) = &tool.output.schema {
             tool_entry
                 .as_object_mut()
                 .expect("tool entry is a JSON object")
-                .insert("outputSchema".to_string(), parsed);
+                .insert("outputSchema".to_string(), parsed.clone());
         }
-        let file_name = format!("{}.json", tool_name.replace('-', "_"));
+        let file_name = tool.artifacts.mcp_schema_file.clone();
         let json_str =
             serde_json::to_string_pretty(&tool_entry).expect("JSON serialization failed");
         include_lines.push(format!(
@@ -286,17 +219,17 @@ fn generate_mcp_schema(tools: &IndexMap<String, ToolDef>) -> (String, Vec<(Strin
 // CLI help constants generator
 // ---------------------------------------------------------------------------
 
-fn generate_cli_help(tools: &IndexMap<String, ToolDef>) -> String {
+fn generate_cli_help(tools: &[ToolContract]) -> String {
     let mut lines = vec![
-        "// AUTO-GENERATED by build.rs from tools.toml — do not edit".to_string(),
+        "// AUTO-GENERATED by build.rs from tools.toml - do not edit".to_string(),
         "#![allow(clippy::all)]".to_string(),
     ];
 
-    for tool in tools.values() {
-        let prefix = tool.cli_name.to_uppercase().replace('-', "_");
+    for tool in tools {
+        let prefix = &tool.artifacts.cli_help_prefix;
 
         // Command-level about constant.
-        let escaped = rust_escape(&tool.cli_about);
+        let escaped = rust_escape(&tool.cli.about);
         lines.push("#[rustfmt::skip]".to_string());
         lines.push(format!("pub const {prefix}_ABOUT: &str = \"{escaped}\";"));
 
@@ -325,170 +258,4 @@ fn rust_escape(s: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
-}
-
-// ---------------------------------------------------------------------------
-// SKILL.md generator
-// ---------------------------------------------------------------------------
-
-fn generate_skill_md(skill: Option<&SkillConfig>, tools: &IndexMap<String, ToolDef>) -> String {
-    let mut out = String::new();
-
-    // Frontmatter
-    out.push_str("---\n");
-    out.push_str("name: cm\n");
-    out.push_str("description: >\n");
-    out.push_str("  Structured context store for AI agents. Use before any session to recall\n");
-    out.push_str(
-        "  relevant knowledge, and during work to persist facts, decisions, preferences,\n",
-    );
-    out.push_str(
-        "  and lessons. All tools are prefixed `cx_*`. Trigger when: starting a session,\n",
-    );
-    out.push_str(
-        "  discovering reusable knowledge, receiving user corrections, or ending a session\n",
-    );
-    out.push_str("  with conversation deposits.\n");
-    out.push_str("---\n\n");
-
-    // Introduction
-    out.push_str("# Context Matters — Structured Context Store\n\n");
-    out.push_str(
-        "This project has a structured context store available via the **`cm` MCP server**. ",
-    );
-    out.push_str(
-        "All tools are prefixed `cx_*`. Use them to persist and retrieve project knowledge ",
-    );
-    out.push_str("across sessions.\n\n");
-
-    // MCP tools reference table
-    out.push_str("## MCP Tools\n\n");
-    out.push_str("| Tool | Purpose | Example |\n");
-    out.push_str("|------|---------|--------|\n");
-
-    let use_cases = [
-        (
-            "cx_recall",
-            "Priority context for one known scope",
-            r#"`cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})`"#,
-        ),
-        (
-            "cx_search",
-            "Content search across wide or unknown scopes",
-            r#"`cx_search(query: "auth decisions", scope: {"kind":"all"})`"#,
-        ),
-        (
-            "cx_store",
-            "Persist a fact, decision, preference, or lesson",
-            r#"`cx_store(title: "Use UUIDv7", body: "...", kind: "decision")`"#,
-        ),
-        (
-            "cx_deposit",
-            "Batch-store conversation exchanges",
-            r#"`cx_deposit(exchanges: [{user: "...", assistant: "..."}])`"#,
-        ),
-        (
-            "cx_browse",
-            "List entries with filters and pagination",
-            r#"`cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})`"#,
-        ),
-        (
-            "cx_get",
-            "Fetch full content for specific entry IDs",
-            r#"`cx_get(ids: ["uuid1", "uuid2"])`"#,
-        ),
-        (
-            "cx_update",
-            "Partially update an existing entry",
-            r#"`cx_update(id: "uuid", title: "Updated title")`"#,
-        ),
-        (
-            "cx_forget",
-            "Mark entries forgotten so active reads skip them",
-            r#"`cx_forget(ids: ["uuid"])`"#,
-        ),
-        (
-            "cx_stats",
-            "View store statistics and scope breakdown",
-            r#"`cx_stats()`"#,
-        ),
-        (
-            "cx_export",
-            "Export entries as JSON for backup",
-            r#"`cx_export(scope: "global/project:helioy")`"#,
-        ),
-    ];
-
-    for (tool_name, purpose, example) in &use_cases {
-        out.push_str(&format!("| `{tool_name}` | {purpose} | {example} |\n"));
-    }
-    out.push('\n');
-
-    // Workflow section from [skill].workflow
-    if let Some(skill) = skill {
-        out.push_str(skill.workflow.trim_start_matches('\n'));
-        out.push('\n');
-    }
-
-    // Per-tool parameter reference tables
-    out.push_str("\n## Parameter Reference\n\n");
-    out.push_str("> Auto-generated from tools.toml.\n\n");
-
-    for (tool_name, tool) in tools {
-        out.push_str(&format!("### `{tool_name}`\n\n"));
-        out.push_str(&format!("{}\n\n", tool.mcp_description));
-
-        if !tool.params.is_empty() {
-            out.push_str("| Parameter | Type | Required | Description |\n");
-            out.push_str("|-----------|------|----------|-------------|\n");
-
-            for param in &tool.params {
-                let req = if param.required { "yes" } else { "no" };
-                let type_str = if let Some(ev) = &param.enum_values {
-                    let opts = ev.join(" \\| ");
-                    format!("enum: {opts}")
-                } else if param.type_ == "array" {
-                    match &param.items_type {
-                        Some(scalar) => format!("array<{scalar}>"),
-                        None => "array<object>".to_string(),
-                    }
-                } else {
-                    param.type_.clone()
-                };
-                // Truncate description for table readability
-                let desc = if param.mcp_description.len() > 120 {
-                    format!("{}...", &param.mcp_description[..117])
-                } else {
-                    param.mcp_description.clone()
-                };
-                out.push_str(&format!(
-                    "| `{}` | {} | {} | {} |\n",
-                    param.name, type_str, req, desc
-                ));
-            }
-            out.push('\n');
-        }
-    }
-
-    // Rules section
-    out.push_str("## Rules\n\n");
-    out.push_str("1. **Call `cx_recall` after receiving a task** with a summary of what you are working on\n");
-    out.push_str("2. **Store selectively** — persist genuinely reusable knowledge, not routine observations\n");
-    out.push_str(
-        "3. **Classify accurately** — the `kind` field drives recall priority and filtering\n",
-    );
-    out.push_str("4. **Use specific `scope` selectors**. Overly broad scoping pollutes recall for unrelated work\n");
-    out.push_str("5. **Two-phase retrieval** — `cx_recall`/`cx_browse` return snippets; use `cx_get` for full body\n");
-    out.push_str("6. **Store feedback immediately** — when the user corrects you, `kind: \"feedback\"` gets highest recall priority\n");
-    out.push_str("7. **Do not mention the context system** to the user unless asked\n");
-
-    // CLI fallback section
-    out.push_str("\n## CLI Fallback\n\n");
-    out.push_str("If MCP tools are unavailable, use the CLI directly:\n\n");
-    out.push_str("```bash\n");
-    out.push_str("cm stats     # Show store statistics\n");
-    out.push_str("cm serve     # Start MCP server on stdio\n");
-    out.push_str("```\n");
-
-    out
 }
