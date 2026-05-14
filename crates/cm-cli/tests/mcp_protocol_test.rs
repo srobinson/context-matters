@@ -7,6 +7,8 @@ mod common;
 
 #[path = "mcp_protocol/basics.rs"]
 mod basics;
+#[path = "mcp_protocol/examples.rs"]
+mod examples;
 #[path = "mcp_protocol/export.rs"]
 mod export;
 #[path = "mcp_protocol/schema_conformance.rs"]

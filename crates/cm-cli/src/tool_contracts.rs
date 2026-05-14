@@ -8,6 +8,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
+pub use crate::tool_examples::ToolExample;
+use crate::tool_examples::contract_examples;
+
 const TOOLS_TOML: &str = include_str!("../../../tools.toml");
 
 static REGISTRY: OnceLock<ToolContractRegistry> = OnceLock::new();
@@ -88,6 +91,7 @@ impl ToolContract {
             .collect();
         let output = OutputContract::from_raw(&name, metadata.output_type, raw.output_schema)?;
         let artifacts = ArtifactRenderMetadata::for_tool(&name, &raw.cli_name);
+        let examples = contract_examples(&name)?;
 
         Ok(Self {
             name,
@@ -98,13 +102,7 @@ impl ToolContract {
             params,
             required_params,
             scope_policy: metadata.scope_policy,
-            examples: metadata
-                .examples
-                .iter()
-                .map(|invocation| ToolExample {
-                    invocation: invocation.to_string(),
-                })
-                .collect(),
+            examples,
             output,
             cli: CliMetadata {
                 name: raw.cli_name,
@@ -289,6 +287,32 @@ pub enum ScopeFragment {
 }
 
 impl ScopeFragment {
+    pub fn request_example(self) -> &'static str {
+        match self {
+            Self::ExactPathString => r#"{ "scope": "global/project:helioy/repo:context-matters" }"#,
+            Self::Path => {
+                r#"{ "scope": { "kind": "path", "path": "global/project:helioy/repo:context-matters" } }"#
+            }
+            Self::CwdInferred => {
+                r#"{ "scope": { "kind": "cwd_inferred", "cwd": "/path/to/repo" } }"#
+            }
+            Self::Project => r#"{ "scope": { "kind": "project", "project": "helioy" } }"#,
+            Self::Repo => {
+                r#"{ "scope": { "kind": "repo", "project": "helioy", "repo": "context-matters" } }"#
+            }
+            Self::Session => {
+                r#"{ "scope": { "kind": "session", "project": "helioy", "repo": "context-matters", "session": "abc" } }"#
+            }
+            Self::Descendants => {
+                r#"{ "scope": { "kind": "descendants", "path": "global/project:helioy" } }"#
+            }
+            Self::Set => {
+                r#"{ "scope": { "kind": "set", "paths": ["global", "global/project:helioy"] } }"#
+            }
+            Self::All => r#"{ "scope": { "kind": "all" } }"#,
+        }
+    }
+
     fn schema_value(self) -> Value {
         match self {
             Self::ExactPathString => serde_json::json!({
@@ -386,11 +410,6 @@ pub enum ScopePolicy {
     SingularRead,
     BroadRead,
     SingularWrite,
-}
-
-#[derive(Debug, Clone)]
-pub struct ToolExample {
-    pub invocation: String,
 }
 
 #[derive(Debug, Clone)]
@@ -505,7 +524,6 @@ struct ContractMetadata {
     short_description: &'static str,
     scope_policy: ScopePolicy,
     output_type: &'static str,
-    examples: &'static [&'static str],
 }
 
 fn contract_metadata(tool_name: &str) -> Result<ContractMetadata, String> {
@@ -514,65 +532,51 @@ fn contract_metadata(tool_name: &str) -> Result<ContractMetadata, String> {
             short_description: "Priority context for one known scope",
             scope_policy: ScopePolicy::SingularRead,
             output_type: "WebRecallView",
-            examples: &[
-                r#"cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})"#,
-            ],
         },
         "cx_search" => ContractMetadata {
             short_description: "Content search across wide or unknown scopes",
             scope_policy: ScopePolicy::BroadRead,
             output_type: "SearchView",
-            examples: &[r#"cx_search(query: "auth decisions", scope: {"kind":"all"})"#],
         },
         "cx_store" => ContractMetadata {
             short_description: "Persist a fact, decision, preference, or lesson",
             scope_policy: ScopePolicy::SingularWrite,
             output_type: "StoreReceipt",
-            examples: &[r#"cx_store(title: "Use UUIDv7", body: "...", kind: "decision")"#],
         },
         "cx_deposit" => ContractMetadata {
             short_description: "Batch-store conversation exchanges",
             scope_policy: ScopePolicy::SingularWrite,
             output_type: "DepositReceipt",
-            examples: &[r#"cx_deposit(exchanges: [{user: "...", assistant: "..."}])"#],
         },
         "cx_browse" => ContractMetadata {
             short_description: "List entries with filters and pagination",
             scope_policy: ScopePolicy::BroadRead,
             output_type: "WebBrowseView",
-            examples: &[
-                r#"cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})"#,
-            ],
         },
         "cx_get" => ContractMetadata {
             short_description: "Fetch full content for specific entry IDs",
             scope_policy: ScopePolicy::NoScope,
             output_type: "WebGetView",
-            examples: &[r#"cx_get(ids: ["uuid1", "uuid2"])"#],
         },
         "cx_update" => ContractMetadata {
             short_description: "Partially update an existing entry",
             scope_policy: ScopePolicy::SingularWrite,
             output_type: "UpdateReceipt",
-            examples: &[r#"cx_update(id: "uuid", title: "Updated title")"#],
         },
         "cx_forget" => ContractMetadata {
             short_description: "Mark entries forgotten so active reads skip them",
             scope_policy: ScopePolicy::NoScope,
             output_type: "ForgetReceipt",
-            examples: &[r#"cx_forget(ids: ["uuid"])"#],
         },
         "cx_stats" => ContractMetadata {
             short_description: "View store statistics and scope breakdown",
             scope_policy: ScopePolicy::NoScope,
             output_type: "WebStatsView",
-            examples: &["cx_stats()"],
         },
         "cx_export" => ContractMetadata {
             short_description: "Export entries as JSON for backup",
             scope_policy: ScopePolicy::BroadRead,
             output_type: "ExportView",
-            examples: &[r#"cx_export(scope: "global/project:helioy")"#],
         },
         _ => return Err(format!("missing contract metadata for tool `{tool_name}`")),
     };

@@ -51,7 +51,7 @@ Run `cm serve` to start the MCP server on stdio.
 cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})
 cx_search(query: "auth decisions", scope: {"kind":"all"})
 cx_store(title: "Use UUIDv7", body: "...", kind: "decision")
-cx_deposit(exchanges: [{user: "...", assistant: "..."}])
+cx_deposit(exchanges: [{"user":"...","assistant":"..."}])
 cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})
 cx_get(ids: ["uuid1", "uuid2"])
 cx_update(id: "uuid", title: "Updated title")

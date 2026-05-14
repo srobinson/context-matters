@@ -14,6 +14,9 @@ use std::path::Path;
 mod tool_contracts;
 #[path = "src/tool_docs.rs"]
 mod tool_docs;
+#[allow(dead_code)]
+#[path = "src/tool_examples.rs"]
+mod tool_examples;
 
 use tool_contracts::{ToolContract, ToolContractRegistry};
 use tool_docs::{
@@ -25,6 +28,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../tools.toml");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/tool_contracts.rs");
+    println!("cargo:rerun-if-changed=src/tool_examples.rs");
     println!("cargo:rerun-if-changed=src/tool_docs.rs");
     println!("cargo:rerun-if-env-changed=CONTEXT_MATTERS_GIT_SHA");
 

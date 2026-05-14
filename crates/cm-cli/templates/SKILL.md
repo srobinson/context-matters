@@ -19,7 +19,7 @@ This project has a structured context store available via the **`cm` MCP server*
 | `cx_recall` | Priority context for one known scope | `cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})` |
 | `cx_search` | Content search across wide or unknown scopes | `cx_search(query: "auth decisions", scope: {"kind":"all"})` |
 | `cx_store` | Persist a fact, decision, preference, or lesson | `cx_store(title: "Use UUIDv7", body: "...", kind: "decision")` |
-| `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{user: "...", assistant: "..."}])` |
+| `cx_deposit` | Batch-store conversation exchanges | `cx_deposit(exchanges: [{"user":"...","assistant":"..."}])` |
 | `cx_browse` | List entries with filters and pagination | `cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})` |
 | `cx_get` | Fetch full content for specific entry IDs | `cx_get(ids: ["uuid1", "uuid2"])` |
 | `cx_update` | Partially update an existing entry | `cx_update(id: "uuid", title: "Updated title")` |

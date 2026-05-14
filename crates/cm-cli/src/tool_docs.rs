@@ -277,7 +277,7 @@ fn append_scope_fragment_table(
             out,
             "| {} | `{}` |",
             scope_fragment_label(fragment),
-            scope_fragment_example(fragment)
+            fragment.request_example()
         );
     }
     out.push('\n');
@@ -449,34 +449,6 @@ fn scope_fragment_label(fragment: ScopeFragment) -> &'static str {
         ScopeFragment::Descendants => "descendants, subtree alias accepted",
         ScopeFragment::Set => "set",
         ScopeFragment::All => "all",
-    }
-}
-
-fn scope_fragment_example(fragment: ScopeFragment) -> &'static str {
-    match fragment {
-        ScopeFragment::ExactPathString => {
-            r#"{ "scope": "global/project:helioy/repo:context-matters" }"#
-        }
-        ScopeFragment::Path => {
-            r#"{ "scope": { "kind": "path", "path": "global/project:helioy/repo:context-matters" } }"#
-        }
-        ScopeFragment::CwdInferred => {
-            r#"{ "scope": { "kind": "cwd_inferred", "cwd": "/path/to/repo" } }"#
-        }
-        ScopeFragment::Project => r#"{ "scope": { "kind": "project", "project": "helioy" } }"#,
-        ScopeFragment::Repo => {
-            r#"{ "scope": { "kind": "repo", "project": "helioy", "repo": "context-matters" } }"#
-        }
-        ScopeFragment::Session => {
-            r#"{ "scope": { "kind": "session", "project": "helioy", "repo": "context-matters", "session": "abc" } }"#
-        }
-        ScopeFragment::Descendants => {
-            r#"{ "scope": { "kind": "descendants", "path": "global/project:helioy" } }"#
-        }
-        ScopeFragment::Set => {
-            r#"{ "scope": { "kind": "set", "paths": ["global", "global/project:helioy"] } }"#
-        }
-        ScopeFragment::All => r#"{ "scope": { "kind": "all" } }"#,
     }
 }
 
