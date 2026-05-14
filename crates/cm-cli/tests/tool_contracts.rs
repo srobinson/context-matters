@@ -1,4 +1,7 @@
-use cm_cli::tool_contracts::{ParamShape, ScopePolicy, contract_registry};
+use cm_cli::tool_contracts::{
+    ParamShape, ScopeFragment, ScopeInputShape, ScopePolicy, contract_registry,
+};
+use serde_json::json;
 
 #[test]
 fn registry_models_read_tool_contract() {
@@ -25,7 +28,7 @@ fn registry_models_read_tool_contract() {
 
     let scope = recall.param("scope").expect("scope param exists");
     assert!(!scope.required);
-    assert!(matches!(scope.shape, ParamShape::CustomSchema(_)));
+    assert_eq!(&scope.shape, &ParamShape::Scope(ScopeInputShape::Singular));
 }
 
 #[test]
@@ -45,5 +48,73 @@ fn registry_models_write_tool_contract() {
     assert!(matches!(title.shape, ParamShape::Scalar(ref ty) if ty == "string"));
 
     let scope = store.param("scope").expect("scope param exists");
-    assert!(matches!(scope.shape, ParamShape::CustomSchema(_)));
+    assert_eq!(&scope.shape, &ParamShape::Scope(ScopeInputShape::Singular));
+}
+
+#[test]
+fn registry_models_scope_params_as_shared_fragments() {
+    let registry = contract_registry();
+    let migrated = [
+        ("cx_recall", ScopeInputShape::Singular),
+        ("cx_search", ScopeInputShape::Broad),
+        ("cx_store", ScopeInputShape::Singular),
+        ("cx_deposit", ScopeInputShape::Singular),
+        ("cx_browse", ScopeInputShape::Broad),
+        ("cx_export", ScopeInputShape::Broad),
+    ];
+
+    for (tool_name, expected_shape) in migrated {
+        let tool = registry.get(tool_name).expect("migrated tool exists");
+        let scope = tool.param("scope").expect("migrated tool has scope param");
+
+        assert_eq!(
+            &scope.shape,
+            &ParamShape::Scope(expected_shape),
+            "{tool_name} scope param must use a shared scope fragment"
+        );
+    }
+
+    assert_eq!(
+        ScopeInputShape::Singular.fragments(),
+        &[
+            ScopeFragment::ExactPathString,
+            ScopeFragment::Path,
+            ScopeFragment::CwdInferred,
+            ScopeFragment::Project,
+            ScopeFragment::Repo,
+            ScopeFragment::Session,
+        ]
+    );
+    assert_eq!(
+        ScopeInputShape::Broad.fragments(),
+        &[
+            ScopeFragment::ExactPathString,
+            ScopeFragment::Path,
+            ScopeFragment::CwdInferred,
+            ScopeFragment::Project,
+            ScopeFragment::Repo,
+            ScopeFragment::Session,
+            ScopeFragment::Descendants,
+            ScopeFragment::Set,
+            ScopeFragment::All,
+        ]
+    );
+}
+
+#[test]
+fn broad_scope_schema_prefers_descendants_and_keeps_subtree_alias() {
+    let registry = contract_registry();
+    let search = registry
+        .get("cx_search")
+        .expect("cx_search contract exists");
+    let scope = search.param("scope").expect("scope param exists");
+    let schema = scope.input_schema_object();
+    let variants = schema["oneOf"]
+        .as_array()
+        .expect("scope has oneOf variants");
+
+    assert_eq!(
+        variants[6]["properties"]["kind"]["enum"],
+        json!(["descendants", "subtree"])
+    );
 }

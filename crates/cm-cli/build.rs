@@ -350,6 +350,7 @@ fn param_type_label(param: &tool_contracts::ToolParamContract) -> String {
             tool_contracts::ArrayItems::Scalar(kind) => format!("array<{kind}>"),
             tool_contracts::ArrayItems::ExchangeObject => "array<object>".to_string(),
         },
+        tool_contracts::ParamShape::Scope(_) => "string | object".to_string(),
         tool_contracts::ParamShape::CustomSchema(_) => "string | object".to_string(),
     }
 }

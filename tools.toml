@@ -139,18 +139,7 @@ cli_flag        = "query"
 name            = "scope"
 type            = "string | object"
 mcp_description = "Singular scope input for recall. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. cx_recall rejects descendants, subtree, set, and all selectors; use cx_search for broad scope queries. Default: global."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}}
-  ]
-}
-'''
+scope_schema    = "singular"
 cli_help        = "Scope selector: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
 
@@ -243,21 +232,7 @@ name            = "scope"
 type            = "string | object"
 required        = true
 mcp_description = "Scope input for content search. Pass a canonical scope path string, a singular selector such as cwd_inferred, project, repo, or session, or a broad selector: descendants, subtree, set, or all. descendants and subtree match the exact scope plus child scopes."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["descendants", "subtree"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "paths"], "properties": {"kind": {"type": "string", "enum": ["set"]}, "paths": {"type": "array", "items": {"type": "string"}}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["all"]}}}
-  ]
-}
-'''
+scope_schema    = "broad"
 cli_help        = "Scope selector: exact path, cwd_inferred, or structured descendants/set/all JSON"
 cli_flag        = "--scope"
 
@@ -340,18 +315,7 @@ cli_flag        = "--kind"
 name            = "scope"
 type            = "string | object"
 mcp_description = "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}}
-  ]
-}
-'''
+scope_schema    = "singular"
 cli_help        = "Target scope: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
 
@@ -443,18 +407,7 @@ cli_flag        = "--summary"
 name            = "scope"
 type            = "string | object"
 mcp_description = "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}}
-  ]
-}
-'''
+scope_schema    = "singular"
 cli_help        = "Target scope: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
 
@@ -547,21 +500,7 @@ output_schema   = '''
 name            = "scope"
 type            = "string | object"
 mcp_description = "Scope input for browse. Pass a canonical scope path string, a singular selector, or a broad selector: descendants, subtree, set, or all. Defaults to cwd_inferred when omitted. Top-level cwd is not accepted; put cwd inside the cwd_inferred selector."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["descendants", "subtree"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "paths"], "properties": {"kind": {"type": "string", "enum": ["set"]}, "paths": {"type": "array", "items": {"type": "string"}}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["all"]}}}
-  ]
-}
-'''
+scope_schema    = "broad"
 cli_help        = "Preferred scope: cwd_inferred, exact path, or structured descendants/set/all selector"
 cli_flag        = "--scope"
 
@@ -898,21 +837,7 @@ output_schema   = '''
 name            = "scope"
 type            = "string | object"
 mcp_description = "Filter export to a scope input. Pass a canonical scope path string for exact export, cwd_inferred for current scope, or descendants/subtree for exact scope plus child scopes. Omit to export everything."
-mcp_schema      = '''
-{
-  "oneOf": [
-    {"type": "string", "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["path"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["cwd_inferred"]}, "cwd": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project"], "properties": {"kind": {"type": "string", "enum": ["project"]}, "project": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "repo"], "properties": {"kind": {"type": "string", "enum": ["repo"]}, "project": {"type": "string"}, "repo": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "project", "session"], "properties": {"kind": {"type": "string", "enum": ["session"]}, "project": {"type": "string"}, "repo": {"type": "string"}, "session": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"type": "string", "enum": ["descendants", "subtree"]}, "path": {"type": "string"}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind", "paths"], "properties": {"kind": {"type": "string", "enum": ["set"]}, "paths": {"type": "array", "items": {"type": "string"}}}},
-    {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["all"]}}}
-  ]
-}
-'''
+scope_schema    = "broad"
 cli_help        = "Filter export scope: exact path, cwd_inferred, or structured descendants/set/all JSON"
 cli_flag        = "--scope"
 

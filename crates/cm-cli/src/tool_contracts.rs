@@ -164,11 +164,26 @@ impl ToolParamContract {
 pub enum ParamShape {
     Scalar(String),
     Array { items: ArrayItems },
+    Scope(ScopeInputShape),
     CustomSchema(Value),
 }
 
 impl ParamShape {
     fn from_raw(tool_name: &str, raw: &RawParamDef) -> Result<Self, String> {
+        if let Some(scope_shape) = raw.scope_schema {
+            if raw.name != "scope" {
+                return Err(format!(
+                    "scope_schema is only valid for the `scope` param on tool `{tool_name}`"
+                ));
+            }
+            if raw.mcp_schema.is_some() {
+                return Err(format!(
+                    "param `scope` on tool `{tool_name}` must use scope_schema or mcp_schema, not both"
+                ));
+            }
+            return Ok(Self::Scope(scope_shape));
+        }
+
         if let Some(raw_schema) = &raw.mcp_schema {
             let schema: Value = serde_json::from_str(raw_schema).map_err(|e| {
                 format!(
@@ -204,10 +219,140 @@ impl ParamShape {
                 ("type", Value::String("array".to_string())),
                 ("items", items.schema_value()),
             ]),
+            Self::Scope(scope) => scope.input_schema_object(),
             Self::CustomSchema(schema) => schema
                 .as_object()
                 .unwrap_or_else(|| panic!("custom parameter schema is a JSON object"))
                 .clone(),
+        }
+    }
+}
+
+const SINGULAR_SCOPE_FRAGMENTS: [ScopeFragment; 6] = [
+    ScopeFragment::ExactPathString,
+    ScopeFragment::Path,
+    ScopeFragment::CwdInferred,
+    ScopeFragment::Project,
+    ScopeFragment::Repo,
+    ScopeFragment::Session,
+];
+
+const BROAD_SCOPE_FRAGMENTS: [ScopeFragment; 9] = [
+    ScopeFragment::ExactPathString,
+    ScopeFragment::Path,
+    ScopeFragment::CwdInferred,
+    ScopeFragment::Project,
+    ScopeFragment::Repo,
+    ScopeFragment::Session,
+    ScopeFragment::Descendants,
+    ScopeFragment::Set,
+    ScopeFragment::All,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeInputShape {
+    Singular,
+    Broad,
+}
+
+impl ScopeInputShape {
+    pub fn fragments(self) -> &'static [ScopeFragment] {
+        match self {
+            Self::Singular => &SINGULAR_SCOPE_FRAGMENTS,
+            Self::Broad => &BROAD_SCOPE_FRAGMENTS,
+        }
+    }
+
+    fn input_schema_object(self) -> Map<String, Value> {
+        let one_of = self
+            .fragments()
+            .iter()
+            .map(|fragment| fragment.schema_value())
+            .collect();
+
+        object_schema([("oneOf", Value::Array(one_of))])
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeFragment {
+    ExactPathString,
+    Path,
+    CwdInferred,
+    Project,
+    Repo,
+    Session,
+    Descendants,
+    Set,
+    All,
+}
+
+impl ScopeFragment {
+    fn schema_value(self) -> Value {
+        match self {
+            Self::ExactPathString => serde_json::json!({
+                "type": "string",
+                "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."
+            }),
+            Self::Path => scope_selector_schema(
+                &["kind", "path"],
+                object_schema([("kind", kind_schema(&["path"])), ("path", string_schema())]),
+            ),
+            Self::CwdInferred => scope_selector_schema(
+                &["kind"],
+                object_schema([
+                    ("kind", kind_schema(&["cwd_inferred"])),
+                    ("cwd", string_schema()),
+                ]),
+            ),
+            Self::Project => scope_selector_schema(
+                &["kind", "project"],
+                object_schema([
+                    ("kind", kind_schema(&["project"])),
+                    ("project", string_schema()),
+                ]),
+            ),
+            Self::Repo => scope_selector_schema(
+                &["kind", "project", "repo"],
+                object_schema([
+                    ("kind", kind_schema(&["repo"])),
+                    ("project", string_schema()),
+                    ("repo", string_schema()),
+                ]),
+            ),
+            Self::Session => scope_selector_schema(
+                &["kind", "project", "session"],
+                object_schema([
+                    ("kind", kind_schema(&["session"])),
+                    ("project", string_schema()),
+                    ("repo", string_schema()),
+                    ("session", string_schema()),
+                ]),
+            ),
+            Self::Descendants => scope_selector_schema(
+                &["kind", "path"],
+                object_schema([
+                    ("kind", kind_schema(&["descendants", "subtree"])),
+                    ("path", string_schema()),
+                ]),
+            ),
+            Self::Set => scope_selector_schema(
+                &["kind", "paths"],
+                object_schema([
+                    ("kind", kind_schema(&["set"])),
+                    (
+                        "paths",
+                        serde_json::json!({
+                            "type": "array",
+                            "items": {"type": "string"}
+                        }),
+                    ),
+                ]),
+            ),
+            Self::All => {
+                scope_selector_schema(&["kind"], object_schema([("kind", kind_schema(&["all"]))]))
+            }
         }
     }
 }
@@ -321,6 +466,7 @@ struct RawParamDef {
     #[serde(rename = "enum")]
     enum_values: Option<Vec<String>>,
     mcp_description: String,
+    scope_schema: Option<ScopeInputShape>,
     mcp_schema: Option<String>,
     cli_help: Option<String>,
     cli_flag: Option<String>,
@@ -332,6 +478,26 @@ fn object_schema(items: impl IntoIterator<Item = (&'static str, Value)>) -> Map<
         .into_iter()
         .map(|(key, value)| (key.to_string(), value))
         .collect()
+}
+
+fn scope_selector_schema(required: &[&str], properties: Map<String, Value>) -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": required,
+        "properties": properties
+    })
+}
+
+fn kind_schema(values: &[&str]) -> Value {
+    serde_json::json!({
+        "type": "string",
+        "enum": values
+    })
+}
+
+fn string_schema() -> Value {
+    serde_json::json!({"type": "string"})
 }
 
 #[derive(Debug, Clone, Copy)]
