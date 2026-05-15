@@ -72,77 +72,184 @@ impl ExampleValue {
 
 pub(crate) fn contract_examples(tool_name: &str) -> Result<Vec<ToolExample>, String> {
     let examples = match tool_name {
-        "cx_recall" => vec![ToolExample::from_args(
-            tool_name,
-            vec![
-                arg("query", string("auth decisions")),
-                arg(
+        "cx_recall" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("query", string("auth decisions")),
+                    arg(
+                        "scope",
+                        object(vec![
+                            arg("kind", string("path")),
+                            arg("path", string("global/project:helioy")),
+                        ]),
+                    ),
+                ],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![arg(
                     "scope",
-                    object(vec![
-                        arg("kind", string("path")),
-                        arg("path", string("global/project:helioy")),
-                    ]),
-                ),
-            ],
-        )],
-        "cx_search" => vec![ToolExample::from_args(
-            tool_name,
-            vec![
-                arg("query", string("auth decisions")),
-                arg("scope", object(vec![arg("kind", string("all"))])),
-            ],
-        )],
-        "cx_store" => vec![ToolExample::from_args(
-            tool_name,
-            vec![
-                arg("title", string("Use UUIDv7")),
-                arg("body", string("...")),
-                arg("kind", string("decision")),
-            ],
-        )],
-        "cx_deposit" => vec![ToolExample::from_args(
-            tool_name,
-            vec![arg(
-                "exchanges",
-                array(vec![object(vec![
-                    arg("user", string("...")),
-                    arg("assistant", string("...")),
-                ])]),
-            )],
-        )],
-        "cx_browse" => vec![ToolExample::from_args(
-            tool_name,
-            vec![
-                arg("kind", string("decision")),
-                arg(
-                    "scope",
-                    object(vec![
-                        arg("kind", string("path")),
-                        arg("path", string("global/project:helioy")),
-                    ]),
-                ),
-            ],
-        )],
+                    object(vec![arg("kind", string("cwd_inferred"))]),
+                )],
+            ),
+        ],
+        "cx_search" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("query", string("auth decisions")),
+                    arg("scope", object(vec![arg("kind", string("all"))])),
+                ],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("query", string("scope path")),
+                    arg(
+                        "scope",
+                        object(vec![
+                            arg("kind", string("descendants")),
+                            arg("path", string("global/project:helioy")),
+                        ]),
+                    ),
+                ],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("query", string("retry policy")),
+                    arg(
+                        "scope",
+                        object(vec![
+                            arg("kind", string("set")),
+                            arg(
+                                "paths",
+                                array(vec![string("global"), string("global/project:helioy")]),
+                            ),
+                        ]),
+                    ),
+                ],
+            ),
+        ],
+        "cx_store" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("title", string("Use UUIDv7")),
+                    arg("body", string("...")),
+                    arg("kind", string("decision")),
+                ],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("title", string("Repo-scoped lesson")),
+                    arg("body", string("...")),
+                    arg("kind", string("lesson")),
+                    arg(
+                        "scope",
+                        string("global/project:helioy/repo:context-matters"),
+                    ),
+                ],
+            ),
+        ],
+        "cx_deposit" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![arg(
+                    "exchanges",
+                    array(vec![object(vec![
+                        arg("user", string("...")),
+                        arg("assistant", string("...")),
+                    ])]),
+                )],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg(
+                        "exchanges",
+                        array(vec![object(vec![
+                            arg("user", string("...")),
+                            arg("assistant", string("...")),
+                        ])]),
+                    ),
+                    arg("summary", string("Conversation about scope routing.")),
+                    arg("scope", object(vec![arg("kind", string("cwd_inferred"))])),
+                ],
+            ),
+        ],
+        "cx_browse" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("kind", string("decision")),
+                    arg(
+                        "scope",
+                        object(vec![
+                            arg("kind", string("path")),
+                            arg("path", string("global/project:helioy")),
+                        ]),
+                    ),
+                ],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("scope", object(vec![arg("kind", string("cwd_inferred"))])),
+                    arg("cursor", string("opaque-cursor-from-previous-response")),
+                ],
+            ),
+        ],
         "cx_get" => vec![ToolExample::from_args(
             tool_name,
             vec![arg("ids", array(vec![string("uuid1"), string("uuid2")]))],
         )],
-        "cx_update" => vec![ToolExample::from_args(
-            tool_name,
-            vec![
-                arg("id", string("uuid")),
-                arg("title", string("Updated title")),
-            ],
-        )],
-        "cx_forget" => vec![ToolExample::from_args(
-            tool_name,
-            vec![arg("ids", array(vec![string("uuid")]))],
-        )],
+        "cx_update" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("id", string("uuid")),
+                    arg("title", string("Updated title")),
+                ],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![
+                    arg("id", string("uuid")),
+                    arg("body", string("Revised body content.")),
+                    arg("kind", string("decision")),
+                ],
+            ),
+        ],
+        "cx_forget" => vec![
+            ToolExample::from_args(tool_name, vec![arg("ids", array(vec![string("uuid")]))]),
+            ToolExample::from_args(
+                tool_name,
+                vec![arg(
+                    "ids",
+                    array(vec![string("uuid1"), string("uuid2"), string("uuid3")]),
+                )],
+            ),
+        ],
         "cx_stats" => vec![ToolExample::from_args(tool_name, Vec::new())],
-        "cx_export" => vec![ToolExample::from_args(
-            tool_name,
-            vec![arg("scope", string("global/project:helioy"))],
-        )],
+        "cx_export" => vec![
+            ToolExample::from_args(
+                tool_name,
+                vec![arg("scope", string("global/project:helioy"))],
+            ),
+            ToolExample::from_args(
+                tool_name,
+                vec![arg(
+                    "scope",
+                    object(vec![
+                        arg("kind", string("descendants")),
+                        arg("path", string("global/project:helioy")),
+                    ]),
+                )],
+            ),
+        ],
         _ => return Err(format!("missing contract examples for tool `{tool_name}`")),
     };
 

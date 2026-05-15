@@ -6,7 +6,9 @@ Rust workspace implementing a structured context store for AI agents, served as 
 
 - `cm-core` - Domain types, ContextStore trait, query construction. Zero I/O.
 - `cm-store` - SQLite adapter via sqlx. Schema, migrations, config.
+- `cm-capabilities` - Shared request/response types, validation, projections, scope resolution.
 - `cm-cli` - CLI binary and MCP server.
+- `cm-web` - Web monitoring dashboard. Axum API plus React/Vite frontend.
 
 ## Commands
 

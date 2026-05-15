@@ -49,15 +49,24 @@ Run `cm serve` to start the MCP server on stdio.
 
 ```text
 cx_recall(query: "auth decisions", scope: {"kind":"path","path":"global/project:helioy"})
+cx_recall(scope: {"kind":"cwd_inferred"})
 cx_search(query: "auth decisions", scope: {"kind":"all"})
+cx_search(query: "scope path", scope: {"kind":"descendants","path":"global/project:helioy"})
+cx_search(query: "retry policy", scope: {"kind":"set","paths":["global", "global/project:helioy"]})
 cx_store(title: "Use UUIDv7", body: "...", kind: "decision")
+cx_store(title: "Repo-scoped lesson", body: "...", kind: "lesson", scope: "global/project:helioy/repo:context-matters")
 cx_deposit(exchanges: [{"user":"...","assistant":"..."}])
+cx_deposit(exchanges: [{"user":"...","assistant":"..."}], summary: "Conversation about scope routing.", scope: {"kind":"cwd_inferred"})
 cx_browse(kind: "decision", scope: {"kind":"path","path":"global/project:helioy"})
+cx_browse(scope: {"kind":"cwd_inferred"}, cursor: "opaque-cursor-from-previous-response")
 cx_get(ids: ["uuid1", "uuid2"])
 cx_update(id: "uuid", title: "Updated title")
+cx_update(id: "uuid", body: "Revised body content.", kind: "decision")
 cx_forget(ids: ["uuid"])
+cx_forget(ids: ["uuid1", "uuid2", "uuid3"])
 cx_stats()
 cx_export(scope: "global/project:helioy")
+cx_export(scope: {"kind":"descendants","path":"global/project:helioy"})
 ```
 
 ## CLI Commands
