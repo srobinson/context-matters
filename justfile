@@ -2,9 +2,19 @@ default:
     @just --list
 
 CM_LOCAL_BIN := env_var_or_default("CM_LOCAL_BIN", "/Users/alphab/.cargo/bin/cm")
+FRONTEND_DIR := "crates/cm-web/frontend"
 
 build:
     cargo build --workspace
+
+clean *ARGS:
+    @case "{{ARGS}}" in \
+        ""|"--hard") ;; \
+        *) echo "Usage: just clean [--hard]" >&2; exit 2 ;; \
+    esac
+    cargo clean
+    cd {{FRONTEND_DIR}} && pnpm run clean
+    @if [ "{{ARGS}}" = "--hard" ]; then rm -rf {{FRONTEND_DIR}}/node_modules; fi
 
 build-local:
     CONTEXT_MATTERS_GIT_SHA="$(git rev-parse --short=7 HEAD)" cargo build --release -p cm-cli
@@ -43,7 +53,7 @@ fmt:
     cargo fmt --all
 
 clippy:
-    cargo clippy --workspace --all-targets --fix --allow-dirty -- -D warnings
+    cargo clippy --workspace --fix --allow-dirty -- -D warnings
 
 check: fmt clippy web-check
 
@@ -59,11 +69,11 @@ serve-debug:
 
 # Lint + format check frontend (biome + tsc)
 web-check:
-    cd crates/cm-web/frontend && pnpm run check && pnpm run typecheck
+    cd {{FRONTEND_DIR}} && pnpm run check && pnpm run typecheck
 
 # Install frontend dependencies
 web-install:
-    cd crates/cm-web/frontend && pnpm install
+    cd {{FRONTEND_DIR}} && pnpm install
 
 # Start cm-web (backend + frontend dev server)
 web: web-install

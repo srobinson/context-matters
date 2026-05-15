@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "clean": "rm -rf dist coverage .vite .turbo node_modules/.tmp node_modules/.vite",
     "check": "biome check --write src",
     "lint": "biome lint --write src",
     "format": "biome format --write src",
