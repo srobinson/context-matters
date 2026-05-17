@@ -166,6 +166,200 @@ fn scope_selector_rejects_invalid_structured_scope_path() {
     assert!(err.to_string().contains("global"));
 }
 
+// ── Per-kind required-field validation (ALP-2476) ─────────────────
+
+#[test]
+fn scope_selector_rejects_path_kind_missing_path() {
+    let err = ScopeSelector::parse(r#"{"kind":"path"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'path' requires field 'path'"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_subtree_missing_path() {
+    let err = ScopeSelector::parse(r#"{"kind":"subtree"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'subtree' requires field 'path'"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_set_missing_paths() {
+    let err = ScopeSelector::parse(r#"{"kind":"set"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'set' requires field 'paths'"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_set_empty_paths() {
+    let err = ScopeSelector::parse(r#"{"kind":"set","paths":[]}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'set' requires a non-empty 'paths' array"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_project_missing_project() {
+    let err = ScopeSelector::parse(r#"{"kind":"project"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'project' requires field 'project'"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_repo_missing_repo() {
+    let err = ScopeSelector::parse(r#"{"kind":"repo","project":"helioy"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'repo' requires field 'repo'"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_session_missing_session() {
+    let err = ScopeSelector::parse(r#"{"kind":"session","project":"helioy"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'session' requires field 'session'"),
+        "got: {err}"
+    );
+}
+
+// ── Per-kind extra-field rejection ────────────────────────────────
+
+#[test]
+fn scope_selector_rejects_all_kind_with_extra_fields() {
+    let err = ScopeSelector::parse(r#"{"kind":"all","path":"global"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'all' does not accept field(s): path"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_subtree_with_paths_field() {
+    let err =
+        ScopeSelector::parse(r#"{"kind":"subtree","path":"global","paths":["global/project:x"]}"#)
+            .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'subtree' does not accept field(s): paths"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_set_with_path_field() {
+    let err =
+        ScopeSelector::parse(r#"{"kind":"set","paths":["global"],"path":"global"}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'set' does not accept field(s): path"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_cwd_inferred_with_path_field() {
+    let err = ScopeSelector::parse(r#"{"kind":"cwd_inferred","cwd":"/tmp","path":"global"}"#)
+        .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("scope kind 'cwd_inferred' does not accept field(s): path"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_rejects_unknown_top_level_field() {
+    let err = ScopeSelector::parse(r#"{"kind":"all","mystery":1}"#).unwrap_err();
+
+    assert!(
+        err.to_string().to_lowercase().contains("unknown"),
+        "got: {err}"
+    );
+}
+
+// ── Bare-keyword redirect (Codex-friendly errors) ─────────────────
+
+#[test]
+fn scope_selector_redirects_bare_all_keyword() {
+    let err = ScopeSelector::parse("all").unwrap_err();
+
+    assert!(
+        err.to_string().contains(r#"use scope='{"kind":"all"}'"#),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn scope_selector_redirects_bare_subtree_keyword() {
+    let err = ScopeSelector::parse("subtree").unwrap_err();
+
+    assert!(err.to_string().contains(r#"use scope='{"kind":"subtree""#));
+}
+
+#[test]
+fn scope_selector_redirects_bare_descendants_keyword() {
+    let err = ScopeSelector::parse("descendants").unwrap_err();
+
+    // Canonical name is subtree; the redirect points at it.
+    assert!(err.to_string().contains(r#""kind":"subtree""#));
+}
+
+#[test]
+fn scope_selector_redirects_bare_set_keyword() {
+    let err = ScopeSelector::parse("set").unwrap_err();
+
+    assert!(err.to_string().contains(r#"use scope='{"kind":"set""#));
+}
+
+#[test]
+fn scope_selector_redirects_bare_project_keyword() {
+    let err = ScopeSelector::parse("project").unwrap_err();
+
+    assert!(err.to_string().contains(r#"use scope='{"kind":"project""#));
+}
+
+#[test]
+fn scope_selector_redirects_bare_repo_keyword() {
+    let err = ScopeSelector::parse("repo").unwrap_err();
+
+    assert!(err.to_string().contains(r#"use scope='{"kind":"repo""#));
+}
+
+#[test]
+fn scope_selector_redirects_bare_session_keyword() {
+    let err = ScopeSelector::parse("session").unwrap_err();
+
+    assert!(err.to_string().contains(r#"use scope='{"kind":"session""#));
+}
+
 #[test]
 fn scope_selector_rejects_empty_input() {
     let err = ScopeSelector::parse("   ").unwrap_err();

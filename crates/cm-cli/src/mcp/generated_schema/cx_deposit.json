@@ -27,118 +27,59 @@
         "type": "array"
       },
       "scope": {
-        "description": "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global.",
-        "oneOf": [
+        "additionalProperties": false,
+        "description": "Singular write scope. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (optional 'cwd'), 'project' (with 'project'), 'repo' (with 'project', 'repo'), 'session' (with 'project', 'session', optional 'repo'). See the schema's examples field. Scope chains are created on demand. Default: global.",
+        "examples": [
           {
-            "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred.",
+            "kind": "path",
+            "path": "global/project:helioy"
+          },
+          {
+            "kind": "cwd_inferred"
+          },
+          {
+            "kind": "repo",
+            "project": "helioy",
+            "repo": "context-matters"
+          }
+        ],
+        "properties": {
+          "cwd": {
+            "description": "Filesystem path used for scope inference. Optional for kind 'cwd_inferred'.",
             "type": "string"
           },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "enum": [
-                  "path"
-                ],
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "path"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "cwd": {
-                "type": "string"
-              },
-              "kind": {
-                "enum": [
-                  "cwd_inferred"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "enum": [
-                  "project"
-                ],
-                "type": "string"
-              },
-              "project": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "project"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "enum": [
-                  "repo"
-                ],
-                "type": "string"
-              },
-              "project": {
-                "type": "string"
-              },
-              "repo": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
+          "kind": {
+            "description": "Discriminator for the scope variant.",
+            "enum": [
+              "path",
+              "cwd_inferred",
               "project",
-              "repo"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "enum": [
-                  "session"
-                ],
-                "type": "string"
-              },
-              "project": {
-                "type": "string"
-              },
-              "repo": {
-                "type": "string"
-              },
-              "session": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "project",
+              "repo",
               "session"
             ],
-            "type": "object"
+            "type": "string"
+          },
+          "path": {
+            "description": "Canonical scope path beginning with 'global'. Required for kind 'path'; required for kind 'subtree' on broad shapes.",
+            "type": "string"
+          },
+          "project": {
+            "description": "Project identifier. Required for kind 'project', 'repo', and 'session'.",
+            "type": "string"
+          },
+          "repo": {
+            "description": "Repo identifier. Required for kind 'repo'. Optional for kind 'session'.",
+            "type": "string"
+          },
+          "session": {
+            "description": "Session identifier. Required for kind 'session'.",
+            "type": "string"
           }
-        ]
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
       },
       "summary": {
         "description": "Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates' relations.",

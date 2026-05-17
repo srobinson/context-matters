@@ -117,7 +117,7 @@ Recall priority context for a single known scope by walking that scope and its a
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | no | FTS5 search query. Use 1-3 keywords (implicit AND); keywords match, full sentences match nothing. Supports prefix que... |
-| `scope` | string | object | no | Singular scope input for recall. Pass a canonical scope path string returned by read tools, or a structured singular ... |
+| `scope` | string | object | no | Singular scope target. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (opt... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -130,7 +130,7 @@ Search cm entries by content across scopes. Returns FTS5 BM25-ranked hits. Use c
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | yes | Required FTS5 search query. Use 1-3 keywords. Supports prefix queries (rust*), phrase queries ("scope path"), and boo... |
-| `scope` | string | object | yes | Scope input for content search. Pass a canonical scope path string, a singular selector such as cwd_inferred, project... |
+| `scope` | string | object | yes | Scope filter for content search. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'subtree'... |
 | `kinds` | array<string> | no | Filter to specific entry kinds (OR logic). Valid values: fact, decision, preference, lesson, reference, feedback, pat... |
 | `tags` | array<string> | no | Filter to entries with any of these tags (OR logic). Pass a JSON array: ["tag1", "tag2"]. |
 | `limit` | integer | no | Maximum number of entries to return. Default: 20, max: 200. |
@@ -145,7 +145,7 @@ Store a single context entry with structured metadata. Scopes are auto-created i
 | `title` | string | yes | Short summary of the entry. Displayed in search results and browse listings. |
 | `body` | string | yes | Full content body in markdown. |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | yes | Entry classification. Determines recall priority. fact: verified information. decision: architectural choice with rat... |
-| `scope` | string | object | no | Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: p... |
+| `scope` | string | object | no | Singular write scope. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (opti... |
 | `created_by` | string | no | Attribution string. Format: 'source_type:identifier'. Examples: 'human:stuart', 'agent:claude-code', 'system:consolid... |
 | `tags` | array<string> | no | Freeform tags for categorization and filtering. Pass a JSON array: ["tag1", "tag2"]. |
 | `confidence` | enum: high \| medium \| low | no | Confidence level. Affects recall priority ordering: high entries surface before low entries at the same scope level. |
@@ -162,7 +162,7 @@ Batch-store conversation exchanges for future context. Each exchange (user/assis
 |-----------|------|----------|-------------|
 | `exchanges` | array<object> | yes | Conversation exchanges to store. Each exchange has 'user' (user message), 'assistant' (assistant response), and optio... |
 | `summary` | string | no | Optional summary of the conversation. Stored as a separate observation entry linked to each exchange via 'elaborates'... |
-| `scope` | string | object | no | Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: p... |
+| `scope` | string | object | no | Singular write scope. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (opti... |
 | `created_by` | string | no | Attribution string. Default: 'agent:claude-code'. |
 
 ### `cx_browse`
@@ -171,7 +171,7 @@ List entries with filtering and cursor-based pagination. For inventory and explo
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | object | no | Scope input for browse. Pass a canonical scope path string, a singular selector, or a broad selector: descendants, su... |
+| `scope` | string | object | no | Scope filter for browse. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'subtree' (with '... |
 | `include_resolution` | boolean | no | Include scope resolution metadata in the response. Defaults to true when scope="cwd_inferred". |
 | `kind` | enum: fact \| decision \| preference \| lesson \| reference \| feedback \| pattern \| observation | no | Filter by entry kind. |
 | `tag` | string | no | Filter by tag. Entries must have at least one matching tag. |
@@ -222,7 +222,7 @@ Export entries and scopes as JSON for backup or migration. Returns all active en
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `scope` | string | object | no | Filter export to a scope input. Pass a canonical scope path string for exact export, cwd_inferred for current scope, ... |
+| `scope` | string | object | no | Scope filter for export. Send a JSON object {kind, ...} where kind is one of: 'path' (exact export), 'subtree' (with ... |
 | `format` | enum: json | no | Export format. Currently only 'json' is supported. Default: 'json'. |
 
 ## Rules

@@ -110,18 +110,15 @@ fn protocol_tools_list() {
         json!(["query", "scope"]),
         "cx_search must require query and structured scope"
     );
-    assert!(
-        search_props["scope"]["oneOf"].is_array(),
-        "cx_search scope input must model ScopeInput variants"
-    );
+    assert_flat_scope_input(&search_props["scope"], "cx_search");
     for read_tool_name in ["cx_recall", "cx_browse"] {
         let read_tool = tools
             .iter()
             .find(|tool| tool["name"] == read_tool_name)
             .unwrap_or_else(|| panic!("{read_tool_name} tool is advertised"));
-        assert!(
-            read_tool["inputSchema"]["properties"]["scope"]["oneOf"].is_array(),
-            "{read_tool_name} scope input must model ScopeInput variants"
+        assert_flat_scope_input(
+            &read_tool["inputSchema"]["properties"]["scope"],
+            read_tool_name,
         );
     }
     assert!(
@@ -290,9 +287,26 @@ fn assert_generated_scope_schema_inputs_are_current() {
             tool,
             "cx_recall" | "cx_browse" | "cx_search" | "cx_store" | "cx_deposit" | "cx_export"
         ) {
+            // ALP-2476: top-level oneOf is rejected by OpenAI Codex's
+            // strict-mode validator and Gemini. The scope schema is now
+            // a single flat object with an enum-discriminated `kind`.
             assert!(
-                scope["oneOf"].is_array(),
-                "{relative} scope input should model ScopeInput variants with oneOf"
+                scope.get("oneOf").is_none()
+                    && scope.get("anyOf").is_none()
+                    && scope.get("allOf").is_none(),
+                "{relative} scope input must not use top-level combinators (Codex/Gemini reject them)"
+            );
+            assert_eq!(
+                scope["type"], "object",
+                "{relative} scope input should be a concrete object schema"
+            );
+            assert_eq!(
+                scope["additionalProperties"], false,
+                "{relative} scope input must enforce additionalProperties=false"
+            );
+            assert!(
+                scope["properties"]["kind"]["enum"].is_array(),
+                "{relative} scope input must discriminate variants via properties.kind enum"
             );
         }
         if matches!(tool, "cx_recall" | "cx_browse" | "cx_search") {
@@ -345,6 +359,30 @@ fn assert_skill_doc_explains_scope_request_boundary(manifest: &Path) {
             "generated skill doc missing scope migration boundary text: {required}"
         );
     }
+}
+
+/// Assert a scope parameter advertises the Codex-safe flat-object shape
+/// (ALP-2476): no top-level combinators, concrete object schema,
+/// `additionalProperties=false`, enum-discriminated `kind` property.
+fn assert_flat_scope_input(scope: &serde_json::Value, tool_name: &str) {
+    assert!(
+        scope.get("oneOf").is_none()
+            && scope.get("anyOf").is_none()
+            && scope.get("allOf").is_none(),
+        "{tool_name} scope input must not use top-level combinators (rejected by OpenAI Codex strict-mode and Gemini)"
+    );
+    assert_eq!(
+        scope["type"], "object",
+        "{tool_name} scope input must be a concrete object schema"
+    );
+    assert_eq!(
+        scope["additionalProperties"], false,
+        "{tool_name} scope input must enforce additionalProperties=false"
+    );
+    assert!(
+        scope["properties"]["kind"]["enum"].is_array(),
+        "{tool_name} scope input must discriminate variants via properties.kind enum"
+    );
 }
 
 fn assert_skill_doc_explains_search_contract(manifest: &Path) {
