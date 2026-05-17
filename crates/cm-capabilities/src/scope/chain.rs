@@ -1,24 +1,6 @@
 use cm_core::{CmError, ContextStore, NewScope, ScopeKind, ScopePath, WriteContext};
 
-use crate::error::cm_err_to_string;
-
 use super::segments::scope_segments;
-
-/// Ensure the full scope chain exists, creating missing scopes top-down.
-///
-/// When creating an entry with a scope path that does not exist, this
-/// function creates the full scope chain automatically. This prevents
-/// callers from needing to manage scope creation separately.
-pub async fn ensure_scope_chain(
-    store: &impl ContextStore,
-    path: &ScopePath,
-    ctx: &WriteContext,
-) -> Result<(), String> {
-    ensure_scope_chain_with_status(store, path, ctx)
-        .await
-        .map(|_| ())
-        .map_err(cm_err_to_string)
-}
 
 /// Ensure the full scope chain exists and report whether any scope was created.
 pub async fn ensure_scope_chain_with_status(

@@ -12,9 +12,9 @@
 //! Validation (non-empty exchanges, ≤ [`MAX_EXCHANGES`], per-field byte
 //! caps via [`check_input_size`], explicit-title length caps) lives here
 //! rather than in each handler so both channels surface the same errors
-//! byte-for-byte. Scope chain auto-creation piggybacks on
-//! [`ensure_scope_chain`] so users never need to pre-create a scope before
-//! depositing a session log.
+//! byte-for-byte. Scope chain auto-creation uses
+//! [`ensure_scope_chain_with_status`] so users never need to pre-create a scope
+//! before depositing a session log.
 
 use cm_core::{
     CmError, ContextStore, EntryKind, EntryMeta, NewEntry, RelationKind, ScopePath, WriteContext,
