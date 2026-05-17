@@ -23,7 +23,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::projection::snippet;
-use crate::scope::{ScopeSelector, ensure_scope_chain, resolve_scope_selection};
+use crate::scope::{ScopeSelector, ensure_scope_chain_with_status, resolve_scope_selection};
 use crate::validation::check_input_size;
 
 /// Maximum exchanges per deposit call. Kept low because each exchange
@@ -145,13 +145,7 @@ pub async fn deposit(
     let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
     let scope_path = resolved_scope.write_scope_path()?.clone();
 
-    // `ensure_scope_chain` returns `Result<(), String>` because it
-    // predates this capability layer and was written against the MCP
-    // `Result<_, String>` convention. Wrap the string so the capability
-    // returns a uniform `CmError`.
-    ensure_scope_chain(store, &scope_path, ctx)
-        .await
-        .map_err(CmError::Internal)?;
+    ensure_scope_chain_with_status(store, &scope_path, ctx).await?;
 
     let mut entry_ids = Vec::with_capacity(request.exchanges.len());
 

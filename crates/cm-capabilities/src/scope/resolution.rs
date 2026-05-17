@@ -9,7 +9,7 @@ use cm_core::{CmError, ContextStore, Scope, ScopeFilter, ScopeKind, ScopePath};
 
 use super::{
     BrowseScopeMode, CWD_INFERRED_SCOPE, ResolvedScopeSelection, ScopeResolution,
-    ScopeResolutionCandidate, ScopeResolutionConfidence, ScopeSelector,
+    ScopeResolutionCandidate, ScopeResolutionConfidence, ScopeSelector, segments::scope_segments,
 };
 
 const INFERRED_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
@@ -302,27 +302,6 @@ fn absolutize(base: &Path, path: PathBuf) -> PathBuf {
         base.join(path)
     };
     std::fs::canonicalize(&absolute).unwrap_or(absolute)
-}
-
-#[derive(Debug, Default)]
-struct ScopeSegments {
-    project: Option<String>,
-    repo: Option<String>,
-}
-
-fn scope_segments(path: &ScopePath) -> ScopeSegments {
-    let mut segments = ScopeSegments::default();
-    for segment in path.as_str().split('/').skip(1) {
-        let Some((kind, id)) = segment.split_once(':') else {
-            continue;
-        };
-        match kind {
-            "project" => segments.project = Some(id.to_owned()),
-            "repo" => segments.repo = Some(id.to_owned()),
-            _ => {}
-        }
-    }
-    segments
 }
 
 fn parent_project_path(path: &ScopePath) -> Option<ScopePath> {

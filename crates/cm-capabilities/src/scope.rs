@@ -1,5 +1,6 @@
 mod chain;
 mod resolution;
+mod segments;
 mod types;
 
 pub use chain::{ensure_scope_chain, ensure_scope_chain_with_status};

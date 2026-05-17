@@ -235,6 +235,46 @@ async fn store_auto_creates_scope_chain_and_reports_creation() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn store_rejects_colliding_explicit_repo_scope_without_partial_write() {
+    let (store, _dir) = test_store().await;
+    common::ensure_scope(&store, common::CANONICAL_CONTEXT_REPO_SCOPE).await;
+    let scope_count = store.list_scopes(None).await.unwrap().len();
+    let mut request = minimal_request("Rejected orphan write", "Body.");
+    request.scope = Some(ScopeSelector::Path(
+        ScopePath::parse(common::ORPHAN_CONTEXT_REPO_SCOPE).unwrap(),
+    ));
+
+    let err = store_entry(&store, request, &wctx()).await.unwrap_err();
+
+    common::assert_scope_collision_error(
+        err,
+        common::ORPHAN_CONTEXT_REPO_SCOPE,
+        common::CANONICAL_CONTEXT_REPO_SCOPE,
+    );
+    assert_eq!(store.export(None).await.unwrap().len(), 0);
+    assert_eq!(store.list_scopes(None).await.unwrap().len(), scope_count);
+    common::assert_scope_missing(&store, "global/project:context-matters").await;
+    common::assert_scope_missing(&store, common::ORPHAN_CONTEXT_REPO_SCOPE).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn store_allows_existing_explicit_repo_scope() {
+    let (store, _dir) = test_store().await;
+    common::ensure_scope(&store, common::CANONICAL_CONTEXT_REPO_SCOPE).await;
+    let scope_count = store.list_scopes(None).await.unwrap().len();
+    let mut request = minimal_request("Existing repo write", "Body.");
+    request.scope = Some(ScopeSelector::Path(
+        ScopePath::parse(common::CANONICAL_CONTEXT_REPO_SCOPE).unwrap(),
+    ));
+
+    let result = store_entry(&store, request, &wctx()).await.unwrap();
+
+    assert!(!result.scope_created);
+    assert_eq!(result.scope_path, common::CANONICAL_CONTEXT_REPO_SCOPE);
+    assert_eq!(store.list_scopes(None).await.unwrap().len(), scope_count);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn store_resolves_cwd_inferred_scope_before_writing() {
     let (store, _dir) = test_store().await;
     common::ensure_scope(&store, "global/project:helioy/repo:context-matters").await;
