@@ -28,6 +28,9 @@ impl ScopeSelector {
         if scope == CWD_INFERRED_SCOPE {
             return Ok(Self::CwdInferred { cwd: None });
         }
+        if let Some(hint) = bare_keyword_redirect(scope) {
+            return Err(CmError::Validation(hint));
+        }
         if !scope.starts_with('{') {
             return Ok(Self::Path(ScopePath::parse(scope)?));
         }
@@ -114,77 +117,179 @@ impl FromStr for ScopeSelector {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum ScopeSelectorWire {
-    Path {
-        path: ScopePath,
-    },
-    CwdInferred {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        cwd: Option<PathBuf>,
-    },
-    Subtree {
-        path: ScopePath,
-    },
-    Descendants {
-        path: ScopePath,
-    },
-    Set {
-        paths: Vec<ScopePath>,
-    },
-    Project {
-        project: String,
-    },
-    Repo {
-        project: String,
-        repo: String,
-    },
-    Session {
-        project: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        repo: Option<String>,
-        session: String,
-    },
+// ── Wire format ──────────────────────────────────────────────────
+//
+// The deserialization shape is a single flat object with an `enum`
+// discriminator on `kind`. All payload fields are siblings and optional
+// at the serde layer; per-kind required-field + extra-field validation
+// runs in `ScopeSelectorWireIn::into_selector`.
+//
+// This shape is the only one advertised in the generated MCP tool
+// schemas. OpenAI Codex's strict-mode tool validator rejects top-level
+// `oneOf`/`anyOf`/`allOf`/`not` on any parameter (and `enum` without a
+// companion `type`) before the model is ever invoked; Gemini's pipeline
+// enforces the same restriction. See ALP-2476, openai/codex#2204.
+//
+// Serialization uses a separate compact enum that emits only the fields
+// relevant to each variant. This keeps wire output identical to the
+// pre-flat-shape contract so existing JSON consumers (web frontend,
+// snapshot tests) round-trip unchanged.
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScopeSelectorWireIn {
+    kind: ScopeSelectorKind,
+    #[serde(default)]
+    path: Option<ScopePath>,
+    #[serde(default)]
+    paths: Option<Vec<ScopePath>>,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    session: Option<String>,
+    #[serde(default)]
+    cwd: Option<PathBuf>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum ScopeSelectorKind {
+    Path,
+    CwdInferred,
+    #[serde(alias = "descendants")]
+    Subtree,
+    Set,
+    Project,
+    Repo,
+    Session,
     All,
 }
 
-impl TryFrom<ScopeSelectorWire> for ScopeSelector {
-    type Error = CmError;
-
-    fn try_from(value: ScopeSelectorWire) -> Result<Self, Self::Error> {
-        match value {
-            ScopeSelectorWire::Path { path } => Ok(Self::Path(path)),
-            ScopeSelectorWire::CwdInferred { cwd } => Ok(Self::CwdInferred { cwd }),
-            ScopeSelectorWire::Subtree { path } | ScopeSelectorWire::Descendants { path } => {
-                Ok(Self::Subtree(path))
-            }
-            ScopeSelectorWire::Set { paths } => Ok(Self::Set(paths)),
-            ScopeSelectorWire::Project { project } => {
-                Ok(Self::Path(scope_path_from_parts(&[("project", &project)])?))
-            }
-            ScopeSelectorWire::Repo { project, repo } => Ok(Self::Path(scope_path_from_parts(&[
-                ("project", &project),
-                ("repo", &repo),
-            ])?)),
-            ScopeSelectorWire::Session {
-                project,
-                repo,
-                session,
-            } => {
-                let path = match repo {
-                    Some(repo) => scope_path_from_parts(&[
-                        ("project", &project),
-                        ("repo", &repo),
-                        ("session", &session),
-                    ])?,
-                    None => scope_path_from_parts(&[("project", &project), ("session", &session)])?,
-                };
-                Ok(Self::Path(path))
-            }
-            ScopeSelectorWire::All => Ok(Self::All),
+impl ScopeSelectorKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Path => "path",
+            Self::CwdInferred => CWD_INFERRED_SCOPE,
+            Self::Subtree => "subtree",
+            Self::Set => "set",
+            Self::Project => "project",
+            Self::Repo => "repo",
+            Self::Session => "session",
+            Self::All => "all",
         }
     }
+}
+
+impl ScopeSelectorWireIn {
+    fn into_selector(self) -> Result<ScopeSelector, CmError> {
+        let kind = self.kind;
+        match kind {
+            ScopeSelectorKind::All => {
+                self.reject_unexpected(&[], kind)?;
+                Ok(ScopeSelector::All)
+            }
+            ScopeSelectorKind::CwdInferred => {
+                self.reject_unexpected(&["cwd"], kind)?;
+                Ok(ScopeSelector::CwdInferred { cwd: self.cwd })
+            }
+            ScopeSelectorKind::Path => {
+                let path = self.required_path(kind)?;
+                self.reject_unexpected(&["path"], kind)?;
+                Ok(ScopeSelector::Path(path))
+            }
+            ScopeSelectorKind::Subtree => {
+                let path = self.required_path(kind)?;
+                self.reject_unexpected(&["path"], kind)?;
+                Ok(ScopeSelector::Subtree(path))
+            }
+            ScopeSelectorKind::Set => {
+                let paths = self.paths.as_ref().ok_or_else(|| missing("paths", kind))?;
+                if paths.is_empty() {
+                    return Err(CmError::Validation(format!(
+                        "scope kind '{}' requires a non-empty 'paths' array",
+                        kind.label()
+                    )));
+                }
+                self.reject_unexpected(&["paths"], kind)?;
+                Ok(ScopeSelector::Set(self.paths.unwrap()))
+            }
+            ScopeSelectorKind::Project => {
+                let project = self.required_string(&self.project, "project", kind)?;
+                self.reject_unexpected(&["project"], kind)?;
+                Ok(ScopeSelector::Path(scope_path_from_parts(&[(
+                    "project", project,
+                )])?))
+            }
+            ScopeSelectorKind::Repo => {
+                let project = self.required_string(&self.project, "project", kind)?;
+                let repo = self.required_string(&self.repo, "repo", kind)?;
+                self.reject_unexpected(&["project", "repo"], kind)?;
+                Ok(ScopeSelector::Path(scope_path_from_parts(&[
+                    ("project", project),
+                    ("repo", repo),
+                ])?))
+            }
+            ScopeSelectorKind::Session => {
+                let project = self.required_string(&self.project, "project", kind)?;
+                let session = self.required_string(&self.session, "session", kind)?;
+                self.reject_unexpected(&["project", "repo", "session"], kind)?;
+                let path = match &self.repo {
+                    Some(repo) => scope_path_from_parts(&[
+                        ("project", project),
+                        ("repo", repo),
+                        ("session", session),
+                    ])?,
+                    None => scope_path_from_parts(&[("project", project), ("session", session)])?,
+                };
+                Ok(ScopeSelector::Path(path))
+            }
+        }
+    }
+
+    fn required_path(&self, kind: ScopeSelectorKind) -> Result<ScopePath, CmError> {
+        self.path.clone().ok_or_else(|| missing("path", kind))
+    }
+
+    fn required_string<'a>(
+        &self,
+        value: &'a Option<String>,
+        field: &'static str,
+        kind: ScopeSelectorKind,
+    ) -> Result<&'a str, CmError> {
+        value.as_deref().ok_or_else(|| missing(field, kind))
+    }
+
+    fn reject_unexpected(&self, allowed: &[&str], kind: ScopeSelectorKind) -> Result<(), CmError> {
+        let candidates: [(&str, bool); 6] = [
+            ("path", self.path.is_some()),
+            ("paths", self.paths.is_some()),
+            ("project", self.project.is_some()),
+            ("repo", self.repo.is_some()),
+            ("session", self.session.is_some()),
+            ("cwd", self.cwd.is_some()),
+        ];
+        let unexpected: Vec<&str> = candidates
+            .into_iter()
+            .filter_map(|(name, present)| (present && !allowed.contains(&name)).then_some(name))
+            .collect();
+        if unexpected.is_empty() {
+            return Ok(());
+        }
+        Err(CmError::Validation(format!(
+            "scope kind '{}' does not accept field(s): {}",
+            kind.label(),
+            unexpected.join(", ")
+        )))
+    }
+}
+
+fn missing(field: &str, kind: ScopeSelectorKind) -> CmError {
+    CmError::Validation(format!(
+        "scope kind '{}' requires field '{field}'",
+        kind.label()
+    ))
 }
 
 fn scope_path_from_parts(parts: &[(&str, &str)]) -> Result<ScopePath, CmError> {
@@ -198,7 +303,29 @@ fn scope_path_from_parts(parts: &[(&str, &str)]) -> Result<ScopePath, CmError> {
     Ok(ScopePath::parse(&path)?)
 }
 
-impl From<&ScopeSelector> for ScopeSelectorWire {
+// Compact output shape: only the fields relevant to each variant are
+// emitted. Preserves the historical wire format consumed by the web
+// frontend and snapshot tests.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ScopeSelectorWireOut {
+    Path {
+        path: ScopePath,
+    },
+    CwdInferred {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cwd: Option<PathBuf>,
+    },
+    Subtree {
+        path: ScopePath,
+    },
+    Set {
+        paths: Vec<ScopePath>,
+    },
+    All,
+}
+
+impl From<&ScopeSelector> for ScopeSelectorWireOut {
     fn from(value: &ScopeSelector) -> Self {
         match value {
             ScopeSelector::Path(path) => Self::Path { path: path.clone() },
@@ -217,7 +344,7 @@ impl Serialize for ScopeSelector {
     where
         S: serde::Serializer,
     {
-        ScopeSelectorWire::from(self).serialize(serializer)
+        ScopeSelectorWireOut::from(self).serialize(serializer)
     }
 }
 
@@ -230,9 +357,32 @@ impl<'de> Deserialize<'de> for ScopeSelector {
         if let serde_json::Value::String(scope) = value {
             return ScopeSelector::parse(&scope).map_err(serde::de::Error::custom);
         }
-        let wire = ScopeSelectorWire::deserialize(value).map_err(serde::de::Error::custom)?;
-        ScopeSelector::try_from(wire).map_err(serde::de::Error::custom)
+        let wire = ScopeSelectorWireIn::deserialize(value).map_err(serde::de::Error::custom)?;
+        wire.into_selector().map_err(serde::de::Error::custom)
     }
+}
+
+/// Friendly redirect for legacy bare-keyword scope inputs.
+///
+/// These were never officially advertised, but Codex and other agents
+/// occasionally probed them when the prior schema's prose listed kinds
+/// inline (e.g. `scope: "all"`). They now produce an actionable error
+/// pointing at the canonical object shape rather than the generic
+/// `"scope path must start with 'global'"` parser message.
+fn bare_keyword_redirect(scope: &str) -> Option<String> {
+    let suggestion = match scope {
+        "all" => r#"{"kind":"all"}"#.to_owned(),
+        "subtree" => r#"{"kind":"subtree","path":"<scope path>"}"#.to_owned(),
+        "descendants" => r#"{"kind":"subtree","path":"<scope path>"}"#.to_owned(),
+        "set" => r#"{"kind":"set","paths":["<path1>","<path2>"]}"#.to_owned(),
+        "project" => r#"{"kind":"project","project":"<name>"}"#.to_owned(),
+        "repo" => r#"{"kind":"repo","project":"<name>","repo":"<name>"}"#.to_owned(),
+        "session" => r#"{"kind":"session","project":"<name>","session":"<name>"}"#.to_owned(),
+        _ => return None,
+    };
+    Some(format!(
+        "use scope='{suggestion}' instead of scope='{scope}'"
+    ))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

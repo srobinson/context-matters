@@ -262,14 +262,109 @@ impl ScopeInputShape {
         }
     }
 
+    /// Emit a Codex-safe flat-object schema for the scope parameter.
+    ///
+    /// The earlier shape was a top-level `oneOf` of per-kind object
+    /// variants plus a bare string. OpenAI Codex's strict-mode tool
+    /// validator (and Gemini's pipeline) rejects top-level
+    /// `oneOf`/`anyOf`/`allOf`/`not` on any parameter before the model
+    /// is invoked, returning HTTP 400 — the model never sees the prose
+    /// or the validation errors. This emitter produces one flat object:
+    ///   `{ kind: <enum>, path?, paths?, project?, repo?, session?, cwd? }`
+    /// with `additionalProperties: false` and per-kind required-field
+    /// validation enforced server-side in
+    /// `cm_capabilities::scope::types::ScopeSelectorWireIn::into_selector`.
+    /// See ALP-2476 and openai/codex#2204.
     fn input_schema_object(self) -> Map<String, Value> {
-        let one_of = self
+        let kinds: Vec<&'static str> = self
             .fragments()
             .iter()
-            .map(|fragment| fragment.schema_value())
+            .filter_map(|fragment| fragment.canonical_kind())
             .collect();
 
-        object_schema([("oneOf", Value::Array(one_of))])
+        let mut properties = Map::new();
+        properties.insert("kind".to_string(), kind_enum_schema(&kinds));
+        properties.insert("path".to_string(), property_schema(
+            "Canonical scope path beginning with 'global'. Required for kind 'path'; required for kind 'subtree' on broad shapes.",
+        ));
+        properties.insert(
+            "cwd".to_string(),
+            property_schema(
+                "Filesystem path used for scope inference. Optional for kind 'cwd_inferred'.",
+            ),
+        );
+        properties.insert(
+            "project".to_string(),
+            property_schema(
+                "Project identifier. Required for kind 'project', 'repo', and 'session'.",
+            ),
+        );
+        properties.insert(
+            "repo".to_string(),
+            property_schema(
+                "Repo identifier. Required for kind 'repo'. Optional for kind 'session'.",
+            ),
+        );
+        properties.insert(
+            "session".to_string(),
+            property_schema("Session identifier. Required for kind 'session'."),
+        );
+        if matches!(self, Self::Broad) {
+            properties.insert(
+                "paths".to_string(),
+                serde_json::json!({
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of canonical scope paths. Required for kind 'set'."
+                }),
+            );
+        }
+
+        let mut schema = Map::new();
+        schema.insert("type".to_string(), Value::String("object".to_string()));
+        schema.insert("additionalProperties".to_string(), Value::Bool(false));
+        schema.insert(
+            "required".to_string(),
+            Value::Array(vec![Value::String("kind".to_string())]),
+        );
+        schema.insert("properties".to_string(), Value::Object(properties));
+        schema.insert(
+            "examples".to_string(),
+            Value::Array(self.canonical_examples()),
+        );
+        schema
+    }
+
+    fn canonical_examples(self) -> Vec<Value> {
+        match self {
+            Self::Singular => vec![
+                serde_json::json!({"kind": "path", "path": "global/project:helioy"}),
+                serde_json::json!({"kind": "cwd_inferred"}),
+                serde_json::json!({
+                    "kind": "repo",
+                    "project": "helioy",
+                    "repo": "context-matters"
+                }),
+            ],
+            Self::Broad => vec![
+                serde_json::json!({"kind": "all"}),
+                serde_json::json!({
+                    "kind": "subtree",
+                    "path": "global/project:helioy"
+                }),
+                serde_json::json!({
+                    "kind": "path",
+                    "path": "global/project:helioy/repo:context-matters"
+                }),
+                serde_json::json!({
+                    "kind": "set",
+                    "paths": [
+                        "global/project:helioy",
+                        "global/project:helioy/repo:context-matters"
+                    ]
+                }),
+            ],
+        }
     }
 }
 
@@ -313,70 +408,28 @@ impl ScopeFragment {
         }
     }
 
-    fn schema_value(self) -> Value {
+    /// Canonical `kind` discriminator string for this fragment.
+    ///
+    /// Returns `None` for `ExactPathString` because the bare-string
+    /// shape is no longer advertised in the generated schema (top-level
+    /// `string`-or-`object` `oneOf` is the pattern OpenAI Codex's
+    /// strict-mode validator rejects). The parser still accepts bare
+    /// scope path strings for CLI ergonomics; see
+    /// `cm_capabilities::scope::types::ScopeSelector::parse`.
+    ///
+    /// `Descendants` collapses to the canonical `"subtree"`. The parser
+    /// continues to accept `"descendants"` via a serde alias.
+    pub fn canonical_kind(self) -> Option<&'static str> {
         match self {
-            Self::ExactPathString => serde_json::json!({
-                "type": "string",
-                "description": "Exact scope path string such as global/project:helioy/repo:context-matters, or cwd_inferred."
-            }),
-            Self::Path => scope_selector_schema(
-                &["kind", "path"],
-                object_schema([("kind", kind_schema(&["path"])), ("path", string_schema())]),
-            ),
-            Self::CwdInferred => scope_selector_schema(
-                &["kind"],
-                object_schema([
-                    ("kind", kind_schema(&["cwd_inferred"])),
-                    ("cwd", string_schema()),
-                ]),
-            ),
-            Self::Project => scope_selector_schema(
-                &["kind", "project"],
-                object_schema([
-                    ("kind", kind_schema(&["project"])),
-                    ("project", string_schema()),
-                ]),
-            ),
-            Self::Repo => scope_selector_schema(
-                &["kind", "project", "repo"],
-                object_schema([
-                    ("kind", kind_schema(&["repo"])),
-                    ("project", string_schema()),
-                    ("repo", string_schema()),
-                ]),
-            ),
-            Self::Session => scope_selector_schema(
-                &["kind", "project", "session"],
-                object_schema([
-                    ("kind", kind_schema(&["session"])),
-                    ("project", string_schema()),
-                    ("repo", string_schema()),
-                    ("session", string_schema()),
-                ]),
-            ),
-            Self::Descendants => scope_selector_schema(
-                &["kind", "path"],
-                object_schema([
-                    ("kind", kind_schema(&["descendants", "subtree"])),
-                    ("path", string_schema()),
-                ]),
-            ),
-            Self::Set => scope_selector_schema(
-                &["kind", "paths"],
-                object_schema([
-                    ("kind", kind_schema(&["set"])),
-                    (
-                        "paths",
-                        serde_json::json!({
-                            "type": "array",
-                            "items": {"type": "string"}
-                        }),
-                    ),
-                ]),
-            ),
-            Self::All => {
-                scope_selector_schema(&["kind"], object_schema([("kind", kind_schema(&["all"]))]))
-            }
+            Self::ExactPathString => None,
+            Self::Path => Some("path"),
+            Self::CwdInferred => Some("cwd_inferred"),
+            Self::Project => Some("project"),
+            Self::Repo => Some("repo"),
+            Self::Session => Some("session"),
+            Self::Descendants => Some("subtree"),
+            Self::Set => Some("set"),
+            Self::All => Some("all"),
         }
     }
 }
@@ -499,24 +552,19 @@ fn object_schema(items: impl IntoIterator<Item = (&'static str, Value)>) -> Map<
         .collect()
 }
 
-fn scope_selector_schema(required: &[&str], properties: Map<String, Value>) -> Value {
-    serde_json::json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": required,
-        "properties": properties
-    })
-}
-
-fn kind_schema(values: &[&str]) -> Value {
+fn kind_enum_schema(values: &[&str]) -> Value {
     serde_json::json!({
         "type": "string",
-        "enum": values
+        "enum": values,
+        "description": "Discriminator for the scope variant."
     })
 }
 
-fn string_schema() -> Value {
-    serde_json::json!({"type": "string"})
+fn property_schema(description: &str) -> Value {
+    serde_json::json!({
+        "type": "string",
+        "description": description,
+    })
 }
 
 #[derive(Debug, Clone, Copy)]

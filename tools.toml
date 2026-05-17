@@ -104,8 +104,8 @@ cli_flag        = "query"
 
 [[tools.cx_recall.params]]
 name            = "scope"
-type            = "string | object"
-mcp_description = "Singular scope input for recall. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. cx_recall rejects descendants, subtree, set, and all selectors; use cx_search for broad scope queries. Default: global."
+type            = "object"
+mcp_description = "Singular scope target. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (optional 'cwd'), 'project' (with 'project'), 'repo' (with 'project', 'repo'), 'session' (with 'project', 'session', optional 'repo'). See the schema's examples field for canonical shapes. Broad selectors (subtree, set, all) are rejected by cx_recall; use cx_search. Default: global."
 scope_schema    = "singular"
 cli_help        = "Scope selector: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
@@ -196,9 +196,9 @@ cli_flag        = "query"
 
 [[tools.cx_search.params]]
 name            = "scope"
-type            = "string | object"
+type            = "object"
 required        = true
-mcp_description = "Scope input for content search. Pass a canonical scope path string, a singular selector such as cwd_inferred, project, repo, or session, or a broad selector: descendants, subtree, set, or all. descendants and subtree match the exact scope plus child scopes."
+mcp_description = "Scope filter for content search. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'subtree' (with 'path', matches scope and descendants), 'set' (with 'paths'), 'all' (no extras), 'cwd_inferred' (optional 'cwd'), 'project'/'repo'/'session' (with matching identifier fields). See the schema's examples field for canonical shapes."
 scope_schema    = "broad"
 cli_help        = "Scope selector: exact path, cwd_inferred, or structured descendants/set/all JSON"
 cli_flag        = "--scope"
@@ -280,8 +280,8 @@ cli_flag        = "--kind"
 
 [[tools.cx_store.params]]
 name            = "scope"
-type            = "string | object"
-mcp_description = "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global."
+type            = "object"
+mcp_description = "Singular write scope. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (optional 'cwd'), 'project' (with 'project'), 'repo' (with 'project', 'repo'), 'session' (with 'project', 'session', optional 'repo'). See the schema's examples field. Scope chains are created on demand. Default: global."
 scope_schema    = "singular"
 cli_help        = "Target scope: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
@@ -372,8 +372,8 @@ cli_flag        = "--summary"
 
 [[tools.cx_deposit.params]]
 name            = "scope"
-type            = "string | object"
-mcp_description = "Singular write scope. Pass a canonical scope path string returned by read tools, or a structured singular selector: path, cwd_inferred, project, repo, or session. Exact scope chains are created if missing. Default: global."
+type            = "object"
+mcp_description = "Singular write scope. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'cwd_inferred' (optional 'cwd'), 'project' (with 'project'), 'repo' (with 'project', 'repo'), 'session' (with 'project', 'session', optional 'repo'). See the schema's examples field. Scope chains are created on demand. Default: global."
 scope_schema    = "singular"
 cli_help        = "Target scope: exact path, cwd_inferred, or structured singular JSON. Default: global"
 cli_flag        = "--scope"
@@ -465,8 +465,8 @@ output_schema   = '''
 
 [[tools.cx_browse.params]]
 name            = "scope"
-type            = "string | object"
-mcp_description = "Scope input for browse. Pass a canonical scope path string, a singular selector, or a broad selector: descendants, subtree, set, or all. Defaults to cwd_inferred when omitted. Top-level cwd is not accepted; put cwd inside the cwd_inferred selector."
+type            = "object"
+mcp_description = "Scope filter for browse. Send a JSON object {kind, ...} where kind is one of: 'path' (with 'path'), 'subtree' (with 'path', matches scope and descendants), 'set' (with 'paths'), 'all' (no extras), 'cwd_inferred' (optional 'cwd'), 'project'/'repo'/'session' (with matching identifier fields). See the schema's examples field. Defaults to {kind: 'cwd_inferred'} when omitted."
 scope_schema    = "broad"
 cli_help        = "Preferred scope: cwd_inferred, exact path, or structured descendants/set/all selector"
 cli_flag        = "--scope"
@@ -802,8 +802,8 @@ output_schema   = '''
 
 [[tools.cx_export.params]]
 name            = "scope"
-type            = "string | object"
-mcp_description = "Filter export to a scope input. Pass a canonical scope path string for exact export, cwd_inferred for current scope, or descendants/subtree for exact scope plus child scopes. Omit to export everything."
+type            = "object"
+mcp_description = "Scope filter for export. Send a JSON object {kind, ...} where kind is one of: 'path' (exact export), 'subtree' (with 'path', export scope and descendants), 'set' (with 'paths'), 'all', 'cwd_inferred' (optional 'cwd'), 'project'/'repo'/'session' (with matching identifier fields). See the schema's examples field. Omit to export everything."
 scope_schema    = "broad"
 cli_help        = "Filter export scope: exact path, cwd_inferred, or structured descendants/set/all JSON"
 cli_flag        = "--scope"

@@ -175,21 +175,68 @@ fn registry_models_scope_params_as_shared_fragments() {
 }
 
 #[test]
-fn broad_scope_schema_prefers_descendants_and_keeps_subtree_alias() {
+fn broad_scope_schema_emits_flat_codex_safe_shape() {
     let registry = contract_registry();
     let search = registry
         .get("cx_search")
         .expect("cx_search contract exists");
     let scope = search.param("scope").expect("scope param exists");
     let schema = scope.input_schema_object();
-    let variants = schema["oneOf"]
-        .as_array()
-        .expect("scope has oneOf variants");
 
-    assert_eq!(
-        variants[6]["properties"]["kind"]["enum"],
-        json!(["descendants", "subtree"])
+    // No top-level combinators (ALP-2476). The schema is a concrete
+    // object so Codex's strict-mode validator and Gemini accept it.
+    assert!(
+        schema.get("oneOf").is_none()
+            && schema.get("anyOf").is_none()
+            && schema.get("allOf").is_none(),
+        "broad scope schema must not use top-level combinators"
     );
+    assert_eq!(schema["type"], json!("object"));
+    assert_eq!(schema["additionalProperties"], json!(false));
+    assert_eq!(schema["required"], json!(["kind"]));
+
+    // Canonical kinds only. `descendants` is a parser-level alias kept
+    // for backward compatibility; the schema advertises `subtree`.
+    let kinds = schema["properties"]["kind"]["enum"]
+        .as_array()
+        .expect("kind has enum");
+    let kind_strings: Vec<&str> = kinds.iter().filter_map(|v| v.as_str()).collect();
+    assert!(kind_strings.contains(&"subtree"));
+    assert!(kind_strings.contains(&"set"));
+    assert!(kind_strings.contains(&"all"));
+    assert!(kind_strings.contains(&"path"));
+    assert!(!kind_strings.contains(&"descendants"));
+
+    // Broad shape includes `paths` (for set); singular omits it.
+    assert!(schema["properties"].get("paths").is_some());
+
+    // Canonical examples are emitted for the agent.
+    let examples = schema["examples"].as_array().expect("examples present");
+    assert!(examples.iter().any(|e| e["kind"] == json!("all")));
+    assert!(examples.iter().any(|e| e["kind"] == json!("subtree")));
+}
+
+#[test]
+fn singular_scope_schema_omits_set_and_paths() {
+    let registry = contract_registry();
+    let recall = registry
+        .get("cx_recall")
+        .expect("cx_recall contract exists");
+    let scope = recall.param("scope").expect("scope param exists");
+    let schema = scope.input_schema_object();
+
+    assert_eq!(schema["type"], json!("object"));
+    assert!(schema["properties"].get("paths").is_none());
+
+    let kinds = schema["properties"]["kind"]["enum"]
+        .as_array()
+        .expect("kind has enum");
+    let kind_strings: Vec<&str> = kinds.iter().filter_map(|v| v.as_str()).collect();
+    assert!(!kind_strings.contains(&"set"));
+    assert!(!kind_strings.contains(&"all"));
+    assert!(!kind_strings.contains(&"subtree"));
+    assert!(kind_strings.contains(&"path"));
+    assert!(kind_strings.contains(&"cwd_inferred"));
 }
 
 #[test]
