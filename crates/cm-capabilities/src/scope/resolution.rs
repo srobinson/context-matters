@@ -14,6 +14,8 @@ use super::{
 
 const INFERRED_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
 const INFERRED_SCOPE_STRONG_SIGNAL_SCORE: i32 = 100;
+const INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE: i32 = INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
+const INFERRED_SCOPE_PARENT_PROJECT_MATCH_SCORE: i32 = INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE + 1;
 const INFERRED_SCOPE_WEAK_SIGNAL_SCORE: i32 = 30;
 const INFERRED_SCOPE_FALLBACK_FLOOR_SCORE: i32 = 10;
 const INFERRED_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
@@ -344,16 +346,16 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
             matched.push("repo".to_owned());
         }
 
-        if let Some(project) = &cwd.basename
+        if let Some(project) = &cwd.parent_basename
             && segments.project.as_ref() == Some(project)
         {
-            score += INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
-            matched.push("project_cwd".to_owned());
-        } else if let Some(project) = &cwd.parent_basename
-            && segments.project.as_ref() == Some(project)
-        {
-            score += INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
+            score += INFERRED_SCOPE_PARENT_PROJECT_MATCH_SCORE;
             matched.push("project_parent".to_owned());
+        } else if let Some(project) = &cwd.basename
+            && segments.project.as_ref() == Some(project)
+        {
+            score += INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE;
+            matched.push("project_cwd".to_owned());
         }
     }
 
