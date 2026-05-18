@@ -15,6 +15,13 @@
 * The web UI now launches through `cm web --open`; the standalone `cm-web` command surface is retired.
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.20](https://github.com/srobinson/context-matters/compare/v0.2.19...v0.2.20) (2026-05-18)
+
+
+### Bug Fixes
+
+* **scope:** prefer parent project; guard explicit auto-creation ([#70](https://github.com/srobinson/context-matters/issues/70)) ([e9e05fa](https://github.com/srobinson/context-matters/commit/e9e05fa917b5c4e76d2bbc915687b4074518806c))
+
 ## [0.2.19](https://github.com/srobinson/context-matters/compare/v0.2.18...v0.2.19) (2026-05-17)
 
 
