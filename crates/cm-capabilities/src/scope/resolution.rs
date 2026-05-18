@@ -9,11 +9,13 @@ use cm_core::{CmError, ContextStore, Scope, ScopeFilter, ScopeKind, ScopePath};
 
 use super::{
     BrowseScopeMode, CWD_INFERRED_SCOPE, ResolvedScopeSelection, ScopeResolution,
-    ScopeResolutionCandidate, ScopeResolutionConfidence, ScopeSelector,
+    ScopeResolutionCandidate, ScopeResolutionConfidence, ScopeSelector, segments::scope_segments,
 };
 
 const INFERRED_SCOPE_EXACT_MATCH_SCORE: i32 = 200;
 const INFERRED_SCOPE_STRONG_SIGNAL_SCORE: i32 = 100;
+const INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE: i32 = INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
+const INFERRED_SCOPE_PARENT_PROJECT_MATCH_SCORE: i32 = INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE + 1;
 const INFERRED_SCOPE_WEAK_SIGNAL_SCORE: i32 = 30;
 const INFERRED_SCOPE_FALLBACK_FLOOR_SCORE: i32 = 10;
 const INFERRED_SCOPE_NO_SIGNAL_SCORE: i32 = 0;
@@ -302,27 +304,6 @@ fn absolutize(base: &Path, path: PathBuf) -> PathBuf {
     std::fs::canonicalize(&absolute).unwrap_or(absolute)
 }
 
-#[derive(Debug, Default)]
-struct ScopeSegments {
-    project: Option<String>,
-    repo: Option<String>,
-}
-
-fn scope_segments(path: &ScopePath) -> ScopeSegments {
-    let mut segments = ScopeSegments::default();
-    for segment in path.as_str().split('/').skip(1) {
-        let Some((kind, id)) = segment.split_once(':') else {
-            continue;
-        };
-        match kind {
-            "project" => segments.project = Some(id.to_owned()),
-            "repo" => segments.repo = Some(id.to_owned()),
-            _ => {}
-        }
-    }
-    segments
-}
-
 fn parent_project_path(path: &ScopePath) -> Option<ScopePath> {
     path.ancestors().skip(1).find_map(|ancestor| {
         ScopePath::parse(ancestor)
@@ -344,16 +325,16 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
             matched.push("repo".to_owned());
         }
 
-        if let Some(project) = &cwd.basename
+        if let Some(project) = &cwd.parent_basename
             && segments.project.as_ref() == Some(project)
         {
-            score += INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
-            matched.push("project_cwd".to_owned());
-        } else if let Some(project) = &cwd.parent_basename
-            && segments.project.as_ref() == Some(project)
-        {
-            score += INFERRED_SCOPE_STRONG_SIGNAL_SCORE;
+            score += INFERRED_SCOPE_PARENT_PROJECT_MATCH_SCORE;
             matched.push("project_parent".to_owned());
+        } else if let Some(project) = &cwd.basename
+            && segments.project.as_ref() == Some(project)
+        {
+            score += INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE;
+            matched.push("project_cwd".to_owned());
         }
     }
 

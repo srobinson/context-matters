@@ -78,6 +78,56 @@ async fn browse_scope_cwd_inferred_resolves_repo_from_cwd() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_cwd_inferred_prefers_parent_project_repo_match_over_orphan_match() {
+    let (store, _dir) = test_store().await;
+    seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
+    seed_scoped(
+        &store,
+        "Orphan repo fact",
+        EntryKind::Fact,
+        "global/project:context-matters/repo:context-matters",
+    )
+    .await;
+    seed_scoped(
+        &store,
+        "Canonical repo fact",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+
+    let result = browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/Users/alphab/Dev/LLM/DEV/helioy/context-matters".into(),
+            ))),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].title, "Canonical repo fact");
+    let resolution = result.resolution.as_ref().unwrap();
+    assert_eq!(
+        resolution.resolved_scope,
+        ScopePath::parse("global/project:helioy/repo:context-matters").unwrap()
+    );
+    assert_eq!(resolution.confidence, ScopeResolutionConfidence::High);
+    assert!(
+        !resolution
+            .signals
+            .iter()
+            .any(|signal| signal.starts_with("ambiguous scope resolution")),
+        "resolution should be unambiguous: {:?}",
+        resolution.signals
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn browse_scope_cwd_inferred_resolves_normal_git_repo_from_repo_root_identity() {
     let fixture = tempfile::tempdir().unwrap();
     let source_repo = fixture.path().join("helioy").join("context-matters");

@@ -66,6 +66,28 @@ async fn deposit_stores_exact_scope_selector() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn deposit_rejects_colliding_explicit_repo_scope_without_partial_write() {
+    let (store, _dir) = common::test_store().await;
+    common::ensure_scope(&store, common::CANONICAL_CONTEXT_REPO_SCOPE).await;
+    let scope_count = store.list_scopes(None).await.unwrap().len();
+    let scope = ScopePath::parse(common::ORPHAN_CONTEXT_REPO_SCOPE).unwrap();
+
+    let err = deposit(&store, request(Some(ScopeSelector::Path(scope))), &wctx())
+        .await
+        .unwrap_err();
+
+    common::assert_scope_collision_error(
+        err,
+        common::ORPHAN_CONTEXT_REPO_SCOPE,
+        common::CANONICAL_CONTEXT_REPO_SCOPE,
+    );
+    assert_eq!(store.export(None).await.unwrap().len(), 0);
+    assert_eq!(store.list_scopes(None).await.unwrap().len(), scope_count);
+    common::assert_scope_missing(&store, "global/project:context-matters").await;
+    common::assert_scope_missing(&store, common::ORPHAN_CONTEXT_REPO_SCOPE).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn deposit_resolves_cwd_inferred_scope_before_writing() {
     let (store, _dir) = common::test_store().await;
     common::ensure_scope(&store, "global/project:helioy/repo:context-matters").await;
