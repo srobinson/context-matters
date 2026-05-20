@@ -15,6 +15,13 @@
 * The web UI now launches through `cm web --open`; the standalone `cm-web` command surface is retired.
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.21](https://github.com/srobinson/context-matters/compare/v0.2.20...v0.2.21) (2026-05-20)
+
+
+### Bug Fixes
+
+* resolve_home_dir test race and brace-expansion bump (ALP-2503) ([#72](https://github.com/srobinson/context-matters/issues/72)) ([adeab37](https://github.com/srobinson/context-matters/commit/adeab3750744c15d9f11a407ba51df6181a7cebd))
+
 ## [0.2.20](https://github.com/srobinson/context-matters/compare/v0.2.19...v0.2.20) (2026-05-18)
 
 
