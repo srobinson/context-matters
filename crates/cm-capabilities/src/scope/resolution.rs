@@ -5,7 +5,9 @@ use std::{
     process::Command,
 };
 
-use cm_core::{CmError, ContextStore, Scope, ScopeFilter, ScopeKind, ScopePath};
+use cm_core::{
+    CmError, ContextStore, Scope, ScopeFilter, ScopeInferenceStrategy, ScopeKind, ScopePath,
+};
 
 use super::{
     BrowseScopeMode, CWD_INFERRED_SCOPE, ResolvedScopeSelection, ScopeResolution,
@@ -35,8 +37,12 @@ pub async fn resolve_scope_selection(
             requested_scope: selector.requested_scope(),
         }),
         ScopeSelector::CwdInferred { cwd } => {
-            let scopes = store.list_scopes(None).await?;
-            let resolution = resolve_cwd_inferred_scope(&scopes, cwd.as_deref())?;
+            let resolution = resolve_cwd_inferred_scope_selection(
+                store,
+                store.scope_inference_strategy(),
+                cwd.as_deref(),
+            )
+            .await?;
             Ok(ResolvedScopeSelection {
                 scope_path: Some(resolution.resolved_scope.clone()),
                 resolution: Some(resolution),
@@ -51,6 +57,25 @@ pub async fn resolve_scope_selection(
                 selector.requested_scope()
             )))
         }
+    }
+}
+
+async fn resolve_cwd_inferred_scope_selection(
+    store: &impl ContextStore,
+    strategy: ScopeInferenceStrategy,
+    cwd: Option<&Path>,
+) -> Result<ScopeResolution, CmError> {
+    match strategy {
+        ScopeInferenceStrategy::Filesystem => {
+            let scopes = store.list_scopes(None).await?;
+            resolve_cwd_inferred_scope(&scopes, cwd)
+        }
+        ScopeInferenceStrategy::Custom => Err(CmError::Validation(
+            "scope='cwd_inferred' is disabled by scope_inference.strategy='custom'; pass scope explicitly, for example scope='global/project:<project>' or scope='{\"kind\":\"path\",\"path\":\"global/project:<project>\"}'".to_owned(),
+        )),
+        ScopeInferenceStrategy::K8s => Err(CmError::Validation(
+            "scope_inference.strategy='k8s' is reserved but not implemented; pass scope explicitly, for example scope='global/project:<project>'".to_owned(),
+        )),
     }
 }
 

@@ -22,7 +22,11 @@ pub async fn open_store() -> Result<CmStore> {
     let (write_pool, read_pool) = cm_store::schema::create_pools(&db_path).await?;
     cm_store::schema::run_migrations(&write_pool).await?;
 
-    Ok(CmStore::new(write_pool, read_pool))
+    Ok(CmStore::new_with_scope_inference_strategy(
+        write_pool,
+        read_pool,
+        config.scope_inference_strategy,
+    ))
 }
 
 /// `cm init` — write a commented config file to either `~/.context-matters/`

@@ -2,7 +2,8 @@ use super::support::{seed_scoped, test_store};
 
 use cm_capabilities::browse::{BrowseRequest, browse};
 use cm_capabilities::scope::{CWD_INFERRED_SCOPE, ScopeResolutionConfidence, ScopeSelector};
-use cm_core::{EntryKind, ScopePath};
+use cm_core::{EntryKind, ScopeInferenceStrategy, ScopePath};
+use cm_store::CmStore;
 use std::{fs, path::Path, process::Command};
 
 fn run_git(dir: &Path, args: &[&str]) {
@@ -75,6 +76,41 @@ async fn browse_scope_cwd_inferred_resolves_repo_from_cwd() {
             .iter()
             .any(|signal| signal == "cwd basename matched repo scope segment: context-matters")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_custom_inference_rejects_cwd_inferred() {
+    let (store, _dir) = test_store().await;
+    let store = CmStore::new_with_scope_inference_strategy(
+        store.write_pool().clone(),
+        store.read_pool().clone(),
+        ScopeInferenceStrategy::Custom,
+    );
+    seed_scoped(
+        &store,
+        "Repo fact",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+
+    let err = browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("scope='cwd_inferred' is disabled"));
+    assert!(message.contains("scope_inference.strategy='custom'"));
+    assert!(message.contains("pass scope explicitly"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

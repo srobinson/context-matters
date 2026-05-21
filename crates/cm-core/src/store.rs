@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -70,6 +71,19 @@ pub struct ContentSearchPage {
     pub next_cursor: Option<String>,
 }
 
+/// Strategy used when resolving `cwd_inferred` scope selectors.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeInferenceStrategy {
+    /// Infer from filesystem and git working directory signals.
+    #[default]
+    Filesystem,
+    /// Disable cwd based inference and require explicit scope input.
+    Custom,
+    /// Reserved for a future Kubernetes aware resolver.
+    K8s,
+}
+
 /// Async storage interface for context entries.
 ///
 /// All methods are async and return `Result<T, CmError>`. Uses native
@@ -97,6 +111,11 @@ pub struct ContentSearchPage {
 ///   write mutation records.
 #[allow(async_fn_in_trait)]
 pub trait ContextStore: Send + Sync + 'static {
+    /// Configured strategy for resolving `cwd_inferred` selectors.
+    fn scope_inference_strategy(&self) -> ScopeInferenceStrategy {
+        ScopeInferenceStrategy::Filesystem
+    }
+
     // ── Entry CRUD ──────────────────────────────────────────────
 
     /// Create a new entry.
