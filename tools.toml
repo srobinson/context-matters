@@ -33,6 +33,7 @@ workflow = """
 ```
 
 Key: use cx_recall for a single known scope. Use cx_search when the right scope is unknown, broad, or cross-repo.
+Scope paths may nest projects, for example `global/project:helioy/project:littleorgans/repo:session-matters`.
 When the user corrects you, store it immediately as kind: "feedback" (highest recall priority).
 """
 

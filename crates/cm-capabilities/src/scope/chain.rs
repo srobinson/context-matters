@@ -51,7 +51,7 @@ async fn reject_colliding_scope_auto_creation(
     }
 
     let requested = scope_segments(requested_path);
-    let Some(requested_project) = requested.project.as_deref() else {
+    let Some(requested_project) = requested.leaf_project() else {
         return Ok(());
     };
     let Some(colliding_scope) =
@@ -78,7 +78,7 @@ async fn colliding_existing_repo_scope(
         let Some(existing_repo) = segments.repo.as_deref() else {
             continue;
         };
-        if segments.project.as_deref() == Some(requested_project) {
+        if segments.leaf_project() == Some(requested_project) {
             continue;
         }
         if Some(existing_repo) == requested_repo || existing_repo == requested_project {

@@ -166,6 +166,65 @@ async fn recall_rows_sort_by_scope_depth_with_cwd_inferred_scope() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn recall_cwd_inferred_nested_project_inherits_without_sibling_leakage() {
+    let (store, _dir) = test_store().await;
+    seed_entry_with_scope(
+        &store,
+        "Nested project note",
+        "Nested inheritance needle.",
+        EntryKind::Fact,
+        "global/project:helioy/project:littleorgans",
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Nested repo note",
+        "Repo inheritance needle.",
+        EntryKind::Fact,
+        "global/project:helioy/project:littleorgans/repo:session-matters",
+    )
+    .await;
+    seed_entry_with_scope(
+        &store,
+        "Sibling repo note",
+        "Sibling inheritance needle.",
+        EntryKind::Fact,
+        "global/project:helioy/repo:agent-matters",
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("inheritance needle".to_owned()),
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/littleorgans/session-matters".into(),
+            ))),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let titles: Vec<&str> = result
+        .entries
+        .iter()
+        .map(|row| row.entry.title.as_str())
+        .collect();
+    assert_eq!(titles, vec!["Nested repo note", "Nested project note"]);
+    assert_eq!(
+        result.scope_chain,
+        vec![
+            "global/project:helioy/project:littleorgans/repo:session-matters",
+            "global/project:helioy/project:littleorgans",
+            "global/project:helioy",
+            "global",
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn omitted_scope_defaults_to_global_with_advisory() {
     let (store, _dir) = test_store().await;
     seed_entry_with_scope(

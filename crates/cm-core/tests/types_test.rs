@@ -24,6 +24,23 @@ fn criterion_03_skipped_hierarchy() {
 }
 
 #[test]
+fn scope_path_allows_nested_projects() {
+    let path = ScopePath::parse("global/project:helioy/project:agents/repo:nancyr").unwrap();
+    assert_eq!(path.leaf_kind(), ScopeKind::Repo);
+    assert_eq!(path.depth(), 4);
+    let ancestors: Vec<&str> = path.ancestors().collect();
+    assert_eq!(
+        ancestors,
+        vec![
+            "global/project:helioy/project:agents/repo:nancyr",
+            "global/project:helioy/project:agents",
+            "global/project:helioy",
+            "global",
+        ]
+    );
+}
+
+#[test]
 fn criterion_04_missing_global_root() {
     let err = ScopePath::parse("project:helioy").unwrap_err();
     assert!(
