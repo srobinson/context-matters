@@ -30,8 +30,8 @@ use chrono::{DateTime, Utc};
 use cm_core::{
     AncestorWalkRequest, CmError, ContentSearchPage, ContentSearchRequest, ContextStore, Entry,
     EntryFilter, EntryKind, EntryRelation, MutationAction, MutationRecord, MutationSource,
-    NewEntry, NewScope, PagedResult, RelationKind, Scope, ScopeKind, ScopePath, ScoredEntry,
-    StoreStats, UpdateEntry, WriteContext,
+    NewEntry, NewScope, PagedResult, RelationKind, Scope, ScopeInferenceStrategy, ScopeKind,
+    ScopePath, ScoredEntry, StoreStats, UpdateEntry, WriteContext,
 };
 use sqlx::sqlite::SqlitePool;
 use uuid::Uuid;
@@ -43,6 +43,7 @@ use uuid::Uuid;
 pub struct CmStore {
     pub(crate) write_pool: SqlitePool,
     pub(crate) read_pool: SqlitePool,
+    scope_inference_strategy: ScopeInferenceStrategy,
 }
 
 impl CmStore {
@@ -51,6 +52,20 @@ impl CmStore {
         Self {
             write_pool,
             read_pool,
+            scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+        }
+    }
+
+    /// Create a new store with an explicit scope inference strategy.
+    pub fn new_with_scope_inference_strategy(
+        write_pool: SqlitePool,
+        read_pool: SqlitePool,
+        scope_inference_strategy: ScopeInferenceStrategy,
+    ) -> Self {
+        Self {
+            write_pool,
+            read_pool,
+            scope_inference_strategy,
         }
     }
 
@@ -66,6 +81,10 @@ impl CmStore {
 }
 
 impl ContextStore for CmStore {
+    fn scope_inference_strategy(&self) -> ScopeInferenceStrategy {
+        self.scope_inference_strategy
+    }
+
     async fn create_entry(
         &self,
         new_entry: NewEntry,

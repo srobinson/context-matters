@@ -5,7 +5,9 @@ use std::{
     process::Command,
 };
 
-use cm_core::{CmError, ContextStore, Scope, ScopeFilter, ScopeKind, ScopePath};
+use cm_core::{
+    CmError, ContextStore, Scope, ScopeFilter, ScopeInferenceStrategy, ScopeKind, ScopePath,
+};
 
 use super::{
     BrowseScopeMode, CWD_INFERRED_SCOPE, ResolvedScopeSelection, ScopeResolution,
@@ -35,8 +37,12 @@ pub async fn resolve_scope_selection(
             requested_scope: selector.requested_scope(),
         }),
         ScopeSelector::CwdInferred { cwd } => {
-            let scopes = store.list_scopes(None).await?;
-            let resolution = resolve_cwd_inferred_scope(&scopes, cwd.as_deref())?;
+            let resolution = resolve_cwd_inferred_scope_selection(
+                store,
+                store.scope_inference_strategy(),
+                cwd.as_deref(),
+            )
+            .await?;
             Ok(ResolvedScopeSelection {
                 scope_path: Some(resolution.resolved_scope.clone()),
                 resolution: Some(resolution),
@@ -51,6 +57,25 @@ pub async fn resolve_scope_selection(
                 selector.requested_scope()
             )))
         }
+    }
+}
+
+async fn resolve_cwd_inferred_scope_selection(
+    store: &impl ContextStore,
+    strategy: ScopeInferenceStrategy,
+    cwd: Option<&Path>,
+) -> Result<ScopeResolution, CmError> {
+    match strategy {
+        ScopeInferenceStrategy::Filesystem => {
+            let scopes = store.list_scopes(None).await?;
+            resolve_cwd_inferred_scope(&scopes, cwd)
+        }
+        ScopeInferenceStrategy::Custom => Err(CmError::Validation(
+            "scope='cwd_inferred' is disabled by scope_inference.strategy='custom'; pass scope explicitly, for example scope='global/project:<project>' or scope='{\"kind\":\"path\",\"path\":\"global/project:<project>\"}'".to_owned(),
+        )),
+        ScopeInferenceStrategy::K8s => Err(CmError::Validation(
+            "scope_inference.strategy='k8s' is reserved but not implemented; pass scope explicitly, for example scope='global/project:<project>'".to_owned(),
+        )),
     }
 }
 
@@ -146,9 +171,7 @@ fn filter_candidates(scopes: &[Scope], cwd: &CwdParts) -> Vec<ScopeResolutionCan
         }
 
         let segments = scope_segments(&scope.path);
-        let project_matches_cwd = segments.project.as_ref().is_some_and(|project| {
-            cwd.basename.as_ref() == Some(project) || cwd.parent_basename.as_ref() == Some(project)
-        });
+        let project_matches_cwd = cwd.project_match(&segments.projects).is_some();
         let project_is_repo_parent = matching_repo_parents.contains(scope.path.as_str());
 
         if project_matches_cwd || project_is_repo_parent {
@@ -179,8 +202,15 @@ fn filter_candidates(scopes: &[Scope], cwd: &CwdParts) -> Vec<ScopeResolutionCan
 #[derive(Debug, Default)]
 struct CwdParts {
     has_cwd: bool,
+    names: Vec<String>,
     basename: Option<String>,
     parent_basename: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProjectMatch {
+    distance_from_cwd: usize,
+    depth: usize,
 }
 
 impl CwdParts {
@@ -213,7 +243,30 @@ impl CwdParts {
             has_cwd: true,
             basename: names.last().cloned(),
             parent_basename: names.iter().rev().nth(1).cloned(),
+            names,
         }
+    }
+
+    fn repo_project_match(&self, projects: &[String]) -> Option<ProjectMatch> {
+        let repo_index = self.names.len().checked_sub(1)?;
+        self.project_match_ending_at(projects, repo_index)
+    }
+
+    fn project_match(&self, projects: &[String]) -> Option<ProjectMatch> {
+        if projects.is_empty() {
+            return None;
+        }
+        (projects.len()..=self.names.len())
+            .rev()
+            .find_map(|end| self.project_match_ending_at(projects, end))
+    }
+
+    fn project_match_ending_at(&self, projects: &[String], end: usize) -> Option<ProjectMatch> {
+        let start = end.checked_sub(projects.len())?;
+        (self.names.get(start..end)? == projects).then_some(ProjectMatch {
+            distance_from_cwd: self.names.len() - end,
+            depth: projects.len(),
+        })
     }
 }
 
@@ -325,16 +378,14 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
             matched.push("repo".to_owned());
         }
 
-        if let Some(project) = &cwd.parent_basename
-            && segments.project.as_ref() == Some(project)
-        {
-            score += INFERRED_SCOPE_PARENT_PROJECT_MATCH_SCORE;
-            matched.push("project_parent".to_owned());
-        } else if let Some(project) = &cwd.basename
-            && segments.project.as_ref() == Some(project)
-        {
-            score += INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE;
-            matched.push("project_cwd".to_owned());
+        let project_match = if segments.repo.is_some() {
+            cwd.repo_project_match(&segments.projects)
+        } else {
+            cwd.project_match(&segments.projects)
+        };
+        if let Some(project_match) = project_match {
+            score += project_match_score(project_match);
+            matched.push(project_match_signal(project_match).to_owned());
         }
     }
 
@@ -357,6 +408,23 @@ fn score_candidate(scope: ScopePath, cwd: &CwdParts) -> ScopeResolutionCandidate
         scope,
         score,
         matched,
+    }
+}
+
+fn project_match_score(project_match: ProjectMatch) -> i32 {
+    let base = if project_match.distance_from_cwd == 0 {
+        INFERRED_SCOPE_CWD_PROJECT_MATCH_SCORE
+    } else {
+        INFERRED_SCOPE_PARENT_PROJECT_MATCH_SCORE - (project_match.distance_from_cwd as i32 - 1)
+    };
+    base + project_match.depth.saturating_sub(1) as i32
+}
+
+fn project_match_signal(project_match: ProjectMatch) -> &'static str {
+    match project_match.distance_from_cwd {
+        0 => "project_cwd",
+        1 => "project_parent",
+        _ => "project_ancestor",
     }
 }
 
@@ -430,6 +498,15 @@ fn resolution_signals(cwd: &CwdParts, candidates: &[ScopeResolutionCandidate]) -
         signals.push(format!(
             "cwd basename matched project scope segment: {project}"
         ));
+    }
+
+    if candidates.iter().any(|candidate| {
+        candidate
+            .matched
+            .iter()
+            .any(|matched| matched == "project_ancestor")
+    }) {
+        signals.push("cwd ancestor matched project scope segment".to_owned());
     }
 
     if let Some(top) = candidates.first() {

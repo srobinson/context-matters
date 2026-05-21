@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use cm_core::ScopeInferenceStrategy;
 use serde::Deserialize;
 
 use crate::project::{default_base_dir, resolve_home_dir};
@@ -21,6 +22,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     /// Tracing filter level (e.g. `"info"`, `"debug"`).
     pub log_level: String,
+    /// Strategy used for `cwd_inferred` scope resolution.
+    pub scope_inference_strategy: ScopeInferenceStrategy,
 }
 
 impl Default for Config {
@@ -29,6 +32,7 @@ impl Default for Config {
         Self {
             data_dir,
             log_level: "warn".to_owned(),
+            scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
         }
     }
 }
@@ -80,6 +84,14 @@ pub fn config_template() -> String {
 # Tracing filter level: "warn", "info", "debug", "trace".
 # Override with CM_LOG_LEVEL env var, or use RUST_LOG for fine-grained control.
 # log_level = "warn"
+
+# User-level scope inference strategy for `cwd_inferred` selectors.
+# `filesystem` preserves git and cwd based inference. `custom` disables
+# cwd_inferred and requires explicit scope input. `k8s` is reserved.
+# Read from $CM_DATA_DIR/{filename} or ~/.context-matters/{filename};
+# project-local config files cannot override it.
+# [scope_inference]
+# strategy = "filesystem"
 "#,
         filename = CONFIG_FILENAME
     )
@@ -96,6 +108,13 @@ pub fn config_template() -> String {
 struct FileConfig {
     data_dir: Option<String>,
     log_level: Option<String>,
+    scope_inference: Option<FileScopeInferenceConfig>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileScopeInferenceConfig {
+    strategy: Option<ScopeInferenceStrategy>,
 }
 
 /// Load configuration with precedence: env vars > TOML file > defaults.
@@ -113,6 +132,15 @@ pub fn load() -> Result<Config> {
         if let Some(level) = file_cfg.log_level {
             config.log_level = level;
         }
+    }
+
+    // Scope inference is intentionally user-level only. It never comes from
+    // $CWD/.cm.config.toml because the MCP server runs as one process per user.
+    if let Some(strategy) = find_and_parse_user_config()
+        .and_then(|file_cfg| file_cfg.scope_inference)
+        .and_then(|scope_inference| scope_inference.strategy)
+    {
+        config.scope_inference_strategy = strategy;
     }
 
     // Layer 2: Environment variables (highest precedence)
@@ -134,7 +162,14 @@ pub fn load() -> Result<Config> {
 /// trying lower-precedence paths. This prevents a broken project-local
 /// config from being silently overridden by a valid global one.
 fn find_and_parse_config() -> Option<FileConfig> {
-    let candidates = config_search_paths();
+    find_first_config(config_search_paths())
+}
+
+fn find_and_parse_user_config() -> Option<FileConfig> {
+    find_first_config(user_config_search_paths())
+}
+
+fn find_first_config(candidates: Vec<PathBuf>) -> Option<FileConfig> {
     for path in candidates {
         if path.exists() {
             tracing::debug!(path = %path.display(), "loading config file");
@@ -174,14 +209,23 @@ fn config_search_paths() -> Vec<PathBuf> {
         paths.push(cwd.join(filename));
     }
 
-    // 2. $CM_DATA_DIR/.cm.config.toml (tilde-expanded for consistency)
+    paths.extend(user_config_search_paths());
+
+    paths
+}
+
+fn user_config_search_paths() -> Vec<PathBuf> {
+    let filename = ".cm.config.toml";
+    let mut paths = Vec::with_capacity(2);
+
+    // 1. $CM_DATA_DIR/.cm.config.toml (tilde-expanded for consistency)
     if let Ok(dir) = std::env::var("CM_DATA_DIR")
         && let Ok(expanded) = expand_tilde(&dir)
     {
         paths.push(expanded.join(filename));
     }
 
-    // 3. ~/.context-matters/.cm.config.toml
+    // 2. ~/.context-matters/.cm.config.toml
     if let Ok(base) = default_base_dir() {
         paths.push(base.join(filename));
     }
@@ -212,6 +256,10 @@ mod tests {
         let config = Config::default();
         assert!(config.data_dir.ends_with(".context-matters"));
         assert_eq!(config.log_level, "warn");
+        assert_eq!(
+            config.scope_inference_strategy,
+            ScopeInferenceStrategy::Filesystem
+        );
     }
 
     #[test]
@@ -219,6 +267,7 @@ mod tests {
         let config = Config {
             data_dir: PathBuf::from("/tmp/test-cm"),
             log_level: "debug".to_owned(),
+            scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
         };
         assert_eq!(config.db_path(), PathBuf::from("/tmp/test-cm/cm.db"));
     }
@@ -260,6 +309,7 @@ mod tests {
         let cfg: FileConfig = toml::from_str("").unwrap();
         assert!(cfg.data_dir.is_none());
         assert!(cfg.log_level.is_none());
+        assert!(cfg.scope_inference.is_none());
     }
 
     #[test]
@@ -268,11 +318,29 @@ mod tests {
             r#"
             data_dir = "~/custom-dir"
             log_level = "debug"
+
+            [scope_inference]
+            strategy = "custom"
             "#,
         )
         .unwrap();
         assert_eq!(cfg.data_dir.as_deref(), Some("~/custom-dir"));
         assert_eq!(cfg.log_level.as_deref(), Some("debug"));
+        assert_eq!(
+            cfg.scope_inference.unwrap().strategy,
+            Some(ScopeInferenceStrategy::Custom)
+        );
+    }
+
+    #[test]
+    fn parse_partial_scope_inference_toml_uses_default_strategy() {
+        let cfg: FileConfig = toml::from_str(
+            r#"
+            [scope_inference]
+            "#,
+        )
+        .unwrap();
+        assert!(cfg.scope_inference.unwrap().strategy.is_none());
     }
 
     #[test]
@@ -280,6 +348,7 @@ mod tests {
         let config = Config {
             data_dir: PathBuf::new(),
             log_level: "warn".to_owned(),
+            scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
         };
         let err = config.validate().unwrap_err();
         assert!(
@@ -293,6 +362,7 @@ mod tests {
         let config = Config {
             data_dir: PathBuf::from("relative/path"),
             log_level: "warn".to_owned(),
+            scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
         };
         let err = config.validate().unwrap_err();
         assert!(
@@ -306,6 +376,7 @@ mod tests {
         let config = Config {
             data_dir: PathBuf::from("/tmp/cm-test"),
             log_level: "warn".to_owned(),
+            scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
         };
         config.validate().unwrap();
     }
@@ -387,6 +458,53 @@ mod tests {
     }
 
     #[test]
+    fn load_respects_user_scope_inference_strategy() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(CONFIG_FILENAME),
+            r#"
+            [scope_inference]
+            strategy = "custom"
+            "#,
+        )
+        .unwrap();
+        let data_dir = dir.path().to_string_lossy().into_owned();
+
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some(data_dir.as_str())),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(
+                    config.scope_inference_strategy,
+                    ScopeInferenceStrategy::Custom
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn user_scope_inference_search_excludes_current_dir() {
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", None::<&str>),
+                ("CM_LOG_LEVEL", None::<&str>),
+            ],
+            || {
+                let cwd_config = std::env::current_dir().unwrap().join(CONFIG_FILENAME);
+                assert!(
+                    !user_config_search_paths()
+                        .iter()
+                        .any(|path| path == &cwd_config),
+                    "user-level scope inference must not search project-local config"
+                );
+            },
+        );
+    }
+
+    #[test]
     fn config_template_is_valid_toml_when_values_uncommented() {
         let template = config_template();
         // Uncomment only lines that look like TOML key = value pairs
@@ -394,7 +512,7 @@ mod tests {
             .lines()
             .filter_map(|line| {
                 if let Some(stripped) = line.strip_prefix("# ")
-                    && stripped.contains(" = ")
+                    && (stripped.contains(" = ") || stripped.starts_with('['))
                 {
                     return Some(stripped);
                 }

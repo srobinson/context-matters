@@ -2,7 +2,8 @@ use super::support::{seed_scoped, test_store};
 
 use cm_capabilities::browse::{BrowseRequest, browse};
 use cm_capabilities::scope::{CWD_INFERRED_SCOPE, ScopeResolutionConfidence, ScopeSelector};
-use cm_core::{EntryKind, ScopePath};
+use cm_core::{EntryKind, ScopeInferenceStrategy, ScopePath};
+use cm_store::CmStore;
 use std::{fs, path::Path, process::Command};
 
 fn run_git(dir: &Path, args: &[&str]) {
@@ -78,6 +79,41 @@ async fn browse_scope_cwd_inferred_resolves_repo_from_cwd() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_custom_inference_rejects_cwd_inferred() {
+    let (store, _dir) = test_store().await;
+    let store = CmStore::new_with_scope_inference_strategy(
+        store.write_pool().clone(),
+        store.read_pool().clone(),
+        ScopeInferenceStrategy::Custom,
+    );
+    seed_scoped(
+        &store,
+        "Repo fact",
+        EntryKind::Fact,
+        "global/project:helioy/repo:context-matters",
+    )
+    .await;
+
+    let err = browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/context-matters".into(),
+            ))),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("scope='cwd_inferred' is disabled"));
+    assert!(message.contains("scope_inference.strategy='custom'"));
+    assert!(message.contains("pass scope explicitly"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn browse_scope_cwd_inferred_prefers_parent_project_repo_match_over_orphan_match() {
     let (store, _dir) = test_store().await;
     seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
@@ -125,6 +161,49 @@ async fn browse_scope_cwd_inferred_prefers_parent_project_repo_match_over_orphan
         "resolution should be unambiguous: {:?}",
         resolution.signals
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn browse_scope_cwd_inferred_resolves_nested_project_repo_from_cwd_ladder() {
+    let (store, _dir) = test_store().await;
+    seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
+    seed_scoped(
+        &store,
+        "Flat repo fact",
+        EntryKind::Fact,
+        "global/project:littleorgans/repo:session-matters",
+    )
+    .await;
+    seed_scoped(
+        &store,
+        "Nested repo fact",
+        EntryKind::Fact,
+        "global/project:helioy/project:littleorgans/repo:session-matters",
+    )
+    .await;
+
+    let result = browse(
+        &store,
+        BrowseRequest {
+            scope: Some(ScopeSelector::cwd_inferred(Some(
+                "/tmp/helioy/littleorgans/session-matters".into(),
+            ))),
+            limit: Some(20),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].title, "Nested repo fact");
+    let resolution = result.resolution.as_ref().unwrap();
+    assert_eq!(
+        resolution.resolved_scope,
+        ScopePath::parse("global/project:helioy/project:littleorgans/repo:session-matters")
+            .unwrap()
+    );
+    assert_eq!(resolution.confidence, ScopeResolutionConfidence::High);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -312,7 +391,7 @@ async fn browse_scope_cwd_inferred_resolves_project_from_cwd_basename() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn browse_scope_cwd_inferred_ignores_non_local_project_ancestor() {
+async fn browse_scope_cwd_inferred_walks_project_ancestors() {
     let (store, _dir) = test_store().await;
     seed_scoped(&store, "Global fact", EntryKind::Fact, "global").await;
     seed_scoped(
@@ -337,15 +416,18 @@ async fn browse_scope_cwd_inferred_ignores_non_local_project_ancestor() {
     .unwrap();
 
     assert_eq!(result.entries.len(), 1);
-    assert_eq!(result.entries[0].title, "Global fact");
+    assert_eq!(result.entries[0].title, "Ancestor project fact");
     let resolution = result.resolution.as_ref().unwrap();
-    assert_eq!(resolution.resolved_scope, ScopePath::global());
-    assert_eq!(resolution.confidence, ScopeResolutionConfidence::VeryLow);
+    assert_eq!(
+        resolution.resolved_scope,
+        ScopePath::parse("global/project:helioy").unwrap()
+    );
+    assert_eq!(resolution.confidence, ScopeResolutionConfidence::Medium);
     assert!(
         resolution
-            .candidates
+            .signals
             .iter()
-            .all(|candidate| candidate.scope != ScopePath::parse("global/project:helioy").unwrap())
+            .any(|signal| signal == "cwd ancestor matched project scope segment")
     );
 }
 

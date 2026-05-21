@@ -6,8 +6,9 @@
  * Invariants enforced at construction time:
  * - Starts with "global"
  * - Each segment after global follows `kind:identifier` format
- * - Kinds appear in ascending hierarchical order (global < project < repo < session)
- * - Each kind appears at most once
+ * - Kinds appear in hierarchical order (global < project < repo < session)
+ * - Project segments may repeat for nested project grouping
+ * - Non-project kinds appear at most once
  * - Intermediate levels may be omitted (e.g., `global/project:x/session:y` is valid)
  * - Identifiers match `[a-z0-9]([a-z0-9-]*[a-z0-9])?`
  * - Total path length <= 256 bytes
@@ -18,9 +19,9 @@
  * use cm_core::ScopePath;
  * use cm_core::ScopeKind;
  *
- * let path = ScopePath::parse("global/project:helioy/repo:nancyr").unwrap();
+ * let path = ScopePath::parse("global/project:helioy/project:agents/repo:nancyr").unwrap();
  * assert_eq!(path.leaf_kind(), ScopeKind::Repo);
- * assert_eq!(path.depth(), 3);
+ * assert_eq!(path.depth(), 4);
  * ```
  */
 export type ScopePath = string;
