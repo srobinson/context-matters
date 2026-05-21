@@ -235,26 +235,63 @@ async fn store_auto_creates_scope_chain_and_reports_creation() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn store_rejects_colliding_explicit_repo_scope_without_partial_write() {
+async fn store_creates_sibling_project_repo_scope_with_shared_leaf_name() {
     let (store, _dir) = test_store().await;
     common::ensure_scope(&store, common::CANONICAL_CONTEXT_REPO_SCOPE).await;
-    let scope_count = store.list_scopes(None).await.unwrap().len();
-    let mut request = minimal_request("Rejected orphan write", "Body.");
+    let scope_count_before = store.list_scopes(None).await.unwrap().len();
+    let mut request = minimal_request("Sibling repo write", "Body.");
     request.scope = Some(ScopeSelector::Path(
-        ScopePath::parse(common::ORPHAN_CONTEXT_REPO_SCOPE).unwrap(),
+        ScopePath::parse(common::SIBLING_CONTEXT_REPO_SCOPE).unwrap(),
     ));
 
-    let err = store_entry(&store, request, &wctx()).await.unwrap_err();
+    let result = store_entry(&store, request, &wctx()).await.unwrap();
 
-    common::assert_scope_collision_error(
-        err,
-        common::ORPHAN_CONTEXT_REPO_SCOPE,
-        common::CANONICAL_CONTEXT_REPO_SCOPE,
+    assert!(result.scope_created);
+    assert_eq!(result.scope_path, common::SIBLING_CONTEXT_REPO_SCOPE);
+    assert_eq!(store.export(None).await.unwrap().len(), 1);
+    // Two new scopes: the new project parent and its repo child.
+    assert_eq!(
+        store.list_scopes(None).await.unwrap().len(),
+        scope_count_before + 2
     );
-    assert_eq!(store.export(None).await.unwrap().len(), 0);
-    assert_eq!(store.list_scopes(None).await.unwrap().len(), scope_count);
-    common::assert_scope_missing(&store, "global/project:context-matters").await;
-    common::assert_scope_missing(&store, common::ORPHAN_CONTEXT_REPO_SCOPE).await;
+    store
+        .get_scope(&ScopePath::parse("global/project:context-matters").unwrap())
+        .await
+        .unwrap();
+    store
+        .get_scope(&ScopePath::parse(common::SIBLING_CONTEXT_REPO_SCOPE).unwrap())
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn store_creates_nested_project_repo_scope_when_flat_sibling_exists() {
+    let (store, _dir) = test_store().await;
+    let flat = "global/project:helioy/repo:identity-matters";
+    let nested = "global/project:helioy/project:littleorgans/repo:identity-matters";
+    common::ensure_scope(&store, flat).await;
+    let scope_count_before = store.list_scopes(None).await.unwrap().len();
+    let mut request = minimal_request("Nested repo write", "Body.");
+    request.scope = Some(ScopeSelector::Path(ScopePath::parse(nested).unwrap()));
+
+    let result = store_entry(&store, request, &wctx()).await.unwrap();
+
+    assert!(result.scope_created);
+    assert_eq!(result.scope_path, nested);
+    // The inner project and the new repo are both new; helioy already existed.
+    assert_eq!(
+        store.list_scopes(None).await.unwrap().len(),
+        scope_count_before + 2
+    );
+    // Both flat and nested scopes coexist as distinct rows.
+    store
+        .get_scope(&ScopePath::parse(flat).unwrap())
+        .await
+        .unwrap();
+    store
+        .get_scope(&ScopePath::parse(nested).unwrap())
+        .await
+        .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]

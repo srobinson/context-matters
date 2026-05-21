@@ -6,12 +6,6 @@ pub(super) struct ScopeSegments {
     pub(super) repo: Option<String>,
 }
 
-impl ScopeSegments {
-    pub(super) fn leaf_project(&self) -> Option<&str> {
-        self.projects.last().map(String::as_str)
-    }
-}
-
 pub(super) fn scope_segments(path: &ScopePath) -> ScopeSegments {
     let mut segments = ScopeSegments::default();
     for segment in path.as_str().split('/').skip(1) {
@@ -38,7 +32,6 @@ mod tests {
         let segments = scope_segments(&path);
 
         assert_eq!(segments.projects, vec!["helioy", "agents"]);
-        assert_eq!(segments.leaf_project(), Some("agents"));
         assert_eq!(segments.repo.as_deref(), Some("nancyr"));
     }
 }

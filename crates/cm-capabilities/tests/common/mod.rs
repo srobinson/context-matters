@@ -7,7 +7,7 @@ use cm_core::{
 use cm_store::{CmStore, schema};
 
 pub(crate) const CANONICAL_CONTEXT_REPO_SCOPE: &str = "global/project:helioy/repo:context-matters";
-pub(crate) const ORPHAN_CONTEXT_REPO_SCOPE: &str =
+pub(crate) const SIBLING_CONTEXT_REPO_SCOPE: &str =
     "global/project:context-matters/repo:context-matters";
 
 pub(crate) async fn test_store() -> (CmStore, tempfile::TempDir) {
@@ -63,17 +63,6 @@ pub(crate) async fn assert_scope_missing(store: &CmStore, path: &str) {
     let scope_path = ScopePath::parse(path).unwrap();
     let result = store.get_scope(&scope_path).await;
     assert!(matches!(result, Err(CmError::ScopeNotFound(_))));
-}
-
-pub(crate) fn assert_scope_collision_error(err: CmError, requested: &str, existing: &str) {
-    match err {
-        CmError::Validation(msg) => {
-            assert!(msg.contains("refusing to auto-create scope"));
-            assert!(msg.contains(requested));
-            assert!(msg.contains(existing));
-        }
-        other => panic!("expected validation error, got {other:?}"),
-    }
 }
 
 pub(crate) async fn seed_entry(store: &CmStore, title: &str, body: &str, kind: EntryKind) {
