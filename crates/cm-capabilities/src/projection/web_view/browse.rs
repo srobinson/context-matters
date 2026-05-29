@@ -1,15 +1,12 @@
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::super::browse_view::sort_as_str;
 use super::super::{
-    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, hoist_uniform, kind_histogram,
-    relative_age, smart_snippet, tag_histogram,
+    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_desc_vec_u32, hoist_uniform,
+    kind_histogram, relative_age, smart_snippet, tag_histogram,
 };
-use super::histogram_to_u32;
 use crate::browse::BrowseResult;
 use crate::scope::{ScopeResolution, ScopeResolutionCandidate};
 
@@ -40,10 +37,14 @@ pub struct WebBrowseHeader {
     /// Hoisted uniform creator. `Some` only when every entry shares it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
-    /// Frequency of each entry kind present in the returned slice.
-    pub kinds_histogram: BTreeMap<String, u32>,
-    /// Frequency of each tag occurrence across the returned slice.
-    pub tags_histogram: BTreeMap<String, u32>,
+    /// Per-kind counts across the returned slice, ordered by count
+    /// descending (alphabetical tiebreak). An ordered array of
+    /// `[kind, count]` pairs rather than a map so the order survives every
+    /// serialization path; see [`super::super::count_desc_vec`].
+    pub kinds_histogram: Vec<(String, u32)>,
+    /// Per-tag counts across the returned slice, ordered by count
+    /// descending. Each tag on an entry contributes one.
+    pub tags_histogram: Vec<(String, u32)>,
 }
 
 /// One row in a browse result, shaped for the cm-web UI.
@@ -137,8 +138,8 @@ pub fn project_web_browse_at(result: &BrowseResult, now: DateTime<Utc>) -> WebBr
     let hoisted_kind = hoist_uniform(entries, |e| e.kind.as_str().to_owned());
     let hoisted_created_by = hoist_uniform(entries, |e| e.created_by.clone());
 
-    let kinds_histogram = histogram_to_u32(kind_histogram(entries, |e| e.kind.as_str()));
-    let tags_histogram = histogram_to_u32(tag_histogram(entries, |e| {
+    let kinds_histogram = count_desc_vec_u32(kind_histogram(entries, |e| e.kind.as_str()));
+    let tags_histogram = count_desc_vec_u32(tag_histogram(entries, |e| {
         e.meta.as_ref().map(|m| m.tags.as_slice()).unwrap_or(&[])
     }));
 

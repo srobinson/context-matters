@@ -433,14 +433,35 @@ fn web_recall_view_histograms_populated() {
 
     let view: WebRecallView = project_web_recall_at(&result, &request, now);
 
-    assert_eq!(view.header.kinds_histogram.get("decision"), Some(&2));
-    assert_eq!(view.header.kinds_histogram.get("lesson"), Some(&1));
-    assert_eq!(view.header.kinds_histogram.len(), 2);
+    // Histograms are ordered arrays of `[key, count]` pairs, sorted by
+    // count descending with an alphabetical tiebreak. The order is the
+    // contract: it must survive `serde_json::to_value` on the MCP channel,
+    // which a map field would not (keys re-sort alphabetically).
+    assert_eq!(
+        view.header.kinds_histogram,
+        vec![("decision".to_owned(), 2), ("lesson".to_owned(), 1)],
+    );
+    // alpha (2) leads; beta and gamma tie at 1 and fall in alphabetical order.
+    assert_eq!(
+        view.header.tags_histogram,
+        vec![
+            ("alpha".to_owned(), 2),
+            ("beta".to_owned(), 1),
+            ("gamma".to_owned(), 1),
+        ],
+    );
 
-    assert_eq!(view.header.tags_histogram.get("alpha"), Some(&2));
-    assert_eq!(view.header.tags_histogram.get("beta"), Some(&1));
-    assert_eq!(view.header.tags_histogram.get("gamma"), Some(&1));
-    assert_eq!(view.header.tags_histogram.len(), 3);
+    // scope_hits is an ordered ancestor-walk summary, NOT a frequency
+    // histogram: it is carried in source order (most specific first), so
+    // even though "global" (1) sorts after the project scope by count, it
+    // stays last because walk order is preserved verbatim.
+    assert_eq!(
+        view.header.scope_hits,
+        vec![
+            ("global/project:helioy".to_owned(), 2),
+            ("global".to_owned(), 1),
+        ],
+    );
 }
 
 #[test]

@@ -37,10 +37,14 @@ kind: string | null,
  */
 created_by: string | null, 
 /**
- * Frequency of each entry kind present in the returned slice.
+ * Per-kind counts across the returned slice, ordered by count
+ * descending (alphabetical tiebreak). An ordered array of
+ * `[kind, count]` pairs rather than a map so the order survives every
+ * serialization path; see [`super::super::count_desc_vec`].
  */
-kinds_histogram: { [key in string]: number }, 
+kinds_histogram: Array<[string, number]>, 
 /**
- * Frequency of each tag occurrence across the returned slice.
+ * Per-tag counts across the returned slice, ordered by count
+ * descending. Each tag on an entry contributes one.
  */
-tags_histogram: { [key in string]: number }, };
+tags_histogram: Array<[string, number]>, };

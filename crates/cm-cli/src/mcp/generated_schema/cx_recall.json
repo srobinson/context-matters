@@ -167,12 +167,22 @@
             "type": "integer"
           },
           "kinds_histogram": {
-            "additionalProperties": {
-              "minimum": 0,
-              "type": "integer"
+            "description": "Per-kind counts across the returned rows, as ordered `[kind, count]` pairs sorted by count descending.",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
             },
-            "description": "Per-kind counts across the returned rows.",
-            "type": "object"
+            "type": "array"
           },
           "query": {
             "description": "Free-text query the caller supplied. Omitted when the recall was tag/scope-only.",
@@ -195,20 +205,40 @@
             "type": "array"
           },
           "scope_hits": {
-            "additionalProperties": {
-              "minimum": 0,
-              "type": "integer"
+            "description": "Per-scope hit counts along `scope_chain`, as ordered `[scope, count]` pairs in ancestor-walk order (most specific scope first).",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
             },
-            "description": "Per-scope hit counts in `scope_chain`.",
-            "type": "object"
+            "type": "array"
           },
           "tags_histogram": {
-            "additionalProperties": {
-              "minimum": 0,
-              "type": "integer"
+            "description": "Per-tag counts across the returned rows, as ordered `[tag, count]` pairs sorted by count descending.",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
             },
-            "description": "Per-tag counts across the returned rows.",
-            "type": "object"
+            "type": "array"
           },
           "tier": {
             "description": "Search tier the cascade settled on (none, exact, prefix, split_or). Omitted on non-search routings.",
