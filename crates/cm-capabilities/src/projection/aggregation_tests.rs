@@ -116,6 +116,54 @@ fn render_histogram_empty_is_empty_string() {
 }
 
 #[test]
+fn count_desc_vec_orders_by_count_then_alpha() {
+    let mut hist = BTreeMap::new();
+    hist.insert("zebra".to_owned(), 1);
+    hist.insert("alpha".to_owned(), 1);
+    hist.insert("mcp".to_owned(), 2);
+
+    // mcp (2) leads; the two count-1 keys follow in alphabetical order.
+    assert_eq!(
+        count_desc_vec(hist),
+        vec![
+            ("mcp".to_owned(), 2),
+            ("alpha".to_owned(), 1),
+            ("zebra".to_owned(), 1),
+        ],
+    );
+}
+
+/// The reason histogram fields are ordered `Vec`s and not maps: the MCP
+/// `dual_response` path serialises through `serde_json::to_value`, which
+/// (without the `preserve_order` feature) rebuilds JSON objects as a
+/// `BTreeMap` and discards key order. A `Vec` of pairs keeps the
+/// count-descending order intact all the way to the wire, where a map
+/// would silently revert to alphabetical, the exact bug this guards.
+#[test]
+fn count_desc_vec_survives_to_value_where_a_map_would_not() {
+    let mut hist = BTreeMap::new();
+    hist.insert("zebra".to_owned(), 1);
+    hist.insert("alpha".to_owned(), 1);
+    hist.insert("mcp".to_owned(), 2);
+
+    let pairs = count_desc_vec(hist.clone());
+    let pairs_json = serde_json::to_value(&pairs).unwrap();
+    assert_eq!(
+        serde_json::to_string(&pairs_json).unwrap(),
+        r#"[["mcp",2],["alpha",1],["zebra",1]]"#,
+        "Vec preserves count-descending order through to_value",
+    );
+
+    // Control: the same data as a map loses the order through to_value.
+    let map_json = serde_json::to_value(&hist).unwrap();
+    assert_eq!(
+        serde_json::to_string(&map_json).unwrap(),
+        r#"{"alpha":1,"mcp":2,"zebra":1}"#,
+        "map re-sorts keys alphabetically through to_value",
+    );
+}
+
+#[test]
 fn fmt_with_commas_inserts_thousands_separators() {
     assert_eq!(fmt_with_commas(0_u32), "0");
     assert_eq!(fmt_with_commas(42_u32), "42");

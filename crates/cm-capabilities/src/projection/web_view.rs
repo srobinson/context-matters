@@ -22,8 +22,6 @@
 //! that were promoted to `pub(crate)` specifically so this module could
 //! reuse them verbatim.
 
-use std::collections::BTreeMap;
-
 mod browse;
 mod get;
 mod recall;
@@ -35,17 +33,3 @@ pub use get::*;
 pub use recall::*;
 pub use stats::*;
 pub use update::*;
-
-/// Convert the `usize`-valued histograms returned by
-/// [`super::kind_histogram`], [`super::tag_histogram`], and
-/// [`super::scope_histogram`] into `u32`-valued maps for the web view.
-///
-/// The YAML renderer only needs the `usize` form for its `render_histogram`
-/// pass, but the web view must expose `u32` so ts-rs projects the field
-/// as `Record<string, number>` rather than `Record<string, bigint>`.
-/// Cast is lossless for any realistic result-set size; entries-per-slice
-/// is bounded by the recall/browse limit, which tops out at `MAX_LIMIT`
-/// (well under `u32::MAX`).
-fn histogram_to_u32(src: BTreeMap<String, usize>) -> BTreeMap<String, u32> {
-    src.into_iter().map(|(k, v)| (k, v as u32)).collect()
-}

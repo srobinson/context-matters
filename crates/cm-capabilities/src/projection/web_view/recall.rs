@@ -1,15 +1,12 @@
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::super::recall_view::{normalise_bm25, routing_explanation, search_tier_header_tag};
 use super::super::{
-    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, kind_histogram, relative_age,
-    smart_snippet, tag_histogram,
+    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_desc_vec_u32, kind_histogram,
+    relative_age, smart_snippet, tag_histogram,
 };
-use super::histogram_to_u32;
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 
 /// Top-of-response header for a recall result.
@@ -39,9 +36,20 @@ pub struct WebRecallHeader {
     pub candidates: u32,
     pub returned: usize,
     pub scope_chain: Vec<String>,
-    pub scope_hits: BTreeMap<String, usize>,
-    pub kinds_histogram: BTreeMap<String, u32>,
-    pub tags_histogram: BTreeMap<String, u32>,
+    /// Per-scope hit counts, preserved in the source ordering from the
+    /// recall ancestor walk (most specific scope first, broadest last).
+    /// Unlike the kind/tag histograms this is an ordered chain summary, not
+    /// a frequency table, so it is NOT re-sorted by count; the array shape
+    /// and order match `RecallResult::scope_hits` and the YAML
+    /// `format_recall_view` rendering.
+    pub scope_hits: Vec<(String, usize)>,
+    /// Per-kind counts across the returned rows, ordered by count
+    /// descending (alphabetical tiebreak). Ordered array of `[kind, count]`
+    /// pairs so the order survives `serde_json::to_value` on the MCP
+    /// channel; see [`super::super::count_desc_vec`].
+    pub kinds_histogram: Vec<(String, u32)>,
+    /// Per-tag counts across the returned rows, ordered by count descending.
+    pub tags_histogram: Vec<(String, u32)>,
     pub tokens: u32,
 }
 
@@ -126,8 +134,8 @@ pub fn project_web_recall_at(
         Vec::new()
     };
 
-    let kinds_histogram = histogram_to_u32(kind_histogram(rows, |r| r.entry.kind.as_str()));
-    let tags_histogram = histogram_to_u32(tag_histogram(rows, |r| {
+    let kinds_histogram = count_desc_vec_u32(kind_histogram(rows, |r| r.entry.kind.as_str()));
+    let tags_histogram = count_desc_vec_u32(tag_histogram(rows, |r| {
         r.entry
             .meta
             .as_ref()
@@ -135,13 +143,12 @@ pub fn project_web_recall_at(
             .unwrap_or(&[])
     }));
 
-    // Preserve the caller-provided ordering of scope_hits (which is
-    // ordered most-specific-first) by collecting into a BTreeMap, which
-    // will re-sort alphabetically. The YAML formatter renders
-    // scope_hits as an insertion-ordered list; the web view
-    // intentionally sorts alphabetically so the JSON surface is
-    // deterministic and diff-friendly.
-    let scope_hits: BTreeMap<String, usize> = result.scope_hits.iter().cloned().collect();
+    // Carry scope_hits verbatim in its source order (most specific scope
+    // first, broadest last). This is an ordered ancestor-walk summary, not
+    // a frequency histogram, so it must NOT be re-sorted: the array shape
+    // matches both `RecallResult::scope_hits` and the YAML
+    // `format_recall_view` rendering.
+    let scope_hits: Vec<(String, usize)> = result.scope_hits.clone();
 
     let tier = if is_search {
         result

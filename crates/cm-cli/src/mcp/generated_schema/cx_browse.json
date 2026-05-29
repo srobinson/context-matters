@@ -195,12 +195,22 @@
             "type": "string"
           },
           "kinds_histogram": {
-            "additionalProperties": {
-              "minimum": 0,
-              "type": "integer"
+            "description": "Per-kind counts across the returned rows, as ordered `[kind, count]` pairs sorted by count descending.",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
             },
-            "description": "Per-kind counts across the returned rows.",
-            "type": "object"
+            "type": "array"
           },
           "returned": {
             "description": "Number of rows in `entries` on this page.",
@@ -216,12 +226,22 @@
             "type": "string"
           },
           "tags_histogram": {
-            "additionalProperties": {
-              "minimum": 0,
-              "type": "integer"
+            "description": "Per-tag counts across the returned rows, as ordered `[tag, count]` pairs sorted by count descending.",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
             },
-            "description": "Per-tag counts across the returned rows.",
-            "type": "object"
+            "type": "array"
           },
           "total": {
             "description": "Total matching rows in the store before pagination.",

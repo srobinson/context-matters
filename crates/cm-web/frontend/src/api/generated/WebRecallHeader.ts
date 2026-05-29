@@ -18,4 +18,24 @@
  * (`subtree`, `set`, `all`) because those requests do not produce an
  * ancestor walk.
  */
-export type WebRecallHeader = { query: string | null, routing: string, tier: string | null, candidates: number, returned: number, scope_chain: Array<string>, scope_hits: { [key in string]: number }, kinds_histogram: { [key in string]: number }, tags_histogram: { [key in string]: number }, tokens: number, };
+export type WebRecallHeader = { query: string | null, routing: string, tier: string | null, candidates: number, returned: number, scope_chain: Array<string>, 
+/**
+ * Per-scope hit counts, preserved in the source ordering from the
+ * recall ancestor walk (most specific scope first, broadest last).
+ * Unlike the kind/tag histograms this is an ordered chain summary, not
+ * a frequency table, so it is NOT re-sorted by count; the array shape
+ * and order match `RecallResult::scope_hits` and the YAML
+ * `format_recall_view` rendering.
+ */
+scope_hits: Array<[string, number]>, 
+/**
+ * Per-kind counts across the returned rows, ordered by count
+ * descending (alphabetical tiebreak). Ordered array of `[kind, count]`
+ * pairs so the order survives `serde_json::to_value` on the MCP
+ * channel; see [`super::super::count_desc_vec`].
+ */
+kinds_histogram: Array<[string, number]>, 
+/**
+ * Per-tag counts across the returned rows, ordered by count descending.
+ */
+tags_histogram: Array<[string, number]>, tokens: number, };

@@ -3,7 +3,6 @@
 //! Shared by the MCP `cx_search` tool and the CLI `cm search` command so
 //! both surfaces render the same search result shape.
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use chrono::Utc;
@@ -11,8 +10,9 @@ use cm_core::{ContentSearchPage, ScoredEntry};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, estimate_tokens, kind_histogram,
-    relative_age, render_histogram, scope_histogram, smart_snippet, tag_histogram,
+    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_desc_vec, count_desc_vec_u32,
+    estimate_tokens, kind_histogram, relative_age, render_pairs, scope_histogram, smart_snippet,
+    tag_histogram,
 };
 use crate::projection::normalise_bm25;
 
@@ -28,9 +28,15 @@ pub struct SearchHeader {
     pub returned: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
-    pub scope_hits: BTreeMap<String, usize>,
-    pub kinds_histogram: BTreeMap<String, u32>,
-    pub tags_histogram: BTreeMap<String, u32>,
+    /// Per-scope hit counts for this page, ordered by count descending
+    /// (alphabetical tiebreak). An ordered array of `[scope, count]` pairs
+    /// rather than a map so the count order survives `serde_json::to_value`
+    /// on the MCP channel; see [`super::count_desc_vec`].
+    pub scope_hits: Vec<(String, usize)>,
+    /// Per-kind counts for this page, ordered by count descending.
+    pub kinds_histogram: Vec<(String, u32)>,
+    /// Per-tag counts for this page, ordered by count descending.
+    pub tags_histogram: Vec<(String, u32)>,
     pub tokens: u32,
 }
 
@@ -50,10 +56,12 @@ pub fn project_search_view(query: &str, page: ContentSearchPage) -> SearchView {
     let now = Utc::now();
     let scores = page.items.iter().map(|item| item.score).collect::<Vec<_>>();
     let norm_scores = normalise_bm25(&scores);
-    let scope_hits = scope_histogram(&page.items, |item| item.entry.scope_path.as_str());
+    let scope_hits = count_desc_vec(scope_histogram(&page.items, |item| {
+        item.entry.scope_path.as_str()
+    }));
     let kinds_histogram =
-        histogram_to_u32(kind_histogram(&page.items, |item| item.entry.kind.as_str()));
-    let tags_histogram = histogram_to_u32(tag_histogram(&page.items, entry_tags));
+        count_desc_vec_u32(kind_histogram(&page.items, |item| item.entry.kind.as_str()));
+    let tags_histogram = count_desc_vec_u32(tag_histogram(&page.items, entry_tags));
     let tokens = page
         .items
         .iter()
@@ -107,14 +115,14 @@ pub fn format_search_view(view: &SearchView) -> String {
         let _ = writeln!(out, "next_cursor: {cursor}");
     }
     if !view.header.scope_hits.is_empty() {
-        let _ = writeln!(
-            out,
-            "scope_hits: {}",
-            render_histogram(&view.header.scope_hits)
-        );
+        let _ = writeln!(out, "scope_hits: {}", render_pairs(&view.header.scope_hits));
     }
-    render_u32_histogram(&mut out, "kinds", &view.header.kinds_histogram);
-    render_u32_histogram(&mut out, "tags", &view.header.tags_histogram);
+    if !view.header.kinds_histogram.is_empty() {
+        let _ = writeln!(out, "kinds: {}", render_pairs(&view.header.kinds_histogram));
+    }
+    if !view.header.tags_histogram.is_empty() {
+        let _ = writeln!(out, "tags: {}", render_pairs(&view.header.tags_histogram));
+    }
     let _ = writeln!(out, "tokens: {}", view.header.tokens);
     out.push_str("\nentries:\n");
     if view.entries.is_empty() {
@@ -149,20 +157,4 @@ fn entry_tags(item: &ScoredEntry) -> &[String] {
         .as_ref()
         .map(|meta| meta.tags.as_slice())
         .unwrap_or(&[])
-}
-
-fn histogram_to_u32(src: BTreeMap<String, usize>) -> BTreeMap<String, u32> {
-    src.into_iter().map(|(k, v)| (k, v as u32)).collect()
-}
-
-fn render_u32_histogram(out: &mut String, label: &str, hist: &BTreeMap<String, u32>) {
-    if hist.is_empty() {
-        return;
-    }
-    let rendered = hist
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let _ = writeln!(out, "{label}: {rendered}");
 }
