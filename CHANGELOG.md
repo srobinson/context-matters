@@ -15,6 +15,13 @@
 * The web UI now launches through `cm web --open`; the standalone `cm-web` command surface is retired.
 * `cx_get` now returns canonical capability validation text. Empty `ids` returns `ids cannot be empty`; the previous `Validation error: ` prefix was removed for CLI/MCP error parity.
 
+## [0.2.23](https://github.com/srobinson/context-matters/compare/v0.2.22...v0.2.23) (2026-05-29)
+
+
+### Bug Fixes
+
+* **projection:** order histogram fields by count across text and JSON ([#76](https://github.com/srobinson/context-matters/issues/76)) ([511e282](https://github.com/srobinson/context-matters/commit/511e28247bf4abf1ebc56c6f4adab4bf56fa3db5))
+
 ## [0.2.22](https://github.com/srobinson/context-matters/compare/v0.2.21...v0.2.22) (2026-05-21)
 
 
