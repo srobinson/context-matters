@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { CountBucket } from "@/api/generated/CountBucket";
 import type { WebBrowseHeader } from "@/api/generated/WebBrowseHeader";
 import type { WebRecallHeader } from "@/api/generated/WebRecallHeader";
 import { cn } from "@/lib/utils";
@@ -50,22 +51,14 @@ function TraceRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function HistogramRow({
-  label,
-  histogram,
-}: {
-  label: string;
-  // Ordered [key, count] pairs, pre-sorted count-descending by the backend.
-  // An array (not a map) so the order survives JSON serialization.
-  histogram: Array<[string, number]>;
-}) {
+function HistogramRow({ label, histogram }: { label: string; histogram: CountBucket[] }) {
   const entries = histogram.slice(0, 6);
   if (entries.length === 0) return null;
   return (
     <TraceRow label={label}>
-      {entries.map(([name, count]) => (
-        <TraceBadge key={name}>
-          {name} {count}
+      {entries.map(({ bucket, count }) => (
+        <TraceBadge key={bucket}>
+          {bucket} {count}
         </TraceBadge>
       ))}
     </TraceRow>
