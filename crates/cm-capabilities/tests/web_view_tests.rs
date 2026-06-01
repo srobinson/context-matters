@@ -22,8 +22,8 @@ use uuid::Uuid;
 
 use cm_capabilities::browse::BrowseResult;
 use cm_capabilities::projection::{
-    RecallRow, WebBrowseView, WebRecallView, project_web_browse_at, project_web_recall_at,
-    project_web_update,
+    CountBucket, RecallRow, WebBrowseView, WebRecallView, project_web_browse_at,
+    project_web_recall_at, project_web_update,
 };
 use cm_capabilities::recall::{
     RECALL_SCOPE_DEFAULT_ADVISORY, RecallAdvisory, RecallRequest, RecallResult, RecallRouting,
@@ -433,21 +433,39 @@ fn web_recall_view_histograms_populated() {
 
     let view: WebRecallView = project_web_recall_at(&result, &request, now);
 
-    // Histograms are ordered arrays of `[key, count]` pairs, sorted by
-    // count descending with an alphabetical tiebreak. The order is the
-    // contract: it must survive `serde_json::to_value` on the MCP channel,
-    // which a map field would not (keys re-sort alphabetically).
+    // Histograms are ordered count buckets, sorted by count descending with
+    // an alphabetical tiebreak. The order is the contract: it must survive
+    // `serde_json::to_value` on the MCP channel, which a map field would
+    // not because keys re-sort alphabetically.
     assert_eq!(
         view.header.kinds_histogram,
-        vec![("decision".to_owned(), 2), ("lesson".to_owned(), 1)],
+        vec![
+            CountBucket {
+                bucket: "decision".to_owned(),
+                count: 2,
+            },
+            CountBucket {
+                bucket: "lesson".to_owned(),
+                count: 1,
+            },
+        ],
     );
     // alpha (2) leads; beta and gamma tie at 1 and fall in alphabetical order.
     assert_eq!(
         view.header.tags_histogram,
         vec![
-            ("alpha".to_owned(), 2),
-            ("beta".to_owned(), 1),
-            ("gamma".to_owned(), 1),
+            CountBucket {
+                bucket: "alpha".to_owned(),
+                count: 2,
+            },
+            CountBucket {
+                bucket: "beta".to_owned(),
+                count: 1,
+            },
+            CountBucket {
+                bucket: "gamma".to_owned(),
+                count: 1,
+            },
         ],
     );
 
@@ -458,8 +476,14 @@ fn web_recall_view_histograms_populated() {
     assert_eq!(
         view.header.scope_hits,
         vec![
-            ("global/project:helioy".to_owned(), 2),
-            ("global".to_owned(), 1),
+            CountBucket {
+                bucket: "global/project:helioy".to_owned(),
+                count: 2,
+            },
+            CountBucket {
+                bucket: "global".to_owned(),
+                count: 1,
+            },
         ],
     );
 }

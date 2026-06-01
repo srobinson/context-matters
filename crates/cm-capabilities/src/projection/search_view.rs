@@ -10,9 +10,9 @@ use cm_core::{ContentSearchPage, ScoredEntry};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_desc_vec, count_desc_vec_u32,
-    estimate_tokens, kind_histogram, relative_age, render_pairs, scope_histogram, smart_snippet,
-    tag_histogram,
+    CountBucket, HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_buckets,
+    count_desc_buckets, count_desc_vec, estimate_tokens, kind_histogram, relative_age,
+    render_buckets, scope_histogram, smart_snippet, tag_histogram,
 };
 use crate::projection::normalise_bm25;
 
@@ -29,14 +29,13 @@ pub struct SearchHeader {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
     /// Per-scope hit counts for this page, ordered by count descending
-    /// (alphabetical tiebreak). An ordered array of `[scope, count]` pairs
-    /// rather than a map so the count order survives `serde_json::to_value`
-    /// on the MCP channel; see [`super::count_desc_vec`].
-    pub scope_hits: Vec<(String, usize)>,
+    /// (alphabetical tiebreak). Ordered buckets preserve count order on
+    /// JSON transports while avoiding tuple-array output.
+    pub scope_hits: Vec<CountBucket>,
     /// Per-kind counts for this page, ordered by count descending.
-    pub kinds_histogram: Vec<(String, u32)>,
+    pub kinds_histogram: Vec<CountBucket>,
     /// Per-tag counts for this page, ordered by count descending.
-    pub tags_histogram: Vec<(String, u32)>,
+    pub tags_histogram: Vec<CountBucket>,
     pub tokens: u32,
 }
 
@@ -59,9 +58,10 @@ pub fn project_search_view(query: &str, page: ContentSearchPage) -> SearchView {
     let scope_hits = count_desc_vec(scope_histogram(&page.items, |item| {
         item.entry.scope_path.as_str()
     }));
+    let scope_hits = count_buckets(scope_hits);
     let kinds_histogram =
-        count_desc_vec_u32(kind_histogram(&page.items, |item| item.entry.kind.as_str()));
-    let tags_histogram = count_desc_vec_u32(tag_histogram(&page.items, entry_tags));
+        count_desc_buckets(kind_histogram(&page.items, |item| item.entry.kind.as_str()));
+    let tags_histogram = count_desc_buckets(tag_histogram(&page.items, entry_tags));
     let tokens = page
         .items
         .iter()
@@ -115,13 +115,21 @@ pub fn format_search_view(view: &SearchView) -> String {
         let _ = writeln!(out, "next_cursor: {cursor}");
     }
     if !view.header.scope_hits.is_empty() {
-        let _ = writeln!(out, "scope_hits: {}", render_pairs(&view.header.scope_hits));
+        let _ = writeln!(
+            out,
+            "scope_hits: {}",
+            render_buckets(&view.header.scope_hits)
+        );
     }
     if !view.header.kinds_histogram.is_empty() {
-        let _ = writeln!(out, "kinds: {}", render_pairs(&view.header.kinds_histogram));
+        let _ = writeln!(
+            out,
+            "kinds: {}",
+            render_buckets(&view.header.kinds_histogram)
+        );
     }
     if !view.header.tags_histogram.is_empty() {
-        let _ = writeln!(out, "tags: {}", render_pairs(&view.header.tags_histogram));
+        let _ = writeln!(out, "tags: {}", render_buckets(&view.header.tags_histogram));
     }
     let _ = writeln!(out, "tokens: {}", view.header.tokens);
     out.push_str("\nentries:\n");

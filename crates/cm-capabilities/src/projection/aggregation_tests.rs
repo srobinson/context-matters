@@ -133,25 +133,41 @@ fn count_desc_vec_orders_by_count_then_alpha() {
     );
 }
 
-/// The reason histogram fields are ordered `Vec`s and not maps: the MCP
+/// The reason histogram fields are ordered arrays and not maps: the MCP
 /// `dual_response` path serialises through `serde_json::to_value`, which
 /// (without the `preserve_order` feature) rebuilds JSON objects as a
-/// `BTreeMap` and discards key order. A `Vec` of pairs keeps the
-/// count-descending order intact all the way to the wire, where a map
-/// would silently revert to alphabetical, the exact bug this guards.
+/// `BTreeMap` and discards key order. A `Vec` of count buckets keeps the
+/// count-descending order intact without leaking tuple arrays to the wire.
 #[test]
-fn count_desc_vec_survives_to_value_where_a_map_would_not() {
+fn count_desc_buckets_survive_to_value_where_a_map_would_not() {
     let mut hist = BTreeMap::new();
     hist.insert("zebra".to_owned(), 1);
     hist.insert("alpha".to_owned(), 1);
     hist.insert("mcp".to_owned(), 2);
 
-    let pairs = count_desc_vec(hist.clone());
-    let pairs_json = serde_json::to_value(&pairs).unwrap();
+    let buckets = count_desc_buckets(hist.clone());
     assert_eq!(
-        serde_json::to_string(&pairs_json).unwrap(),
-        r#"[["mcp",2],["alpha",1],["zebra",1]]"#,
-        "Vec preserves count-descending order through to_value",
+        buckets,
+        vec![
+            CountBucket {
+                bucket: "mcp".to_owned(),
+                count: 2,
+            },
+            CountBucket {
+                bucket: "alpha".to_owned(),
+                count: 1,
+            },
+            CountBucket {
+                bucket: "zebra".to_owned(),
+                count: 1,
+            },
+        ],
+    );
+    let buckets_json = serde_json::to_value(&buckets).unwrap();
+    assert_eq!(
+        serde_json::to_string(&buckets_json).unwrap(),
+        r#"[{"bucket":"mcp","count":2},{"bucket":"alpha","count":1},{"bucket":"zebra","count":1}]"#,
+        "buckets preserve count-descending order through to_value",
     );
 
     // Control: the same data as a map loses the order through to_value.

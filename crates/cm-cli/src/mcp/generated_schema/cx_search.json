@@ -176,20 +176,23 @@
         "description": "Search query envelope.",
         "properties": {
           "kinds_histogram": {
-            "description": "Per-kind counts for this page, as ordered `[kind, count]` pairs sorted by count descending.",
+            "description": "Per-kind counts for this page, as ordered `{bucket, count}` objects sorted by count descending.",
             "items": {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
-                {
+              "additionalProperties": false,
+              "properties": {
+                "bucket": {
                   "type": "string"
                 },
-                {
+                "count": {
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "required": [
+                "bucket",
+                "count"
               ],
-              "type": "array"
+              "type": "object"
             },
             "type": "array"
           },
@@ -207,38 +210,44 @@
             "type": "integer"
           },
           "scope_hits": {
-            "description": "Per-scope hit counts for this page, as ordered `[scope, count]` pairs sorted by count descending.",
+            "description": "Per-scope hit counts for this page, as ordered `{bucket, count}` objects sorted by count descending.",
             "items": {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
-                {
+              "additionalProperties": false,
+              "properties": {
+                "bucket": {
                   "type": "string"
                 },
-                {
+                "count": {
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "required": [
+                "bucket",
+                "count"
               ],
-              "type": "array"
+              "type": "object"
             },
             "type": "array"
           },
           "tags_histogram": {
-            "description": "Per-tag counts for this page, as ordered `[tag, count]` pairs sorted by count descending.",
+            "description": "Per-tag counts for this page, as ordered `{bucket, count}` objects sorted by count descending.",
             "items": {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
-                {
+              "additionalProperties": false,
+              "properties": {
+                "bucket": {
                   "type": "string"
                 },
-                {
+                "count": {
                   "minimum": 0,
                   "type": "integer"
                 }
+              },
+              "required": [
+                "bucket",
+                "count"
               ],
-              "type": "array"
+              "type": "object"
             },
             "type": "array"
           },

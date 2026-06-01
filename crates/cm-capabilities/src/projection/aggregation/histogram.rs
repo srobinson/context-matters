@@ -3,6 +3,20 @@ use std::fmt::Display;
 use std::fmt::Write as _;
 use std::hash::Hash;
 
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+/// One ordered count bucket in structured projection headers.
+///
+/// `bucket` carries the facet value for the containing field, such as a
+/// kind, tag, or scope path. The array order is the meaningful ordering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CountBucket {
+    pub bucket: String,
+    pub count: u32,
+}
+
 /// If every item in `items` maps to the same key, return `Some(key)`.
 /// Otherwise, and on an empty slice, return `None`.
 ///
@@ -57,56 +71,69 @@ pub fn tag_histogram<T>(items: &[T], tags: impl Fn(&T) -> &[String]) -> BTreeMap
     map
 }
 
-/// Project a count map into a `Vec` ordered by count descending, breaking
+/// Project a count map into pairs ordered by count descending, breaking
 /// ties alphabetically by key.
 ///
-/// This is the canonical shape for histogram fields on the JSON/web view
-/// and MCP structured-output structs. A JSON object carries no key order,
-/// and the MCP `dual_response` path runs values through
-/// `serde_json::to_value`, which (absent the `preserve_order` feature)
-/// rebuilds objects as a `BTreeMap` and discards any insertion order. An
-/// ordered `Vec` of `[key, count]` pairs survives every serialization path
-/// intact, so dominant categories stay first on the wire. The ordering
-/// matches the YAML [`render_histogram`] text surface.
+/// This is the shared ordering rule for text rendering and structured
+/// projection headers. A JSON object carries no key order, and the MCP
+/// `dual_response` path runs values through `serde_json::to_value`, which
+/// (absent the `preserve_order` feature) rebuilds objects as a `BTreeMap`
+/// and discards insertion order. Ordered arrays survive every serialization
+/// path intact, so dominant categories stay first on the wire.
 pub fn count_desc_vec<V: Ord>(hist: BTreeMap<String, V>) -> Vec<(String, V)> {
     let mut sorted: Vec<(String, V)> = hist.into_iter().collect();
     sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     sorted
 }
 
-/// [`count_desc_vec`] specialised to the `usize`-counted histograms the
-/// recall/browse/search pipelines produce, widening counts to `u32` for the
-/// web view and MCP structured-output structs.
+/// Convert already-ordered count pairs into named structured buckets.
 ///
-/// The `u32` width keeps ts-rs projecting the field as `[string, number]`
-/// rather than `[string, bigint]`. Counts are bounded by the per-slice
-/// result limit (`MAX_LIMIT`), well under `u32::MAX`, so the cast is
-/// lossless. Sorts before casting so the single [`count_desc_vec`]
-/// comparator stays the only ordering rule.
-pub fn count_desc_vec_u32(hist: BTreeMap<String, usize>) -> Vec<(String, u32)> {
-    count_desc_vec(hist)
+/// The `u32` width keeps ts-rs projecting `count` as `number` rather than
+/// `bigint`. Counts are bounded by result limits, well under `u32::MAX`.
+pub fn count_buckets(pairs: impl IntoIterator<Item = (String, usize)>) -> Vec<CountBucket> {
+    pairs
         .into_iter()
-        .map(|(k, c)| (k, c as u32))
+        .map(|(bucket, count)| CountBucket {
+            bucket,
+            count: u32::try_from(count).expect("projection count fits in u32"),
+        })
         .collect()
 }
 
-/// Format an already-ordered slice of `(key, count)` pairs as `key=count`
-/// joined by `, `. Pairs render in the order given.
-///
-/// The single formatting primitive for every histogram header line. The
-/// search and web view structs hold a pre-sorted [`count_desc_vec`] and
-/// render through this directly; [`render_histogram`] funnels `BTreeMap`
-/// callers through it after sorting, so text and structured surfaces share
-/// one format path.
-pub fn render_pairs<K: Display, V: Display>(pairs: &[(K, V)]) -> String {
-    let mut out = String::with_capacity(pairs.len() * 16);
-    for (i, (k, v)) in pairs.iter().enumerate() {
+/// [`count_desc_vec`] specialised to structured projection headers.
+pub fn count_desc_buckets(hist: BTreeMap<String, usize>) -> Vec<CountBucket> {
+    count_buckets(count_desc_vec(hist))
+}
+
+fn render_key_values<'a, I, K, V>(pairs: I) -> String
+where
+    I: IntoIterator<Item = (&'a K, &'a V)>,
+    K: Display + 'a,
+    V: Display + 'a,
+{
+    let mut out = String::new();
+    for (i, (k, v)) in pairs.into_iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
         let _ = write!(&mut out, "{k}={v}");
     }
     out
+}
+
+/// Format an already-ordered slice of `(key, count)` pairs as `key=count`
+/// joined by `, `. Pairs render in the order given.
+///
+/// `scope_hits` still uses tuple pairs in the core recall result, so this
+/// remains the tuple formatting adapter. Structured headers use
+/// [`render_buckets`].
+pub fn render_pairs<K: Display, V: Display>(pairs: &[(K, V)]) -> String {
+    render_key_values(pairs.iter().map(|(k, v)| (k, v)))
+}
+
+/// Format ordered structured buckets as `bucket=count` joined by `, `.
+pub fn render_buckets(buckets: &[CountBucket]) -> String {
+    render_key_values(buckets.iter().map(|bucket| (&bucket.bucket, &bucket.count)))
 }
 
 /// Render a `{key: count}` map as `key=count` pairs joined by `, `, sorted

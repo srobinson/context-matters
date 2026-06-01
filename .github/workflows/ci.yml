@@ -42,6 +42,7 @@ jobs:
         run: |
           git diff --exit-code \
             crates/cm-cli/src/mcp/generated_schema.rs \
+            crates/cm-cli/src/mcp/generated_schema/ \
             crates/cm-cli/src/cli/generated_help.rs \
             crates/cm-cli/templates/SKILL.md || \
             (echo "ERROR: Generated docs are out of sync with tools.toml. Run 'cargo build -p cm-cli' and commit the result." && exit 1)

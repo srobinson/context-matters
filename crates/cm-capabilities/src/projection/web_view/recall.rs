@@ -4,8 +4,8 @@ use ts_rs::TS;
 
 use super::super::recall_view::{normalise_bm25, routing_explanation, search_tier_header_tag};
 use super::super::{
-    HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_desc_vec_u32, kind_histogram,
-    relative_age, smart_snippet, tag_histogram,
+    CountBucket, HighlightStyle, SNIPPET_MAX_BYTES, collapse_whitespace, count_buckets,
+    count_desc_buckets, kind_histogram, relative_age, smart_snippet, tag_histogram,
 };
 use crate::recall::{RecallRequest, RecallResult, RecallRouting};
 
@@ -39,17 +39,16 @@ pub struct WebRecallHeader {
     /// Per-scope hit counts, preserved in the source ordering from the
     /// recall ancestor walk (most specific scope first, broadest last).
     /// Unlike the kind/tag histograms this is an ordered chain summary, not
-    /// a frequency table, so it is NOT re-sorted by count; the array shape
-    /// and order match `RecallResult::scope_hits` and the YAML
-    /// `format_recall_view` rendering.
-    pub scope_hits: Vec<(String, usize)>,
+    /// a frequency table, so it is NOT re-sorted by count; order matches
+    /// `RecallResult::scope_hits` and the YAML `format_recall_view`
+    /// rendering.
+    pub scope_hits: Vec<CountBucket>,
     /// Per-kind counts across the returned rows, ordered by count
-    /// descending (alphabetical tiebreak). Ordered array of `[kind, count]`
-    /// pairs so the order survives `serde_json::to_value` on the MCP
-    /// channel; see [`super::super::count_desc_vec`].
-    pub kinds_histogram: Vec<(String, u32)>,
+    /// descending (alphabetical tiebreak). Ordered buckets preserve count
+    /// order on JSON transports while avoiding tuple-array output.
+    pub kinds_histogram: Vec<CountBucket>,
     /// Per-tag counts across the returned rows, ordered by count descending.
-    pub tags_histogram: Vec<(String, u32)>,
+    pub tags_histogram: Vec<CountBucket>,
     pub tokens: u32,
 }
 
@@ -134,8 +133,8 @@ pub fn project_web_recall_at(
         Vec::new()
     };
 
-    let kinds_histogram = count_desc_vec_u32(kind_histogram(rows, |r| r.entry.kind.as_str()));
-    let tags_histogram = count_desc_vec_u32(tag_histogram(rows, |r| {
+    let kinds_histogram = count_desc_buckets(kind_histogram(rows, |r| r.entry.kind.as_str()));
+    let tags_histogram = count_desc_buckets(tag_histogram(rows, |r| {
         r.entry
             .meta
             .as_ref()
@@ -148,7 +147,7 @@ pub fn project_web_recall_at(
     // a frequency histogram, so it must NOT be re-sorted: the array shape
     // matches both `RecallResult::scope_hits` and the YAML
     // `format_recall_view` rendering.
-    let scope_hits: Vec<(String, usize)> = result.scope_hits.clone();
+    let scope_hits = count_buckets(result.scope_hits.clone());
 
     let tier = if is_search {
         result

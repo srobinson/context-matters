@@ -63,9 +63,9 @@ output_schema   = '''
         "candidates": {"type": "integer", "minimum": 0, "description": "Total candidates considered before token-budget trimming."},
         "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in `entries` after token-budget trimming."},
         "scope_chain": {"type": "array", "items": {"type": "string"}, "description": "Scope path plus ancestors walked, in order."},
-        "scope_hits": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-scope hit counts along `scope_chain`, as ordered `[scope, count]` pairs in ancestor-walk order (most specific scope first)."},
-        "kinds_histogram": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-kind counts across the returned rows, as ordered `[kind, count]` pairs sorted by count descending."},
-        "tags_histogram": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-tag counts across the returned rows, as ordered `[tag, count]` pairs sorted by count descending."},
+        "scope_hits": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-scope hit counts along `scope_chain`, as ordered `{bucket, count}` objects in ancestor-walk order (most specific scope first)."},
+        "kinds_histogram": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-kind counts across the returned rows, as ordered `{bucket, count}` objects sorted by count descending."},
+        "tags_histogram": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-tag counts across the returned rows, as ordered `{bucket, count}` objects sorted by count descending."},
         "tokens": {"type": "integer", "minimum": 0, "description": "Estimated token total of the rendered response."}
       }
     },
@@ -159,9 +159,9 @@ output_schema   = '''
         "query": {"type": "string", "description": "FTS5 query supplied by the caller."},
         "returned": {"type": "integer", "minimum": 0, "description": "Number of rows in this page."},
         "next_cursor": {"type": "string", "description": "Opaque cursor for the next page. Omitted when there are no more rows."},
-        "scope_hits": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-scope hit counts for this page, as ordered `[scope, count]` pairs sorted by count descending."},
-        "kinds_histogram": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-kind counts for this page, as ordered `[kind, count]` pairs sorted by count descending."},
-        "tags_histogram": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-tag counts for this page, as ordered `[tag, count]` pairs sorted by count descending."},
+        "scope_hits": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-scope hit counts for this page, as ordered `{bucket, count}` objects sorted by count descending."},
+        "kinds_histogram": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-kind counts for this page, as ordered `{bucket, count}` objects sorted by count descending."},
+        "tags_histogram": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-tag counts for this page, as ordered `{bucket, count}` objects sorted by count descending."},
         "tokens": {"type": "integer", "minimum": 0, "description": "Estimated token total of the full bodies in this page."}
       }
     },
@@ -411,8 +411,8 @@ output_schema   = '''
         "scope": {"type": "string", "description": "Uniform scope path hoisted from all returned rows. Omitted when rows vary or the response is empty."},
         "kind": {"type": "string", "description": "Uniform entry kind hoisted from all returned rows. Omitted when rows vary or the response is empty."},
         "created_by": {"type": "string", "description": "Uniform creator attribution hoisted from all returned rows. Omitted when rows vary or the response is empty."},
-        "kinds_histogram": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-kind counts across the returned rows, as ordered `[kind, count]` pairs sorted by count descending."},
-        "tags_histogram": {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"type": "string"}, {"type": "integer", "minimum": 0}]}, "description": "Per-tag counts across the returned rows, as ordered `[tag, count]` pairs sorted by count descending."}
+        "kinds_histogram": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-kind counts across the returned rows, as ordered `{bucket, count}` objects sorted by count descending."},
+        "tags_histogram": {"type": "array", "items": {"type": "object", "required": ["bucket", "count"], "properties": {"bucket": {"type": "string"}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false}, "description": "Per-tag counts across the returned rows, as ordered `{bucket, count}` objects sorted by count descending."}
       }
     },
     "advisory": {"type": "string", "description": "Capability advisory emitted when browse applied a default."},
