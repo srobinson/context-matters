@@ -27,7 +27,7 @@ pub(super) async fn route_query(
                 scope,
                 &request.kinds,
                 &request.tags,
-                request.limit,
+                fetch_limit,
             )
             .await?;
             Ok((

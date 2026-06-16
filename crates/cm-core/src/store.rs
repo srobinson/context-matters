@@ -116,6 +116,39 @@ impl RecallRankingMode {
     }
 }
 
+/// Per-entry position movement recorded by the recall shadow canary.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RecallShadowPositionDelta {
+    pub id: Uuid,
+    pub old_position: Option<u32>,
+    pub new_position: Option<u32>,
+    pub delta: i32,
+}
+
+/// Observe-only recall ranking canary row.
+///
+/// This type is pure data. Store adapters decide how to persist it.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct RecallShadowRecord {
+    pub scope_path: Option<String>,
+    pub query_hash: Option<String>,
+    pub query_len: Option<u32>,
+    pub routing: String,
+    pub tier: Option<String>,
+    pub k: u32,
+    pub candidate_count: u32,
+    pub top1_changed: bool,
+    pub topk_overlap: f64,
+    pub footrule: f64,
+    pub mean_abs_position_delta: f64,
+    pub position_deltas: Vec<RecallShadowPositionDelta>,
+    pub old_ids: Vec<Uuid>,
+    pub new_ids: Vec<Uuid>,
+    pub window_truncated: bool,
+    pub ranking_version: String,
+    pub duration_ms: u32,
+}
+
 /// Async storage interface for context entries.
 ///
 /// All methods are async and return `Result<T, CmError>`. Uses native
@@ -151,6 +184,13 @@ pub trait ContextStore: Send + Sync + 'static {
     /// Configured recall ordering mode.
     fn recall_ranking_mode(&self) -> RecallRankingMode {
         RecallRankingMode::Legacy
+    }
+
+    /// Persist an observe-only recall ranking canary row.
+    ///
+    /// Default no-op keeps pure and test stores source-compatible.
+    async fn log_recall_shadow(&self, _record: RecallShadowRecord) -> Result<(), CmError> {
+        Ok(())
     }
 
     // ── Entry CRUD ──────────────────────────────────────────────

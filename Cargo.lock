@@ -396,12 +396,14 @@ dependencies = [
 name = "cm-capabilities"
 version = "0.2.23"
 dependencies = [
+ "blake3",
  "chrono",
  "cm-core",
  "cm-store",
  "criterion",
  "serde",
  "serde_json",
+ "sqlx",
  "tempfile",
  "tokio",
  "tracing",

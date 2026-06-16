@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 use cm_core::{
-    CmError, ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope, ScopePath,
-    WriteContext,
+    CmError, ContextStore, EntryKind, EntryMeta, MutationSource, NewEntry, NewScope,
+    RecallRankingMode, ScopeInferenceStrategy, ScopePath, WriteContext,
 };
-use cm_store::{CmStore, schema};
+use cm_store::{CmStore, Config, schema};
 
 pub(crate) const CANONICAL_CONTEXT_REPO_SCOPE: &str = "global/project:helioy/repo:context-matters";
 pub(crate) const SIBLING_CONTEXT_REPO_SCOPE: &str =
@@ -16,6 +16,23 @@ pub(crate) async fn test_store() -> (CmStore, tempfile::TempDir) {
     let (write_pool, read_pool) = schema::create_pools(&db_path).await.unwrap();
     schema::run_migrations(&write_pool).await.unwrap();
     let store = CmStore::new(write_pool, read_pool);
+    (store, dir)
+}
+
+pub(crate) async fn test_store_with_ranking_mode(
+    mode: RecallRankingMode,
+) -> (CmStore, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let (write_pool, read_pool) = schema::create_pools(&db_path).await.unwrap();
+    schema::run_migrations(&write_pool).await.unwrap();
+    let config = Config {
+        data_dir: dir.path().to_path_buf(),
+        log_level: "warn".to_owned(),
+        scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+        recall_ranking_mode: mode,
+    };
+    let store = CmStore::new_with_config(write_pool, read_pool, &config);
     (store, dir)
 }
 
