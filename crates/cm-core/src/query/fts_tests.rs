@@ -39,71 +39,83 @@ fn fts_query_operator_only_yields_empty() {
 }
 
 #[test]
-fn fts_prefix_query() {
-    let q = FtsQuery::prefix_query("hel wor");
+fn recall_auto_prefix() {
+    let q = FtsQuery::recall_auto_prefix("hel wor");
     assert_eq!(q.as_str(), "hel* wor*");
 }
 
 #[test]
-fn fts_prefix_query_no_double_star() {
-    let q = FtsQuery::prefix_query("hello*");
+fn recall_auto_prefix_no_double_star() {
+    let q = FtsQuery::recall_auto_prefix("hello*");
     assert_eq!(q.as_str(), "hello*");
+}
+
+#[test]
+fn recall_auto_prefix_leaves_short_terms_exact() {
+    let q = FtsQuery::recall_auto_prefix("io vps");
+    assert_eq!(q.as_str(), "io vps*");
+}
+
+#[test]
+fn recall_auto_prefix_preserves_quoted_phrases() {
+    let q = FtsQuery::recall_auto_prefix("auth \"exact phrase\" migration");
+    assert_eq!(q.as_str(), "auth* \"exact phrase\" migration*");
 }
 
 // Reserved-word stripping (ALP-1765 regression).
 //
-// Before the fix, `prefix_query` blindly starred every token, so an
+// Before ALP-1765, the recall prefix tier blindly starred every token, so an
 // uppercase `AND`, `OR`, or `NOT` in a natural-language query produced
 // `NOT*` etc. and crashed FTS5 with `syntax error near "*"`. The
 // recall cascade then propagated the error instead of advancing to
 // the SplitOr tier. These tests lock the stripping in.
 
 #[test]
-fn fts_prefix_query_strips_not_in_middle() {
-    let q = FtsQuery::prefix_query("foo NOT bar");
+fn recall_auto_prefix_strips_not_in_middle() {
+    let q = FtsQuery::recall_auto_prefix("foo NOT bar");
     assert_eq!(q.as_str(), "foo* bar*");
 }
 
 #[test]
-fn fts_prefix_query_strips_and_in_middle() {
-    let q = FtsQuery::prefix_query("foo AND bar");
+fn recall_auto_prefix_strips_and_in_middle() {
+    let q = FtsQuery::recall_auto_prefix("foo AND bar");
     assert_eq!(q.as_str(), "foo* bar*");
 }
 
 #[test]
-fn fts_prefix_query_strips_or_in_middle() {
-    let q = FtsQuery::prefix_query("foo OR bar");
+fn recall_auto_prefix_strips_or_in_middle() {
+    let q = FtsQuery::recall_auto_prefix("foo OR bar");
     assert_eq!(q.as_str(), "foo* bar*");
 }
 
 #[test]
-fn fts_prefix_query_strips_reserved_at_edges() {
-    let q = FtsQuery::prefix_query("AND foo NOT");
+fn recall_auto_prefix_strips_reserved_at_edges() {
+    let q = FtsQuery::recall_auto_prefix("AND foo NOT");
     assert_eq!(q.as_str(), "foo*");
 }
 
 #[test]
-fn fts_prefix_query_only_reserved_words_yields_empty() {
-    let q = FtsQuery::prefix_query("AND NOT OR");
+fn recall_auto_prefix_only_reserved_words_yields_empty() {
+    let q = FtsQuery::recall_auto_prefix("AND NOT OR");
     assert_eq!(q.as_str(), "");
 }
 
 #[test]
-fn fts_prefix_query_field_repro() {
-    let q = FtsQuery::prefix_query("FTS5 sanitization hyphens NOT operators");
+fn recall_auto_prefix_field_repro() {
+    let q = FtsQuery::recall_auto_prefix("FTS5 sanitization hyphens NOT operators");
     assert_eq!(q.as_str(), "FTS5* sanitization* hyphens* operators*");
 }
 
 #[test]
-fn fts_prefix_query_hyphen_splits_into_two_prefix_tokens() {
-    let q = FtsQuery::prefix_query("foo-bar");
+fn recall_auto_prefix_hyphen_splits_into_two_prefix_tokens() {
+    let q = FtsQuery::recall_auto_prefix("foo-bar");
     assert_eq!(q.as_str(), "foo* bar*");
 }
 
 #[test]
-fn fts_prefix_query_strips_lowercase_left_alone() {
-    let q = FtsQuery::prefix_query("foo and bar or baz not qux");
-    assert_eq!(q.as_str(), "foo* and* bar* or* baz* not* qux*");
+fn recall_auto_prefix_strips_lowercase_left_alone() {
+    let q = FtsQuery::recall_auto_prefix("foo and bar or baz not qux");
+    assert_eq!(q.as_str(), "foo* and* bar* or baz* not* qux*");
 }
 
 #[test]

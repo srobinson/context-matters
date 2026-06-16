@@ -2,7 +2,7 @@
 
 mod common;
 
-use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
+use cm_capabilities::recall::{RecallRequest, RecallRouting, SearchTier, recall};
 use cm_capabilities::scope::ScopeSelector;
 use cm_core::{EntryKind, ScopePath};
 use common::{
@@ -36,6 +36,105 @@ async fn routing_search_when_query_provided() {
     assert_eq!(result.routing, RecallRouting::Search);
     assert!(!result.entries.is_empty());
     assert_eq!(result.entries[0].entry.title, "SQLx migration guide");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn routing_search_keeps_short_acronyms_exact() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(
+        &store,
+        "VP deployment note",
+        "Use the vp shorthand for Vite preview.",
+        EntryKind::Fact,
+    )
+    .await;
+    seed_entry(
+        &store,
+        "VPS deployment note",
+        "Use vps for remote deployment.",
+        EntryKind::Fact,
+    )
+    .await;
+    seed_entry(
+        &store,
+        "IO runtime note",
+        "io scheduler details.",
+        EntryKind::Fact,
+    )
+    .await;
+    seed_entry(
+        &store,
+        "iOS runtime note",
+        "ios app release details.",
+        EntryKind::Fact,
+    )
+    .await;
+
+    let vps = recall(
+        &store,
+        RecallRequest {
+            query: Some("vps".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let vps_titles: Vec<&str> = vps
+        .entries
+        .iter()
+        .map(|row| row.entry.title.as_str())
+        .collect();
+    assert_eq!(vps.tier, Some(SearchTier::Exact));
+    assert_eq!(vps_titles, vec!["VPS deployment note"]);
+
+    let ios = recall(
+        &store,
+        RecallRequest {
+            query: Some("ios".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let ios_titles: Vec<&str> = ios
+        .entries
+        .iter()
+        .map(|row| row.entry.title.as_str())
+        .collect();
+    assert_eq!(ios.tier, Some(SearchTier::Exact));
+    assert_eq!(ios_titles, vec!["iOS runtime note"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn routing_search_uses_prefix_tier_for_inflected_terms() {
+    let (store, _dir) = test_store().await;
+    create_global(&store).await;
+    seed_entry(
+        &store,
+        "Schema migrations",
+        "Apply database changes safely.",
+        EntryKind::Reference,
+    )
+    .await;
+
+    let result = recall(
+        &store,
+        RecallRequest {
+            query: Some("migration".to_owned()),
+            limit: 20,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.routing, RecallRouting::Search);
+    assert_eq!(result.tier, Some(SearchTier::Prefix));
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].entry.title, "Schema migrations");
 }
 
 #[tokio::test(flavor = "multi_thread")]

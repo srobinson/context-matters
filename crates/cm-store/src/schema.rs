@@ -248,6 +248,30 @@ mod tests {
         (wp, rp, dir)
     }
 
+    async fn setup_pre_unicode_fts() -> (SqlitePool, SqlitePool, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let (wp, rp) = create_pools(&db_path).await.unwrap();
+
+        for sql in [
+            include_str!("../migrations/001_initial_schema.sql"),
+            include_str!("../migrations/002_fts5_setup.sql"),
+            include_str!("../migrations/003_triggers.sql"),
+            include_str!("../migrations/004_fts5_add_tags.sql"),
+            include_str!("../migrations/005_mutations.sql"),
+            include_str!("../migrations/006_recall_shadow.sql"),
+        ] {
+            sqlx::raw_sql(sql).execute(&wp).await.unwrap();
+        }
+
+        sqlx::query("INSERT INTO scopes (path, kind, label) VALUES ('global', 'global', 'Global')")
+            .execute(&wp)
+            .await
+            .unwrap();
+
+        (wp, rp, dir)
+    }
+
     #[tokio::test]
     async fn fts_insert_trigger_indexes_new_entries() {
         let (wp, rp, _dir) = setup_with_scope().await;
@@ -346,6 +370,61 @@ mod tests {
         .await
         .unwrap();
         assert!(rows.is_empty(), "deleted entry should be removed from FTS");
+
+        wp.close().await;
+        rp.close().await;
+    }
+
+    #[tokio::test]
+    async fn fts_unicode61_migration_backfills_existing_rows_and_tags() {
+        let (wp, rp, _dir) = setup_pre_unicode_fts().await;
+
+        sqlx::query(
+            "INSERT INTO entries (id, scope_path, kind, title, body, content_hash, meta, created_by) \
+             VALUES \
+             ('e1', 'global', 'fact', 'BackfillTitle Alpha', 'Body one', 'hash1', '{\"tags\":[\"backfilltag\"]}', 'test'), \
+             ('e2', 'global', 'fact', 'SecondTitle Beta', 'Body two', 'hash2', '{\"tags\":[\"secondtag\"]}', 'test')",
+        )
+        .execute(&wp)
+        .await
+        .unwrap();
+
+        sqlx::raw_sql(include_str!(
+            "../migrations/007_rebuild_fts_unicode61.up.sql"
+        ))
+        .execute(&wp)
+        .await
+        .unwrap();
+
+        let entry_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM entries")
+            .fetch_one(&rp)
+            .await
+            .unwrap();
+        let fts_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM entries_fts")
+            .fetch_one(&rp)
+            .await
+            .unwrap();
+        assert_eq!(fts_count, entry_count);
+
+        let title_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT e.title FROM entries e \
+             JOIN entries_fts f ON e.rowid = f.rowid \
+             WHERE f.entries_fts MATCH 'backfilltitle'",
+        )
+        .fetch_all(&rp)
+        .await
+        .unwrap();
+        assert_eq!(title_rows, vec![("BackfillTitle Alpha".to_owned(),)]);
+
+        let tag_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT e.title FROM entries e \
+             JOIN entries_fts f ON e.rowid = f.rowid \
+             WHERE f.entries_fts MATCH 'secondtag'",
+        )
+        .fetch_all(&rp)
+        .await
+        .unwrap();
+        assert_eq!(tag_rows, vec![("SecondTitle Beta".to_owned(),)]);
 
         wp.close().await;
         rp.close().await;
