@@ -55,8 +55,13 @@ async fn route_search(
             Some(SearchTier::Exact),
         ));
     }
-    if let Some(rows) =
-        try_search_tier(store, FtsQuery::prefix_query(query), scope, fetch_limit).await?
+    if let Some(rows) = try_search_tier(
+        store,
+        FtsQuery::recall_auto_prefix(query),
+        scope,
+        fetch_limit,
+    )
+    .await?
     {
         return Ok((
             rows,

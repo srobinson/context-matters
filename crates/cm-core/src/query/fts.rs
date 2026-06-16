@@ -7,6 +7,14 @@ pub struct FtsQuery {
     raw: String,
 }
 
+const RECALL_AUTO_PREFIX_MIN_CHARS: usize = 3;
+
+#[derive(Clone, Copy)]
+enum UnquotedMode {
+    Explicit,
+    RecallAutoPrefix,
+}
+
 impl FtsQuery {
     /// Create a new FTS query from user input.
     ///
@@ -16,7 +24,7 @@ impl FtsQuery {
     /// and boolean operators (`AND`, `OR`, `NOT`).
     pub fn new(input: &str) -> Self {
         Self {
-            raw: sanitize_fts_input(input),
+            raw: sanitize_fts_input(input, UnquotedMode::Explicit),
         }
     }
 
@@ -25,45 +33,27 @@ impl FtsQuery {
         &self.raw
     }
 
-    /// Build a prefix query: appends `*` to each sanitized token.
+    /// Build the recall prefix query used by the FTS cascade.
     ///
-    /// Useful for "search as you type" behavior where partial word matches
-    /// are desired. Mirrors the sanitization pattern of [`split_or_query`]:
+    /// This preserves the default multi-term FTS5 AND semantics while adding
+    /// prefix recall for whole words that benefit from it:
     ///
-    /// * Each input word is sanitized with [`sanitize_word`] (hyphens and
-    ///   other punctuation become spaces) and then re-split on whitespace,
-    ///   so `foo-bar` yields two prefix-matched tokens, `foo*` and `bar*`.
+    /// * Unquoted sanitized tokens with at least three chars get a trailing
+    ///   `*`, so `migration` matches `migrations`.
+    /// * One and two char tokens remain exact to avoid broad matches.
+    /// * Tokens that already end in `*` are passed through unchanged.
+    /// * Balanced quoted phrases are preserved literally.
     /// * FTS5 reserved words `AND`, `OR`, `NOT` (uppercase only, as FTS5
-    ///   interprets them) are stripped after sanitization. Leaving them in
-    ///   would emit `NOT*` etc., which FTS5 parses as the unary operator
-    ///   followed by a bare `*` and rejects as a syntax error.
-    /// * Tokens that already end in `*` are passed through unchanged so the
-    ///   constructor never produces a double-star like `hello**`.
+    ///   interprets them) are stripped after sanitization.
     ///
     /// Reserved-word stripping was added in ALP-1765 after the recall
     /// cascade's Prefix tier was found to crash on any natural-language
     /// query containing an uppercase `AND`, `OR`, or `NOT`. The same
     /// stripping shipped in [`split_or_query`] under ALP-1746 but was not
     /// backported to this constructor when the cascade was wired up.
-    pub fn prefix_query(input: &str) -> Self {
-        let mut terms: Vec<String> = Vec::new();
-
-        for raw_word in input.split_whitespace() {
-            for token in sanitize_word(raw_word).split_whitespace() {
-                if is_fts_operator_token(token) {
-                    continue;
-                }
-                let term = if token.ends_with('*') {
-                    token.to_string()
-                } else {
-                    format!("{token}*")
-                };
-                terms.push(term);
-            }
-        }
-
+    pub fn recall_auto_prefix(input: &str) -> Self {
         Self {
-            raw: terms.join(" "),
+            raw: sanitize_fts_input(input, UnquotedMode::RecallAutoPrefix),
         }
     }
 
@@ -145,6 +135,14 @@ fn empty_operator_only_query(query: String) -> String {
     }
 }
 
+fn recall_auto_prefix_term(token: &str) -> String {
+    if token.ends_with('*') || token.chars().count() < RECALL_AUTO_PREFIX_MIN_CHARS {
+        token.to_owned()
+    } else {
+        format!("{token}*")
+    }
+}
+
 /// Sanitize user input for FTS5 MATCH syntax.
 ///
 /// Preserves:
@@ -155,7 +153,7 @@ fn empty_operator_only_query(query: String) -> String {
 /// Strips:
 /// - Unbalanced quotes
 /// - Special characters that cause FTS5 syntax errors (parens, carets, etc.)
-fn sanitize_fts_input(input: &str) -> String {
+fn sanitize_fts_input(input: &str, mode: UnquotedMode) -> String {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return String::new();
@@ -176,7 +174,7 @@ fn sanitize_fts_input(input: &str) -> String {
                     parts.push(format!("\"{}\"", segment));
                     segment.clear();
                 } else if !segment.is_empty() {
-                    for word in sanitize_unquoted_words(&segment) {
+                    for word in sanitize_unquoted_words(&segment, mode) {
                         parts.push(word);
                     }
                     segment.clear();
@@ -188,14 +186,14 @@ fn sanitize_fts_input(input: &str) -> String {
         }
 
         if !segment.is_empty() {
-            for word in sanitize_unquoted_words(&segment) {
+            for word in sanitize_unquoted_words(&segment, mode) {
                 parts.push(word);
             }
         }
         return empty_operator_only_query(parts.join(" "));
     }
 
-    empty_operator_only_query(sanitize_unquoted_words(trimmed).join(" "))
+    empty_operator_only_query(sanitize_unquoted_words(trimmed, mode).join(" "))
 }
 
 /// Return sanitized words from a non-quoted segment as individual strings.
@@ -203,20 +201,30 @@ fn sanitize_fts_input(input: &str) -> String {
 /// Each input word is sanitized (hyphens become spaces), then the result
 /// is re-split on whitespace to flatten multi-word expansions into
 /// separate search terms.
-fn sanitize_unquoted_words(segment: &str) -> Vec<String> {
+fn sanitize_unquoted_words(segment: &str, mode: UnquotedMode) -> Vec<String> {
     segment
         .split_whitespace()
         .flat_map(|w| {
             let stripped = w.replace('"', "");
-            if is_fts_operator_token(&stripped) {
-                vec![stripped]
-            } else {
-                sanitize_word(&stripped)
-                    .split_whitespace()
-                    .map(String::from)
-                    .collect::<Vec<_>>()
-            }
+            sanitize_unquoted_word(&stripped, mode)
         })
         .filter(|w| !w.is_empty())
+        .collect()
+}
+
+fn sanitize_unquoted_word(word: &str, mode: UnquotedMode) -> Vec<String> {
+    if is_fts_operator_token(word) {
+        return match mode {
+            UnquotedMode::Explicit => vec![word.to_owned()],
+            UnquotedMode::RecallAutoPrefix => Vec::new(),
+        };
+    }
+
+    sanitize_word(word)
+        .split_whitespace()
+        .map(|token| match mode {
+            UnquotedMode::Explicit => token.to_owned(),
+            UnquotedMode::RecallAutoPrefix => recall_auto_prefix_term(token),
+        })
         .collect()
 }
