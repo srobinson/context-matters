@@ -45,7 +45,6 @@ async fn recall_inner(
     request: RecallRequest,
     log: &mut RetrievalLog,
 ) -> Result<RecallResult, CmError> {
-    let started_at = Instant::now();
     let scope_defaulted = request.scope.is_none();
     let scope_selector = request
         .scope
@@ -74,6 +73,7 @@ async fn recall_inner(
             }
         }
         RecallRankingMode::Shadow | RecallRankingMode::Live => {
+            let started_at = Instant::now();
             let actual_count_before_filter = raw_rows.len();
             let legacy_raw_count =
                 legacy_raw_count(&request, actual_count_before_filter, legacy_fetch_limit);

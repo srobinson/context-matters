@@ -23,7 +23,7 @@ pub(super) fn diff_metrics(
 ) -> RecallDiffMetrics {
     let old_ids = row_ids(old_rows);
     let new_ids = row_ids(new_rows);
-    let k = requested_k as usize;
+    let k = effective_k(requested_k, old_ids.len(), new_ids.len());
 
     let top1_changed = old_ids.first() != new_ids.first();
     let topk_overlap = topk_overlap(&old_ids, &new_ids, k);
@@ -42,6 +42,10 @@ pub(super) fn diff_metrics(
 
 pub(super) fn row_ids(rows: &[RecallRow]) -> Vec<Uuid> {
     rows.iter().map(|row| row.entry.id).collect()
+}
+
+fn effective_k(requested_k: u32, old_len: usize, new_len: usize) -> usize {
+    (requested_k as usize).min(old_len.max(new_len))
 }
 
 fn topk_overlap(old_ids: &[Uuid], new_ids: &[Uuid], k: usize) -> f64 {
@@ -185,6 +189,19 @@ mod tests {
         assert_eq!(metrics.topk_overlap, 0.0);
         assert_eq!(metrics.footrule, 1.0);
         assert_eq!(metrics.position_deltas.len(), 4);
+    }
+
+    #[test]
+    fn underfilled_identical_recall_has_full_overlap() {
+        let a = Uuid::now_v7();
+
+        let metrics = diff_ids(&[a], &[a], 10);
+
+        assert!(!metrics.top1_changed);
+        assert_eq!(metrics.topk_overlap, 1.0);
+        assert_eq!(metrics.footrule, 0.0);
+        assert_eq!(metrics.mean_abs_position_delta, 0.0);
+        assert_eq!(metrics.position_deltas.len(), 1);
     }
 
     fn diff_ids(old_ids: &[Uuid], new_ids: &[Uuid], k: u32) -> RecallDiffMetrics {
