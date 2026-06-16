@@ -1,6 +1,8 @@
 //! Recall shadow canary persistence.
 
-use cm_core::{CmError, RecallShadowListFilter, RecallShadowRecord, RecallShadowRow};
+use cm_core::{
+    CmError, RecallShadowListFilter, RecallShadowRecord, RecallShadowRow, RecallShadowSummary,
+};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{QueryBuilder, Row, Sqlite};
 use uuid::Uuid;
@@ -52,7 +54,7 @@ impl CmStore {
 
     pub async fn list_recall_shadow(
         &self,
-        filter: RecallShadowListFilter,
+        filter: &RecallShadowListFilter,
     ) -> Result<Vec<RecallShadowRow>, CmError> {
         let mut query = QueryBuilder::<Sqlite>::new(
             "SELECT id, ts, scope_path, query_hash, query_len, routing, tier, k, \
@@ -61,19 +63,7 @@ impl CmStore {
              FROM recall_shadow WHERE 1=1",
         );
 
-        if let Some(routing) = filter.routing {
-            query.push(" AND routing = ");
-            query.push_bind(routing);
-        }
-        if let Some(scope_path) = filter.scope_path {
-            query.push(" AND scope_path = ");
-            query.push_bind(scope_path);
-        }
-        if let Some(top1_changed) = filter.top1_changed {
-            query.push(" AND top1_changed = ");
-            query.push_bind(top1_changed);
-        }
-
+        push_recall_shadow_filters(&mut query, filter);
         query.push(" ORDER BY ts DESC, id DESC LIMIT ");
         query.push_bind(i64::from(filter.limit.clamp(1, 200)));
 
@@ -84,6 +74,53 @@ impl CmStore {
             .map_err(map_db_err)?;
 
         rows.iter().map(parse_recall_shadow).collect()
+    }
+
+    pub async fn recall_shadow_summary(
+        &self,
+        filter: &RecallShadowListFilter,
+    ) -> Result<RecallShadowSummary, CmError> {
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT COUNT(*) AS total, \
+             COALESCE(1.0 * SUM(CASE WHEN top1_changed != 0 THEN 1 ELSE 0 END) / \
+             NULLIF(COUNT(*), 0), 0.0) AS divergence_rate, \
+             COALESCE(AVG(topk_overlap), 0.0) AS avg_topk_overlap, \
+             COALESCE(AVG(footrule), 0.0) AS avg_footrule \
+             FROM recall_shadow WHERE 1=1",
+        );
+
+        push_recall_shadow_filters(&mut query, filter);
+
+        let row = query
+            .build()
+            .fetch_one(&self.read_pool)
+            .await
+            .map_err(map_db_err)?;
+
+        Ok(RecallShadowSummary {
+            total: u64_from_i64(row.get("total"))?,
+            divergence_rate: row.get("divergence_rate"),
+            avg_topk_overlap: row.get("avg_topk_overlap"),
+            avg_footrule: row.get("avg_footrule"),
+        })
+    }
+}
+
+fn push_recall_shadow_filters<'args>(
+    query: &mut QueryBuilder<'args, Sqlite>,
+    filter: &'args RecallShadowListFilter,
+) {
+    if let Some(routing) = &filter.routing {
+        query.push(" AND routing = ");
+        query.push_bind(routing);
+    }
+    if let Some(scope_path) = &filter.scope_path {
+        query.push(" AND scope_path = ");
+        query.push_bind(scope_path);
+    }
+    if let Some(top1_changed) = filter.top1_changed {
+        query.push(" AND top1_changed = ");
+        query.push_bind(top1_changed);
     }
 }
 
@@ -130,4 +167,8 @@ fn required_u32(row: &SqliteRow, column: &str) -> Result<u32, CmError> {
 
 fn u32_from_i64(value: i64) -> Result<u32, CmError> {
     u32::try_from(value).map_err(|e| CmError::Internal(format!("invalid u32 value {value}: {e}")))
+}
+
+fn u64_from_i64(value: i64) -> Result<u64, CmError> {
+    u64::try_from(value).map_err(|e| CmError::Internal(format!("invalid u64 value {value}: {e}")))
 }

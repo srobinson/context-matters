@@ -6,7 +6,8 @@ import type { EntryKind } from "./generated/EntryKind";
 import type { EntryMeta } from "./generated/EntryMeta";
 import type { EntryRelation } from "./generated/EntryRelation";
 import type { MutationRecord } from "./generated/MutationRecord";
-import type { RecallShadowRow } from "./generated/RecallShadowRow";
+import type { RecallShadowResponse as GeneratedRecallShadowResponse } from "./generated/RecallShadowResponse";
+import type { RecallShadowSummary as GeneratedRecallShadowSummary } from "./generated/RecallShadowSummary";
 import type { StoreStats } from "./generated/StoreStats";
 import type { UpdateEntry } from "./generated/UpdateEntry";
 import type { WebBrowseView } from "./generated/WebBrowseView";
@@ -120,6 +121,12 @@ export type BrowseView = Omit<WebBrowseView, "header"> & {
   header: Omit<WebBrowseView["header"], "total"> & { total: number };
 };
 export type RecallView = WebRecallView;
+export type RecallShadowSummary = Omit<GeneratedRecallShadowSummary, "total"> & {
+  total: number;
+};
+export type RecallShadowResponse = Omit<GeneratedRecallShadowResponse, "summary"> & {
+  summary: RecallShadowSummary;
+};
 
 // --- Entry detail (GET /entries/:id response) ---
 
@@ -342,7 +349,7 @@ export const api = {
   },
 
   recallShadow: {
-    list(params: RecallShadowListParams = {}): Promise<RecallShadowRow[]> {
+    list(params: RecallShadowListParams = {}): Promise<RecallShadowResponse> {
       return apiFetch(
         `/recall-shadow${toSearchParams({
           routing: params.routing,

@@ -18,11 +18,14 @@ fn recall_shadow_client_and_hook_contracts() {
     let hooks = frontend_source("api/hooks.ts");
 
     assert!(
-        client.contains("import type { RecallShadowRow }")
+        client.contains("GeneratedRecallShadowResponse")
+            && client.contains("GeneratedRecallShadowSummary")
             && client.contains("export interface RecallShadowListParams")
+            && client.contains("export type RecallShadowResponse")
             && client.contains("recallShadow: {")
-            && client
-                .contains("list(params: RecallShadowListParams = {}): Promise<RecallShadowRow[]>")
+            && client.contains(
+                "list(params: RecallShadowListParams = {}): Promise<RecallShadowResponse>"
+            )
             && client.contains("`/recall-shadow${toSearchParams({")
             && client.contains("routing: params.routing")
             && client.contains("scope_path: params.scope_path")
@@ -34,6 +37,7 @@ fn recall_shadow_client_and_hook_contracts() {
         hooks.contains("recallShadow: {")
             && hooks.contains("list: (params: RecallShadowListParams)")
             && hooks.contains("export function useRecallShadowHistory")
+            && hooks.contains("UseQueryOptions<RecallShadowResponse>")
             && hooks.contains("queryFn: () => api.recallShadow.list(params)"),
         "React Query hook should reuse the central API client"
     );
@@ -57,10 +61,13 @@ fn recall_shadow_panel_covers_render_states_and_links() {
     assert!(
         panel.contains("divergence")
             && panel.contains("avg overlap")
-            && panel.contains("total rows")
+            && panel.contains("avg footrule")
+            && panel.contains("matching rows")
+            && panel.contains("summary.total")
+            && panel.contains("data?.summary")
             && panel.contains("routing")
             && panel.contains("scope path"),
-        "panel should surface metrics and routing plus scope filters"
+        "panel should surface backend summary metrics and routing plus scope filters"
     );
 
     assert!(

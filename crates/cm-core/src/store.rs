@@ -176,6 +176,24 @@ pub struct RecallShadowRow {
     pub duration_ms: u32,
 }
 
+/// Aggregate metrics over a filtered recall shadow row set.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct RecallShadowSummary {
+    pub total: u64,
+    pub divergence_rate: f64,
+    pub avg_topk_overlap: f64,
+    pub avg_footrule: f64,
+}
+
+/// Read-only recall shadow API response.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct RecallShadowResponse {
+    pub summary: RecallShadowSummary,
+    pub rows: Vec<RecallShadowRow>,
+}
+
 /// Filter for listing stored recall shadow canary rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecallShadowListFilter {

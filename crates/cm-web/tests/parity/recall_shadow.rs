@@ -1,5 +1,6 @@
 use cm_core::{
     ContextStore, RecallShadowListFilter, RecallShadowPositionDelta, RecallShadowRecord,
+    RecallShadowResponse,
 };
 use cm_store::CmStore;
 use serde_json::Value;
@@ -80,17 +81,44 @@ async fn recall_shadow_limit_is_clamped() {
 
     let min = get_json(app.clone(), "/api/recall-shadow?limit=0").await;
     assert_eq!(
-        min.as_array().unwrap().len(),
+        min["rows"].as_array().unwrap().len(),
         1,
         "limit=0 should clamp to the minimum page size"
     );
 
     let max = get_json(app, "/api/recall-shadow?limit=999").await;
     assert_eq!(
-        max.as_array().unwrap().len(),
+        max["rows"].as_array().unwrap().len(),
         200,
         "limit=999 should clamp to the maximum page size"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recall_shadow_summary_uses_all_matching_rows() {
+    let (store, _dir) = test_store().await;
+    for seed in 0..250u32 {
+        let routing = if seed.is_multiple_of(2) {
+            "search"
+        } else {
+            "scope_resolve"
+        };
+        store
+            .log_recall_shadow(sample_record(routing, None, seed < 50, seed))
+            .await
+            .unwrap();
+    }
+
+    let app = test_app(store);
+    let all = get_json(app.clone(), "/api/recall-shadow?limit=8").await;
+    assert_eq!(all["rows"].as_array().unwrap().len(), 8);
+    assert_eq!(all["summary"]["total"], json_number(250));
+    assert_f64_eq(all["summary"]["divergence_rate"].as_f64().unwrap(), 0.2);
+
+    let search = get_json(app, "/api/recall-shadow?routing=search&limit=8").await;
+    assert_eq!(search["rows"].as_array().unwrap().len(), 8);
+    assert_eq!(search["summary"]["total"], json_number(125));
+    assert_f64_eq(search["summary"]["divergence_rate"].as_f64().unwrap(), 0.2);
 }
 
 async fn seed_recall_shadow_rows(store: &CmStore) {
@@ -106,7 +134,22 @@ async fn seed_recall_shadow_rows(store: &CmStore) {
 }
 
 async fn recall_shadow_json(store: &CmStore, filter: RecallShadowListFilter) -> Value {
-    serde_json::to_value(store.list_recall_shadow(filter).await.unwrap()).unwrap()
+    let response = RecallShadowResponse {
+        summary: store.recall_shadow_summary(&filter).await.unwrap(),
+        rows: store.list_recall_shadow(&filter).await.unwrap(),
+    };
+    serde_json::to_value(response).unwrap()
+}
+
+fn json_number(value: u64) -> Value {
+    serde_json::json!(value)
+}
+
+fn assert_f64_eq(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < 1e-12,
+        "expected {expected}, got {actual}"
+    );
 }
 
 fn sample_record(

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::extract::{Query, State};
 use axum::response::Json;
-use cm_core::{RecallShadowListFilter, RecallShadowRow};
+use cm_core::{RecallShadowListFilter, RecallShadowResponse};
 use serde::Deserialize;
 
 use crate::AppState;
@@ -21,7 +21,7 @@ pub struct RecallShadowQuery {
 pub async fn list_recall_shadow(
     State(state): State<Arc<AppState>>,
     Query(q): Query<RecallShadowQuery>,
-) -> Result<Json<Vec<RecallShadowRow>>, ApiError> {
+) -> Result<Json<RecallShadowResponse>, ApiError> {
     let filter = RecallShadowListFilter {
         routing: q.routing,
         scope_path: q.scope_path,
@@ -29,7 +29,8 @@ pub async fn list_recall_shadow(
         limit: q.limit.unwrap_or(50).clamp(1, 200),
     };
 
-    let records = state.store.list_recall_shadow(filter).await?;
+    let summary = state.store.recall_shadow_summary(&filter).await?;
+    let rows = state.store.list_recall_shadow(&filter).await?;
 
-    Ok(Json(records))
+    Ok(Json(RecallShadowResponse { summary, rows }))
 }

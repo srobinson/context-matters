@@ -1,31 +1,18 @@
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import type { RecallShadowSummary } from "@/api/client";
 import type { RecallShadowRow } from "@/api/generated/RecallShadowRow";
 import { useRecallShadowHistory } from "@/api/hooks";
 import { timeAgo } from "@/lib/time";
 
 type ChangeFilter = "" | "changed" | "unchanged";
 
-interface RecallShadowSummary {
-  total: number;
-  divergenceRate: number;
-  averageOverlap: number;
-}
-
-function summarizeRows(rows: RecallShadowRow[]): RecallShadowSummary {
-  if (rows.length === 0) {
-    return { total: 0, divergenceRate: 0, averageOverlap: 0 };
-  }
-
-  const changed = rows.filter((row) => row.top1_changed).length;
-  const overlap = rows.reduce((sum, row) => sum + row.topk_overlap, 0) / rows.length;
-
-  return {
-    total: rows.length,
-    divergenceRate: changed / rows.length,
-    averageOverlap: overlap,
-  };
-}
+const EMPTY_SUMMARY: RecallShadowSummary = {
+  total: 0,
+  divergence_rate: 0,
+  avg_topk_overlap: 0,
+  avg_footrule: 0,
+};
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -38,7 +25,7 @@ export function RecallShadowPanel() {
 
   const params = useMemo(
     () => ({
-      limit: 200,
+      limit: 8,
       routing: routing.trim() || undefined,
       scope_path: scopePath.trim() || undefined,
       top1_changed: changeFilter === "" ? undefined : changeFilter === "changed",
@@ -47,9 +34,8 @@ export function RecallShadowPanel() {
   );
 
   const { data, isLoading } = useRecallShadowHistory(params);
-  const rows = data ?? [];
-  const recentRows = useMemo(() => rows.slice(0, 8), [rows]);
-  const summary = useMemo(() => summarizeRows(rows), [rows]);
+  const rows = data?.rows ?? [];
+  const summary = data?.summary ?? EMPTY_SUMMARY;
 
   return (
     <section className="rounded-surface border border-border/70 bg-card/70 p-4 shadow-surface backdrop-blur-sm">
@@ -59,7 +45,7 @@ export function RecallShadowPanel() {
             recall shadow
           </h3>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Canary diff rows for legacy versus ranked recall ordering.
+            Canary summary across all matching rows, with the most recent rows below.
           </p>
         </div>
         <RecallShadowFilters
@@ -72,10 +58,11 @@ export function RecallShadowPanel() {
         />
       </div>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Metric label="divergence" value={formatPercent(summary.divergenceRate)} />
-        <Metric label="avg overlap" value={formatPercent(summary.averageOverlap)} />
-        <Metric label="total rows" value={summary.total.toLocaleString()} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        <Metric label="divergence" value={formatPercent(summary.divergence_rate)} />
+        <Metric label="avg overlap" value={formatPercent(summary.avg_topk_overlap)} />
+        <Metric label="avg footrule" value={summary.avg_footrule.toFixed(2)} />
+        <Metric label="matching rows" value={summary.total.toLocaleString()} />
       </div>
 
       {isLoading && <RecallShadowLoading />}
@@ -88,7 +75,10 @@ export function RecallShadowPanel() {
 
       {rows.length > 0 && (
         <div className="space-y-2">
-          {recentRows.map((row) => (
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+            showing {rows.length} most recent of {summary.total.toLocaleString()} matching rows
+          </p>
+          {rows.map((row) => (
             <RecallShadowRowView key={row.id} row={row} />
           ))}
         </div>

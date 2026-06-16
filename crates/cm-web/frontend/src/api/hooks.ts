@@ -17,12 +17,12 @@ import {
   type PagedResponse,
   type RecallParams,
   type RecallShadowListParams,
+  type RecallShadowResponse,
   type RecallView,
   type SearchParams,
   type Stats,
 } from "./client";
 import type { MutationRecord } from "./generated/MutationRecord";
-import type { RecallShadowRow } from "./generated/RecallShadowRow";
 import type { UpdateEntry } from "./generated/UpdateEntry";
 
 // --- Query key factory ---
@@ -142,7 +142,7 @@ export function useMutationHistory(
 
 export function useRecallShadowHistory(
   params: RecallShadowListParams = {},
-  options?: Partial<UseQueryOptions<RecallShadowRow[]>>,
+  options?: Partial<UseQueryOptions<RecallShadowResponse>>,
 ) {
   return useQuery({
     queryKey: queryKeys.recallShadow.list(params),
