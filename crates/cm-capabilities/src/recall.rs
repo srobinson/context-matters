@@ -1,14 +1,19 @@
 //! Recall capability orchestration.
 
 use std::cmp::Ordering;
+use std::time::Instant;
 
-use cm_core::{CmError, ContextStore, RecallRankingMode, ScopePath, recall_rank_key};
+use cm_core::{
+    CmError, ContextStore, FtsQuery, RecallRankingMode, RecallShadowRecord, ScopePath,
+    recall_rank_key,
+};
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
 use crate::scope::{ScopeSelector, resolve_scope_selection};
 use crate::telemetry::RetrievalLog;
 
+mod metrics;
 mod routing;
 mod types;
 
@@ -18,6 +23,8 @@ pub use types::{
 };
 
 use routing::route_query;
+
+const RECALL_OVERSAMPLE: u32 = 3;
 
 /// Execute a recall operation against the store.
 ///
@@ -47,24 +54,57 @@ async fn recall_inner(
     let resolved_scope = resolve_scope_selection(store, &scope_selector).await?;
     log.set_resolved_scope(resolved_scope.scope_path.as_ref());
     let scope_path = resolved_scope.scope_path.as_ref();
+    let ranking_mode = store.recall_ranking_mode();
 
-    let has_post_filter = !request.kinds.is_empty() || !request.tags.is_empty();
-    let fetch_limit = if has_post_filter {
-        request.limit.saturating_mul(3).min(MAX_LIMIT)
-    } else {
-        request.limit
-    };
+    let legacy_fetch_limit = legacy_fetch_limit(&request);
+    let fetch_limit = fetch_limit(ranking_mode, &request, legacy_fetch_limit);
 
     let (raw_rows, routing, actual_fetch_limit, tier) =
         route_query(store, &request, scope_path, fetch_limit).await?;
-    let candidates_before_filter = raw_rows.len();
 
-    let rows = filter_rows(raw_rows, &request);
-    let rows = match store.recall_ranking_mode() {
-        RecallRankingMode::Live => rank_priority_rows(rows, &request),
-        RecallRankingMode::Legacy | RecallRankingMode::Shadow => rank_legacy_rows(rows, &request),
+    let selection = match ranking_mode {
+        RecallRankingMode::Legacy => {
+            let candidates_before_filter = raw_rows.len();
+            let rows = filter_rows(raw_rows, &request);
+            RecallSelection {
+                rows: apply_token_budget(rank_legacy_rows(rows, &request), request.max_tokens),
+                candidates_before_filter,
+                fetch_limit_used: actual_fetch_limit,
+            }
+        }
+        RecallRankingMode::Shadow | RecallRankingMode::Live => {
+            let started_at = Instant::now();
+            let actual_count_before_filter = raw_rows.len();
+            let legacy_raw_count =
+                legacy_raw_count(&request, actual_count_before_filter, legacy_fetch_limit);
+            let legacy_raw_rows = raw_rows
+                .iter()
+                .take(legacy_raw_count)
+                .cloned()
+                .collect::<Vec<_>>();
+            let full_rows = filter_rows(raw_rows, &request);
+            let legacy_rows = filter_rows(legacy_raw_rows, &request);
+            select_shadow_rows(
+                store,
+                ShadowInput {
+                    full_rows,
+                    legacy_rows,
+                    request: &request,
+                    routing: &routing,
+                    tier,
+                    scope_path,
+                    ranking_mode,
+                    actual_fetch_limit,
+                    legacy_fetch_limit_used: legacy_fetch_limit_used(&request, legacy_fetch_limit),
+                    candidate_count_before_filter: legacy_raw_count,
+                    actual_count_before_filter,
+                    started_at,
+                },
+            )
+            .await
+        }
     };
-    let (budget_rows, total_tokens) = apply_token_budget(rows, request.max_tokens);
+    let (budget_rows, total_tokens) = selection.rows;
     let (scope_chain, scope_hits) = scope_chain_and_hits(scope_path, &budget_rows);
 
     let relation_count_ids = budget_rows.iter().map(|r| r.entry.id).collect::<Vec<_>>();
@@ -77,8 +117,8 @@ async fn recall_inner(
         token_estimate: total_tokens,
         routing,
         tier,
-        candidates_before_filter,
-        fetch_limit_used: actual_fetch_limit,
+        candidates_before_filter: selection.candidates_before_filter,
+        fetch_limit_used: selection.fetch_limit_used,
         relation_counts,
         advisories: scope_defaulted
             .then(|| RecallAdvisory::ScopeDefaulted {
@@ -87,6 +127,225 @@ async fn recall_inner(
             .into_iter()
             .collect(),
     })
+}
+
+struct RecallSelection {
+    rows: (Vec<RecallRow>, u32),
+    candidates_before_filter: usize,
+    fetch_limit_used: u32,
+}
+
+struct ShadowInput<'a> {
+    full_rows: Vec<RecallRow>,
+    legacy_rows: Vec<RecallRow>,
+    request: &'a RecallRequest,
+    routing: &'a RecallRouting,
+    tier: Option<SearchTier>,
+    scope_path: Option<&'a ScopePath>,
+    ranking_mode: RecallRankingMode,
+    actual_fetch_limit: u32,
+    legacy_fetch_limit_used: u32,
+    candidate_count_before_filter: usize,
+    actual_count_before_filter: usize,
+    started_at: Instant,
+}
+
+async fn select_shadow_rows(store: &impl ContextStore, input: ShadowInput<'_>) -> RecallSelection {
+    let ShadowInput {
+        full_rows,
+        legacy_rows,
+        request,
+        routing,
+        tier,
+        scope_path,
+        ranking_mode,
+        actual_fetch_limit,
+        legacy_fetch_limit_used,
+        candidate_count_before_filter,
+        actual_count_before_filter,
+        started_at,
+    } = input;
+    let candidate_count = full_rows.len();
+    let legacy_ranked = rank_legacy_rows(legacy_rows, request);
+    let priority_ranked = rank_priority_rows(full_rows, request);
+    let window_truncated = window_truncated(&legacy_ranked, &priority_ranked, request.limit);
+    let legacy_budget = apply_token_budget(legacy_ranked, request.max_tokens);
+    let priority_budget = apply_token_budget(priority_ranked, request.max_tokens);
+
+    let shadow = shadow_record(
+        ShadowRecordInput {
+            request,
+            routing,
+            tier,
+            scope_path,
+            started_at,
+        },
+        &legacy_budget.0,
+        &priority_budget.0,
+        candidate_count,
+        window_truncated,
+    );
+    if let Err(error) = store.log_recall_shadow(shadow).await {
+        tracing::warn!(?error, "failed to write recall shadow canary row");
+    }
+
+    let served_rows = match ranking_mode {
+        RecallRankingMode::Shadow => legacy_budget,
+        RecallRankingMode::Live => priority_budget,
+        RecallRankingMode::Legacy => unreachable!("legacy mode does not compute shadow rows"),
+    };
+    let fetch_limit_used = match ranking_mode {
+        RecallRankingMode::Shadow => legacy_fetch_limit_used,
+        RecallRankingMode::Live => actual_fetch_limit,
+        RecallRankingMode::Legacy => unreachable!("legacy mode does not compute shadow rows"),
+    };
+
+    RecallSelection {
+        rows: served_rows,
+        candidates_before_filter: if ranking_mode == RecallRankingMode::Shadow {
+            candidate_count_before_filter
+        } else {
+            actual_count_before_filter
+        },
+        fetch_limit_used,
+    }
+}
+
+struct ShadowRecordInput<'a> {
+    request: &'a RecallRequest,
+    routing: &'a RecallRouting,
+    tier: Option<SearchTier>,
+    scope_path: Option<&'a ScopePath>,
+    started_at: Instant,
+}
+
+fn shadow_record(
+    input: ShadowRecordInput<'_>,
+    legacy_rows: &[RecallRow],
+    priority_rows: &[RecallRow],
+    candidate_count: usize,
+    window_truncated: bool,
+) -> RecallShadowRecord {
+    let metrics = metrics::diff_metrics(legacy_rows, priority_rows, input.request.limit);
+    let old_ids = metrics::row_ids(legacy_rows);
+    let new_ids = metrics::row_ids(priority_rows);
+
+    RecallShadowRecord {
+        scope_path: input.scope_path.map(|scope| scope.as_str().to_owned()),
+        query_hash: query_hash(input.request.query.as_deref()),
+        query_len: sanitized_query_len(input.request.query.as_deref()),
+        routing: routing_name(input.routing).to_owned(),
+        tier: input.tier.map(|tier| tier_name(tier).to_owned()),
+        k: input.request.limit,
+        candidate_count: u32::try_from(candidate_count).unwrap_or(u32::MAX),
+        top1_changed: metrics.top1_changed,
+        topk_overlap: metrics.topk_overlap,
+        footrule: metrics.footrule,
+        mean_abs_position_delta: metrics.mean_abs_position_delta,
+        position_deltas: metrics.position_deltas,
+        old_ids,
+        new_ids,
+        window_truncated,
+        ranking_version: metrics::RANKING_VERSION.to_owned(),
+        duration_ms: u32::try_from(input.started_at.elapsed().as_millis()).unwrap_or(u32::MAX),
+    }
+}
+
+fn query_hash(query: Option<&str>) -> Option<String> {
+    query
+        .map(sanitized_query)
+        .map(|query| blake3::hash(query.as_bytes()).to_hex().to_string())
+}
+
+fn sanitized_query_len(query: Option<&str>) -> Option<u32> {
+    query
+        .map(sanitized_query)
+        .map(|query| u32::try_from(query.len()).unwrap_or(u32::MAX))
+}
+
+fn sanitized_query(query: &str) -> String {
+    FtsQuery::new(query).as_str().to_owned()
+}
+
+fn window_truncated(legacy_rows: &[RecallRow], priority_rows: &[RecallRow], limit: u32) -> bool {
+    let k = limit as usize;
+    priority_rows.iter().take(k).any(|priority_row| {
+        legacy_rows
+            .iter()
+            .position(|legacy_row| legacy_row.entry.id == priority_row.entry.id)
+            .is_none_or(|position| position >= k)
+    })
+}
+
+fn routing_name(routing: &RecallRouting) -> &'static str {
+    match routing {
+        RecallRouting::Search => "search",
+        RecallRouting::TagScopeWalk => "tag_scope_walk",
+        RecallRouting::ScopeResolve => "scope_resolve",
+        RecallRouting::BrowseFallback => "browse_fallback",
+    }
+}
+
+fn tier_name(tier: SearchTier) -> &'static str {
+    match tier {
+        SearchTier::Exact => "exact",
+        SearchTier::Prefix => "prefix",
+        SearchTier::SplitOr => "split_or",
+        SearchTier::None => "none",
+    }
+}
+
+fn legacy_fetch_limit(request: &RecallRequest) -> u32 {
+    if request.query.is_none() && !request.tags.is_empty() {
+        request.limit
+    } else if has_post_filter(request) {
+        oversampled_limit(request.limit)
+    } else {
+        request.limit
+    }
+}
+
+fn fetch_limit(
+    ranking_mode: RecallRankingMode,
+    request: &RecallRequest,
+    legacy_fetch_limit: u32,
+) -> u32 {
+    if matches!(
+        ranking_mode,
+        RecallRankingMode::Shadow | RecallRankingMode::Live
+    ) {
+        oversampled_limit(request.limit)
+    } else {
+        legacy_fetch_limit
+    }
+}
+
+fn legacy_raw_count(
+    request: &RecallRequest,
+    actual_count: usize,
+    legacy_fetch_limit: u32,
+) -> usize {
+    if request.query.is_none() && !request.tags.is_empty() {
+        actual_count.min(request.limit as usize)
+    } else {
+        actual_count.min(legacy_fetch_limit as usize)
+    }
+}
+
+fn legacy_fetch_limit_used(request: &RecallRequest, legacy_fetch_limit: u32) -> u32 {
+    if request.query.is_none() && !request.tags.is_empty() {
+        MAX_LIMIT
+    } else {
+        legacy_fetch_limit
+    }
+}
+
+fn has_post_filter(request: &RecallRequest) -> bool {
+    !request.kinds.is_empty() || !request.tags.is_empty()
+}
+
+fn oversampled_limit(limit: u32) -> u32 {
+    limit.saturating_mul(RECALL_OVERSAMPLE).min(MAX_LIMIT)
 }
 
 fn reject_non_singular_scope(selector: &ScopeSelector) -> Result<(), CmError> {

@@ -377,6 +377,38 @@ async fn c28_deleting_entry_cascades_relations() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recall_shadow_migration_creates_table_and_indexes() {
+    let (store, _dir) = test_store().await;
+
+    let table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'recall_shadow'",
+    )
+    .fetch_one(store.write_pool())
+    .await
+    .unwrap();
+    assert_eq!(table_count, 1);
+
+    let indexes: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'recall_shadow'",
+    )
+    .fetch_all(store.write_pool())
+    .await
+    .unwrap();
+
+    for expected in [
+        "idx_recall_shadow_ts",
+        "idx_recall_shadow_top1_changed",
+        "idx_recall_shadow_routing",
+        "idx_recall_shadow_scope_path",
+    ] {
+        assert!(
+            indexes.iter().any(|index| index == expected),
+            "missing index {expected}; found {indexes:?}"
+        );
+    }
+}
+
 // ── Stats & Export ──────────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

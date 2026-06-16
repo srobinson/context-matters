@@ -2,27 +2,12 @@ mod common;
 
 use cm_capabilities::recall::{RecallRequest, RecallRouting, recall};
 use cm_capabilities::scope::ScopeSelector;
-use cm_core::{
-    Confidence, EntryKind, EntryMeta, RecallRankingMode, ScopeInferenceStrategy, ScopePath,
+use cm_core::{Confidence, EntryKind, EntryMeta, RecallRankingMode, ScopePath};
+use cm_store::CmStore;
+
+use common::{
+    CANONICAL_CONTEXT_REPO_SCOPE, seed_entry_with_meta, test_store, test_store_with_ranking_mode,
 };
-use cm_store::{CmStore, Config, schema};
-
-use common::{CANONICAL_CONTEXT_REPO_SCOPE, seed_entry_with_meta, test_store};
-
-async fn test_store_with_ranking_mode(mode: RecallRankingMode) -> (CmStore, tempfile::TempDir) {
-    let dir = tempfile::tempdir().unwrap();
-    let db_path = dir.path().join("test.db");
-    let (write_pool, read_pool) = schema::create_pools(&db_path).await.unwrap();
-    schema::run_migrations(&write_pool).await.unwrap();
-    let config = Config {
-        data_dir: dir.path().to_path_buf(),
-        log_level: "warn".to_owned(),
-        scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
-        recall_ranking_mode: mode,
-    };
-    let store = CmStore::new_with_config(write_pool, read_pool, &config);
-    (store, dir)
-}
 
 #[tokio::test(flavor = "current_thread")]
 async fn default_legacy_order_stays_scope_depth_first() {

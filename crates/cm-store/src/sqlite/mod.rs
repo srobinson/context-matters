@@ -23,6 +23,7 @@ mod predicates;
 mod query;
 mod scope;
 mod search;
+mod shadow;
 
 use std::collections::HashMap;
 
@@ -30,7 +31,7 @@ use chrono::{DateTime, Utc};
 use cm_core::{
     AncestorWalkRequest, CmError, ContentSearchPage, ContentSearchRequest, ContextStore, Entry,
     EntryFilter, EntryKind, EntryRelation, MutationAction, MutationRecord, MutationSource,
-    NewEntry, NewScope, PagedResult, RecallRankingMode, RelationKind, Scope,
+    NewEntry, NewScope, PagedResult, RecallRankingMode, RecallShadowRecord, RelationKind, Scope,
     ScopeInferenceStrategy, ScopeKind, ScopePath, ScoredEntry, StoreStats, UpdateEntry,
     WriteContext,
 };
@@ -105,6 +106,10 @@ impl ContextStore for CmStore {
 
     fn recall_ranking_mode(&self) -> RecallRankingMode {
         self.recall_ranking_mode
+    }
+
+    async fn log_recall_shadow(&self, record: RecallShadowRecord) -> Result<(), CmError> {
+        self.do_log_recall_shadow(record).await
     }
 
     async fn create_entry(
