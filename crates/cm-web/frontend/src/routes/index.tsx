@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, type Stats } from "@/api/client";
 import { useStats } from "@/api/hooks";
 import { StatCard } from "@/components/composed/StatCard";
+import { RecallShadowPanel } from "@/components/RecallShadowPanel";
 import { RecentActivity } from "@/components/RecentActivity";
 import { ScopeTree } from "@/components/ScopeTree";
 import { rootRoute } from "./__root";
@@ -190,6 +191,8 @@ function DashboardPage() {
           <ScopeTree stats={stats} />
         </div>
       </div>
+
+      <RecallShadowPanel />
     </div>
   );
 }

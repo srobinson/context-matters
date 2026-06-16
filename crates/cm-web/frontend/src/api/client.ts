@@ -6,6 +6,7 @@ import type { EntryKind } from "./generated/EntryKind";
 import type { EntryMeta } from "./generated/EntryMeta";
 import type { EntryRelation } from "./generated/EntryRelation";
 import type { MutationRecord } from "./generated/MutationRecord";
+import type { RecallShadowRow } from "./generated/RecallShadowRow";
 import type { StoreStats } from "./generated/StoreStats";
 import type { UpdateEntry } from "./generated/UpdateEntry";
 import type { WebBrowseView } from "./generated/WebBrowseView";
@@ -157,6 +158,13 @@ export interface MutationListParams {
   action?: string;
   limit?: number;
   cursor?: string;
+}
+
+export interface RecallShadowListParams {
+  routing?: string;
+  scope_path?: string;
+  top1_changed?: boolean;
+  limit?: number;
 }
 
 export interface RecallParams {
@@ -328,6 +336,19 @@ export const api = {
           action: params.action,
           limit: params.limit,
           cursor: params.cursor,
+        })}`,
+      );
+    },
+  },
+
+  recallShadow: {
+    list(params: RecallShadowListParams = {}): Promise<RecallShadowRow[]> {
+      return apiFetch(
+        `/recall-shadow${toSearchParams({
+          routing: params.routing,
+          scope_path: params.scope_path,
+          top1_changed: params.top1_changed,
+          limit: params.limit,
         })}`,
       );
     },
