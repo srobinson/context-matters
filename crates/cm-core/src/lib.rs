@@ -14,7 +14,7 @@ pub const CM_CONFIG_FILENAME: &str = ".cm.config.toml";
 pub use error::{CmError, ScopePathError};
 pub use query::{FtsQuery, QueryBuilder};
 pub use store::{
-    AncestorWalkRequest, ContentSearchPage, ContentSearchRequest, ContextStore,
+    AncestorWalkRequest, ContentSearchPage, ContentSearchRequest, ContextStore, RecallRankingMode,
     ScopeInferenceStrategy, ScoredEntry,
 };
 pub use types::{

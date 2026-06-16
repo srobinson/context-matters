@@ -119,8 +119,6 @@ pub struct RecallRankKey {
     confidence_rank: u8,
     priority: Reverse<i32>,
     scope_depth: Reverse<usize>,
-    updated_at: Reverse<DateTime<Utc>>,
-    id: Reverse<uuid::Uuid>,
 }
 
 /// Structured metadata stored in the JSONB `meta` column.
@@ -204,9 +202,9 @@ pub struct Entry {
     pub superseded_by: Option<uuid::Uuid>,
 }
 
-/// Build the deterministic recall ranking key for an entry.
+/// Build the deterministic recall priority prefix for an entry.
 ///
-/// Ordering is kind, confidence, priority, scope depth, recency, then id.
+/// Ordering is kind, confidence, priority, then scope depth.
 #[must_use]
 pub fn recall_rank_key(entry: &Entry) -> RecallRankKey {
     let meta = entry.meta.as_ref();
@@ -221,8 +219,6 @@ pub fn recall_rank_key(entry: &Entry) -> RecallRankKey {
         confidence_rank,
         priority: Reverse(priority),
         scope_depth: Reverse(entry.scope_path.depth()),
-        updated_at: Reverse(entry.updated_at),
-        id: Reverse(entry.id),
     }
 }
 

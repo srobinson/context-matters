@@ -423,7 +423,7 @@ fn rank_entry(
 }
 
 #[test]
-fn recall_rank_key_orders_kind_confidence_priority_scope_recency_id() {
+fn recall_rank_key_orders_kind_confidence_priority_scope_prefix() {
     let base_time = "2026-06-16T00:00:00Z";
     let low_id = "01890f99-0000-7000-8000-000000000001";
     let high_id = "01890f99-0000-7000-8000-000000000002";
@@ -485,46 +485,10 @@ fn recall_rank_key_orders_kind_confidence_priority_scope_recency_id() {
         high_id,
     );
     assert!(recall_rank_key(&global_high_priority) < recall_rank_key(&local_default_priority));
-
-    let newer = rank_entry(
-        EntryKind::Fact,
-        Some(Confidence::Medium),
-        Some(0),
-        "global",
-        "2026-06-16T00:00:01Z",
-        low_id,
-    );
-    let older = rank_entry(
-        EntryKind::Fact,
-        Some(Confidence::Medium),
-        Some(0),
-        "global",
-        base_time,
-        high_id,
-    );
-    assert!(recall_rank_key(&newer) < recall_rank_key(&older));
-
-    let larger_uuid = rank_entry(
-        EntryKind::Fact,
-        Some(Confidence::Medium),
-        Some(0),
-        "global",
-        base_time,
-        high_id,
-    );
-    let smaller_uuid = rank_entry(
-        EntryKind::Fact,
-        Some(Confidence::Medium),
-        Some(0),
-        "global",
-        base_time,
-        low_id,
-    );
-    assert!(recall_rank_key(&larger_uuid) < recall_rank_key(&smaller_uuid));
 }
 
 #[test]
-fn recall_rank_key_defines_total_order_property() {
+fn recall_rank_key_prefix_order_is_transitive() {
     let kinds = [
         EntryKind::Feedback,
         EntryKind::Decision,
@@ -539,11 +503,9 @@ fn recall_rank_key_defines_total_order_property() {
         Some(Confidence::High),
         Some(Confidence::Medium),
         Some(Confidence::Low),
-        None,
     ];
     let priorities = [1, 0];
     let scopes = ["global/project:helioy/repo:context-matters", "global"];
-    let times = ["2026-06-16T00:00:01Z", "2026-06-16T00:00:00Z"];
 
     let mut entries = Vec::new();
     let mut id_suffix = 1u128;
@@ -551,17 +513,15 @@ fn recall_rank_key_defines_total_order_property() {
         for confidence in confidences {
             for priority in priorities {
                 for scope in scopes {
-                    for updated_at in times {
-                        entries.push(rank_entry(
-                            kind,
-                            confidence,
-                            Some(priority),
-                            scope,
-                            updated_at,
-                            &format!("01890f99-0000-7000-8000-{id_suffix:012x}"),
-                        ));
-                        id_suffix += 1;
-                    }
+                    entries.push(rank_entry(
+                        kind,
+                        confidence,
+                        Some(priority),
+                        scope,
+                        "2026-06-16T00:00:00Z",
+                        &format!("01890f99-0000-7000-8000-{id_suffix:012x}"),
+                    ));
+                    id_suffix += 1;
                 }
             }
         }
@@ -590,6 +550,26 @@ fn recall_rank_key_defines_total_order_property() {
             "rank key ordering must be transitive"
         );
     }
+}
+
+#[test]
+fn recall_ranking_mode_parse_is_pure_and_fail_closed() {
+    assert_eq!(
+        RecallRankingMode::parse("legacy"),
+        Some(RecallRankingMode::Legacy)
+    );
+    assert_eq!(
+        RecallRankingMode::parse("shadow"),
+        Some(RecallRankingMode::Shadow)
+    );
+    assert_eq!(
+        RecallRankingMode::parse("live"),
+        Some(RecallRankingMode::Live)
+    );
+    assert_eq!(
+        RecallRankingMode::parse_or_legacy("invalid"),
+        RecallRankingMode::Legacy
+    );
 }
 
 // ── Mutation types ─────────────────────────────────────────────────

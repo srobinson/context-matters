@@ -1,9 +1,8 @@
 //! Recall capability orchestration.
 
-use std::path::PathBuf;
+use std::cmp::Ordering;
 
-use cm_core::{CM_CONFIG_FILENAME, CmError, ContextStore, ScopePath, recall_rank_key};
-use serde::Deserialize;
+use cm_core::{CmError, ContextStore, RecallRankingMode, ScopePath, recall_rank_key};
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
@@ -61,7 +60,7 @@ async fn recall_inner(
     let candidates_before_filter = raw_rows.len();
 
     let rows = filter_rows(raw_rows, &request);
-    let rows = match RecallRankingMode::resolve() {
+    let rows = match store.recall_ranking_mode() {
         RecallRankingMode::Live => rank_priority_rows(rows, &request),
         RecallRankingMode::Legacy | RecallRankingMode::Shadow => rank_legacy_rows(rows, &request),
     };
@@ -103,131 +102,6 @@ fn reject_non_singular_scope(selector: &ScopeSelector) -> Result<(), CmError> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum RecallRankingMode {
-    #[default]
-    Legacy,
-    Shadow,
-    Live,
-}
-
-impl RecallRankingMode {
-    fn resolve() -> Self {
-        match std::env::var("CM_RECALL_RANKING") {
-            Ok(raw) => return Self::parse_or_legacy(&raw),
-            Err(std::env::VarError::NotUnicode(_)) => return Self::Legacy,
-            Err(std::env::VarError::NotPresent) => {}
-        }
-
-        read_ranking_mode_from_config().unwrap_or_default()
-    }
-
-    fn parse_or_legacy(raw: &str) -> Self {
-        match Self::parse(raw) {
-            Some(mode) => mode,
-            None => {
-                tracing::warn!(
-                    ranking_mode = raw,
-                    "invalid recall ranking mode, using legacy"
-                );
-                Self::Legacy
-            }
-        }
-    }
-
-    fn parse(raw: &str) -> Option<Self> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "legacy" => Some(Self::Legacy),
-            "shadow" => Some(Self::Shadow),
-            "live" => Some(Self::Live),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct RecallConfigFile {
-    recall: Option<RecallConfigSection>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RecallConfigSection {
-    ranking_mode: Option<String>,
-}
-
-fn read_ranking_mode_from_config() -> Option<RecallRankingMode> {
-    for path in config_search_paths() {
-        if !path.exists() {
-            continue;
-        }
-
-        let contents = match std::fs::read_to_string(&path) {
-            Ok(contents) => contents,
-            Err(error) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    %error,
-                    "failed to read recall ranking config, using legacy"
-                );
-                return Some(RecallRankingMode::Legacy);
-            }
-        };
-
-        let config = match toml::from_str::<RecallConfigFile>(&contents) {
-            Ok(config) => config,
-            Err(error) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    %error,
-                    "failed to parse recall ranking config, using legacy"
-                );
-                return Some(RecallRankingMode::Legacy);
-            }
-        };
-
-        return config
-            .recall
-            .and_then(|recall| recall.ranking_mode)
-            .map(|mode| RecallRankingMode::parse_or_legacy(&mode));
-    }
-
-    None
-}
-
-fn config_search_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-
-    if let Ok(cwd) = std::env::current_dir() {
-        paths.push(cwd.join(CM_CONFIG_FILENAME));
-    }
-    if let Ok(data_dir) = std::env::var("CM_DATA_DIR")
-        && let Some(path) = expand_home(&data_dir)
-    {
-        paths.push(path.join(CM_CONFIG_FILENAME));
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        paths.push(
-            PathBuf::from(home)
-                .join(".context-matters")
-                .join(CM_CONFIG_FILENAME),
-        );
-    }
-
-    paths
-}
-
-fn expand_home(path: &str) -> Option<PathBuf> {
-    if path.is_empty() {
-        return None;
-    }
-    if path == "~" {
-        return std::env::var_os("HOME").map(PathBuf::from);
-    }
-    path.strip_prefix("~/")
-        .and_then(|suffix| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(suffix)))
-        .or_else(|| Some(PathBuf::from(path)))
-}
-
 fn filter_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {
     if !request.kinds.is_empty() {
         rows.retain(|row| request.kinds.contains(&row.entry.kind));
@@ -247,9 +121,26 @@ fn rank_legacy_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<Re
 }
 
 fn rank_priority_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {
-    rows.sort_by_key(|row| recall_rank_key(&row.entry));
+    rows.sort_by(compare_priority_rows);
     rows.truncate(request.limit as usize);
     rows
+}
+
+fn compare_priority_rows(left: &RecallRow, right: &RecallRow) -> Ordering {
+    recall_rank_key(&left.entry)
+        .cmp(&recall_rank_key(&right.entry))
+        .then_with(|| compare_bm25(left.score, right.score))
+        .then_with(|| right.entry.updated_at.cmp(&left.entry.updated_at))
+        .then_with(|| right.entry.id.cmp(&left.entry.id))
+}
+
+fn compare_bm25(left: Option<f32>, right: Option<f32>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => left.total_cmp(&right),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
 }
 
 fn apply_token_budget(rows: Vec<RecallRow>, max_tokens: Option<u32>) -> (Vec<RecallRow>, u32) {
