@@ -4,6 +4,12 @@ default:
 CM_LOCAL_BIN := env_var_or_default("CM_LOCAL_BIN", "/Users/alphab/.cargo/bin/cm")
 FRONTEND_DIR := "crates/cm-web/frontend"
 
+# Per-tool target dirs avoid clippy<->build<->nextest fingerprint thrash.
+# clippy-driver, nextest (dev-dep feature unification), and build each get
+# their own dir; build/run/install stay on the default target/.
+TARGET_CLIPPY := env_var_or_default("TARGET_CLIPPY", "target/clippy")
+TARGET_NEXTEST := env_var_or_default("TARGET_NEXTEST", "target/nextest")
+
 build:
     cargo build --workspace
 
@@ -39,7 +45,7 @@ install-local: build-local
     fi
 
 test *ARGS:
-    cargo nextest run --workspace {{ARGS}}
+    CARGO_TARGET_DIR={{TARGET_NEXTEST}} cargo nextest run --workspace {{ARGS}}
 
 # Run doctests (nextest doesn't support doctests)
 test-doc:
@@ -52,8 +58,13 @@ bench:
 fmt:
     cargo fmt --all
 
+# Strict, CI-matching: --all-targets lints tests, no --fix so failures surface.
 clippy:
-    cargo clippy --workspace --fix --allow-dirty -- -D warnings
+    CARGO_TARGET_DIR={{TARGET_CLIPPY}} cargo clippy --workspace --all-targets -- -D warnings
+
+# Dev convenience: auto-apply fixable lints (do not use as the gate).
+clippy-fix:
+    CARGO_TARGET_DIR={{TARGET_CLIPPY}} cargo clippy --workspace --all-targets --fix --allow-dirty -- -D warnings
 
 check: fmt clippy web-check
 
