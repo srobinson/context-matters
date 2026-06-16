@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "cm-capabilities"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "blake3",
  "chrono",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "cm-cli"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "cm-core"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "blake3",
  "chrono",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "cm-store"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "anyhow",
  "base64",
@@ -479,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "cm-web"
-version = "0.2.24"
+version = "0.2.25"
 dependencies = [
  "anyhow",
  "axum",
