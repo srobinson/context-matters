@@ -392,6 +392,206 @@ fn confidence_serde() {
     assert_eq!(c, Confidence::Medium);
 }
 
+// ── Recall ranking ─────────────────────────────────────────────────
+
+fn rank_entry(
+    kind: EntryKind,
+    confidence: Option<Confidence>,
+    priority: Option<i32>,
+    scope: &str,
+    updated_at: &str,
+    id: &str,
+) -> Entry {
+    let timestamp = updated_at.parse().unwrap();
+    Entry {
+        id: uuid::Uuid::parse_str(id).unwrap(),
+        scope_path: ScopePath::parse(scope).unwrap(),
+        kind,
+        title: "rank test".to_owned(),
+        body: "rank body".to_owned(),
+        content_hash: "hash".to_owned(),
+        meta: Some(EntryMeta {
+            confidence,
+            priority,
+            ..Default::default()
+        }),
+        created_by: "test:rank".to_owned(),
+        created_at: timestamp,
+        updated_at: timestamp,
+        superseded_by: None,
+    }
+}
+
+#[test]
+fn recall_rank_key_orders_kind_confidence_priority_scope_recency_id() {
+    let base_time = "2026-06-16T00:00:00Z";
+    let low_id = "01890f99-0000-7000-8000-000000000001";
+    let high_id = "01890f99-0000-7000-8000-000000000002";
+
+    let feedback = rank_entry(
+        EntryKind::Feedback,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        base_time,
+        low_id,
+    );
+    let fact = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        base_time,
+        high_id,
+    );
+    assert!(recall_rank_key(&feedback) < recall_rank_key(&fact));
+    assert_eq!(EntryKind::Feedback.rank_tier(), 0);
+
+    assert!(Confidence::High.recall_rank() < Confidence::Medium.recall_rank());
+    assert!(Confidence::Medium.recall_rank() < Confidence::Low.recall_rank());
+
+    let medium = rank_entry(
+        EntryKind::Decision,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        base_time,
+        low_id,
+    );
+    let absent = rank_entry(
+        EntryKind::Decision,
+        None,
+        Some(0),
+        "global",
+        base_time,
+        low_id,
+    );
+    assert_eq!(recall_rank_key(&medium), recall_rank_key(&absent));
+
+    let global_high_priority = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(10),
+        "global",
+        base_time,
+        low_id,
+    );
+    let local_default_priority = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(0),
+        "global/project:helioy/repo:context-matters",
+        base_time,
+        high_id,
+    );
+    assert!(recall_rank_key(&global_high_priority) < recall_rank_key(&local_default_priority));
+
+    let newer = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        "2026-06-16T00:00:01Z",
+        low_id,
+    );
+    let older = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        base_time,
+        high_id,
+    );
+    assert!(recall_rank_key(&newer) < recall_rank_key(&older));
+
+    let larger_uuid = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        base_time,
+        high_id,
+    );
+    let smaller_uuid = rank_entry(
+        EntryKind::Fact,
+        Some(Confidence::Medium),
+        Some(0),
+        "global",
+        base_time,
+        low_id,
+    );
+    assert!(recall_rank_key(&larger_uuid) < recall_rank_key(&smaller_uuid));
+}
+
+#[test]
+fn recall_rank_key_defines_total_order_property() {
+    let kinds = [
+        EntryKind::Feedback,
+        EntryKind::Decision,
+        EntryKind::Preference,
+        EntryKind::Lesson,
+        EntryKind::Pattern,
+        EntryKind::Fact,
+        EntryKind::Reference,
+        EntryKind::Observation,
+    ];
+    let confidences = [
+        Some(Confidence::High),
+        Some(Confidence::Medium),
+        Some(Confidence::Low),
+        None,
+    ];
+    let priorities = [1, 0];
+    let scopes = ["global/project:helioy/repo:context-matters", "global"];
+    let times = ["2026-06-16T00:00:01Z", "2026-06-16T00:00:00Z"];
+
+    let mut entries = Vec::new();
+    let mut id_suffix = 1u128;
+    for kind in kinds {
+        for confidence in confidences {
+            for priority in priorities {
+                for scope in scopes {
+                    for updated_at in times {
+                        entries.push(rank_entry(
+                            kind,
+                            confidence,
+                            Some(priority),
+                            scope,
+                            updated_at,
+                            &format!("01890f99-0000-7000-8000-{id_suffix:012x}"),
+                        ));
+                        id_suffix += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let keys = entries.iter().map(recall_rank_key).collect::<Vec<_>>();
+    for (left_index, left) in keys.iter().enumerate() {
+        assert!(!(left < left), "rank key ordering must be irreflexive");
+        for (right_index, right) in keys.iter().enumerate() {
+            if left_index != right_index {
+                assert_ne!(left, right, "distinct entries must have distinct rank keys");
+            }
+            if left < right {
+                assert!(!(right < left), "rank key ordering must be antisymmetric");
+            }
+        }
+    }
+
+    let mut sorted = keys;
+    sorted.sort();
+    for window in sorted.windows(3) {
+        assert!(window[0] < window[1]);
+        assert!(window[1] < window[2]);
+        assert!(
+            window[0] < window[2],
+            "rank key ordering must be transitive"
+        );
+    }
+}
+
 // ── Mutation types ─────────────────────────────────────────────────
 
 #[test]

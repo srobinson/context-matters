@@ -61,7 +61,7 @@ impl Config {
 }
 
 /// Config file name used for both loading and generating.
-pub const CONFIG_FILENAME: &str = ".cm.config.toml";
+pub use cm_core::CM_CONFIG_FILENAME as CONFIG_FILENAME;
 
 /// Returns a commented TOML config template with all options and defaults.
 #[must_use]
@@ -92,6 +92,13 @@ pub fn config_template() -> String {
 # project-local config files cannot override it.
 # [scope_inference]
 # strategy = "filesystem"
+
+# Recall ranking mode. `legacy` preserves existing scope-depth ordering.
+# `shadow` is reserved for observe-only diffing. `live` serves the
+# deterministic kind/confidence/priority rank key.
+# Override with CM_RECALL_RANKING env var.
+# [recall]
+# ranking_mode = "legacy"
 "#,
         filename = CONFIG_FILENAME
     )
@@ -109,12 +116,23 @@ struct FileConfig {
     data_dir: Option<String>,
     log_level: Option<String>,
     scope_inference: Option<FileScopeInferenceConfig>,
+    /// Parsed so shared config files with `[recall]` remain valid.
+    /// cm-capabilities owns the ranking mode semantics.
+    #[serde(rename = "recall")]
+    _recall: Option<FileRecallConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 struct FileScopeInferenceConfig {
     strategy: Option<ScopeInferenceStrategy>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileRecallConfig {
+    #[serde(rename = "ranking_mode")]
+    _ranking_mode: Option<String>,
 }
 
 /// Load configuration with precedence: env vars > TOML file > defaults.
@@ -310,6 +328,7 @@ mod tests {
         assert!(cfg.data_dir.is_none());
         assert!(cfg.log_level.is_none());
         assert!(cfg.scope_inference.is_none());
+        assert!(cfg._recall.is_none());
     }
 
     #[test]
@@ -321,6 +340,9 @@ mod tests {
 
             [scope_inference]
             strategy = "custom"
+
+            [recall]
+            ranking_mode = "live"
             "#,
         )
         .unwrap();
@@ -330,6 +352,7 @@ mod tests {
             cfg.scope_inference.unwrap().strategy,
             Some(ScopeInferenceStrategy::Custom)
         );
+        assert_eq!(cfg._recall.unwrap()._ranking_mode.as_deref(), Some("live"));
     }
 
     #[test]

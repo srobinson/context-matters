@@ -7,7 +7,9 @@ mod scope_filter;
 mod stats;
 
 pub use browse::{BrowseSort, EntryFilter, PagedResult, Pagination};
-pub use entry::{Confidence, Entry, EntryKind, EntryMeta, NewEntry, UpdateEntry};
+pub use entry::{
+    Confidence, Entry, EntryKind, EntryMeta, NewEntry, RecallRankKey, UpdateEntry, recall_rank_key,
+};
 pub use mutation::{MutationAction, MutationRecord, MutationSource, WriteContext};
 pub use relation::{EntryRelation, RelationKind};
 pub use scope::{NewScope, Scope, ScopeKind, ScopePath};

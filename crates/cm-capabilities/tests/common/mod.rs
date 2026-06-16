@@ -106,6 +106,31 @@ pub(crate) async fn seed_entry_with_scope(
         .unwrap();
 }
 
+pub(crate) async fn seed_entry_with_meta(
+    store: &CmStore,
+    title: &str,
+    body: &str,
+    kind: EntryKind,
+    scope: &str,
+    meta: EntryMeta,
+) {
+    ensure_scope(store, scope).await;
+    store
+        .create_entry(
+            NewEntry {
+                scope_path: ScopePath::parse(scope).unwrap(),
+                kind,
+                title: title.to_owned(),
+                body: body.to_owned(),
+                created_by: "test:seed".to_owned(),
+                meta: Some(meta),
+            },
+            &wctx(),
+        )
+        .await
+        .unwrap();
+}
+
 pub(crate) async fn seed_entry_with_tags(
     store: &CmStore,
     title: &str,
