@@ -529,13 +529,21 @@ fn recall_rank_key_prefix_order_is_transitive() {
 
     let keys = entries.iter().map(recall_rank_key).collect::<Vec<_>>();
     for (left_index, left) in keys.iter().enumerate() {
-        assert!(!(left < left), "rank key ordering must be irreflexive");
+        assert_eq!(
+            left.cmp(left),
+            std::cmp::Ordering::Equal,
+            "rank key ordering must be irreflexive"
+        );
         for (right_index, right) in keys.iter().enumerate() {
             if left_index != right_index {
                 assert_ne!(left, right, "distinct entries must have distinct rank keys");
             }
             if left < right {
-                assert!(!(right < left), "rank key ordering must be antisymmetric");
+                assert_eq!(
+                    right.cmp(left),
+                    std::cmp::Ordering::Greater,
+                    "rank key ordering must be antisymmetric"
+                );
             }
         }
     }
