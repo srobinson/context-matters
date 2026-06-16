@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::{
@@ -117,7 +118,8 @@ impl RecallRankingMode {
 }
 
 /// Per-entry position movement recorded by the recall shadow canary.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, TS)]
+#[ts(export)]
 pub struct RecallShadowPositionDelta {
     pub id: Uuid,
     pub old_position: Option<u32>,
@@ -147,6 +149,69 @@ pub struct RecallShadowRecord {
     pub window_truncated: bool,
     pub ranking_version: String,
     pub duration_ms: u32,
+}
+
+/// Stored recall shadow canary row surfaced by read-only observers.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct RecallShadowRow {
+    pub id: Uuid,
+    pub ts: DateTime<Utc>,
+    pub scope_path: Option<String>,
+    pub query_hash: Option<String>,
+    pub query_len: Option<u32>,
+    pub routing: String,
+    pub tier: Option<String>,
+    pub k: u32,
+    pub candidate_count: u32,
+    pub top1_changed: bool,
+    pub topk_overlap: f64,
+    pub footrule: f64,
+    pub mean_abs_position_delta: f64,
+    pub position_deltas: Vec<RecallShadowPositionDelta>,
+    pub old_ids: Vec<Uuid>,
+    pub new_ids: Vec<Uuid>,
+    pub window_truncated: bool,
+    pub ranking_version: String,
+    pub duration_ms: u32,
+}
+
+/// Aggregate metrics over a filtered recall shadow row set.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct RecallShadowSummary {
+    pub total: u64,
+    pub divergence_rate: f64,
+    pub avg_topk_overlap: f64,
+    pub avg_footrule: f64,
+}
+
+/// Read-only recall shadow API response.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export)]
+pub struct RecallShadowResponse {
+    pub summary: RecallShadowSummary,
+    pub rows: Vec<RecallShadowRow>,
+}
+
+/// Filter for listing stored recall shadow canary rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecallShadowListFilter {
+    pub routing: Option<String>,
+    pub scope_path: Option<String>,
+    pub top1_changed: Option<bool>,
+    pub limit: u32,
+}
+
+impl Default for RecallShadowListFilter {
+    fn default() -> Self {
+        Self {
+            routing: None,
+            scope_path: None,
+            top1_changed: None,
+            limit: 50,
+        }
+    }
 }
 
 /// Async storage interface for context entries.

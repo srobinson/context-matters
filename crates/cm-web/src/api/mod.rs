@@ -5,6 +5,7 @@ mod entries;
 mod error;
 mod export;
 mod mutations;
+mod recall_shadow;
 mod scope_query;
 mod stats;
 
@@ -22,6 +23,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .merge(agent::router())
         .route("/stats", get(stats::get_stats))
         .route("/mutations", get(mutations::list_mutations))
+        .route("/recall-shadow", get(recall_shadow::list_recall_shadow))
         .route("/export", get(export::export))
         .with_state(state)
 }

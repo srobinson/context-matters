@@ -15,7 +15,8 @@ pub use error::{CmError, ScopePathError};
 pub use query::{FtsQuery, QueryBuilder};
 pub use store::{
     AncestorWalkRequest, ContentSearchPage, ContentSearchRequest, ContextStore, RecallRankingMode,
-    RecallShadowPositionDelta, RecallShadowRecord, ScopeInferenceStrategy, ScoredEntry,
+    RecallShadowListFilter, RecallShadowPositionDelta, RecallShadowRecord, RecallShadowResponse,
+    RecallShadowRow, RecallShadowSummary, ScopeInferenceStrategy, ScoredEntry,
 };
 pub use types::{
     BrowseSort, Confidence, Entry, EntryFilter, EntryKind, EntryMeta, EntryRelation,

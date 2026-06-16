@@ -16,6 +16,8 @@ import {
   type NewEntryRequest,
   type PagedResponse,
   type RecallParams,
+  type RecallShadowListParams,
+  type RecallShadowResponse,
   type RecallView,
   type SearchParams,
   type Stats,
@@ -43,6 +45,10 @@ export const queryKeys = {
   mutations: {
     all: ["mutations"] as const,
     list: (params: MutationListParams) => ["mutations", "list", params] as const,
+  },
+  recallShadow: {
+    all: ["recallShadow"] as const,
+    list: (params: RecallShadowListParams) => ["recallShadow", "list", params] as const,
   },
 };
 
@@ -130,6 +136,17 @@ export function useMutationHistory(
   return useQuery({
     queryKey: queryKeys.mutations.list(params),
     queryFn: () => api.mutations.list(params),
+    ...options,
+  });
+}
+
+export function useRecallShadowHistory(
+  params: RecallShadowListParams = {},
+  options?: Partial<UseQueryOptions<RecallShadowResponse>>,
+) {
+  return useQuery({
+    queryKey: queryKeys.recallShadow.list(params),
+    queryFn: () => api.recallShadow.list(params),
     ...options,
   });
 }
