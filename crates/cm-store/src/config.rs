@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use cm_core::ScopeInferenceStrategy;
+use cm_core::{RecallRankingMode, ScopeInferenceStrategy};
 use serde::Deserialize;
 
 use crate::project::{default_base_dir, resolve_home_dir};
@@ -24,6 +24,8 @@ pub struct Config {
     pub log_level: String,
     /// Strategy used for `cwd_inferred` scope resolution.
     pub scope_inference_strategy: ScopeInferenceStrategy,
+    /// Recall ordering mode.
+    pub recall_ranking_mode: RecallRankingMode,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             data_dir,
             log_level: "warn".to_owned(),
             scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+            recall_ranking_mode: RecallRankingMode::Legacy,
         }
     }
 }
@@ -61,7 +64,7 @@ impl Config {
 }
 
 /// Config file name used for both loading and generating.
-pub const CONFIG_FILENAME: &str = ".cm.config.toml";
+pub use cm_core::CM_CONFIG_FILENAME as CONFIG_FILENAME;
 
 /// Returns a commented TOML config template with all options and defaults.
 #[must_use]
@@ -92,6 +95,13 @@ pub fn config_template() -> String {
 # project-local config files cannot override it.
 # [scope_inference]
 # strategy = "filesystem"
+
+# Recall ranking mode. `legacy` preserves existing scope-depth ordering.
+# `shadow` is reserved for observe-only diffing. `live` serves the
+# deterministic kind/confidence/priority rank key.
+# Override with CM_RECALL_RANKING env var.
+# [recall]
+# ranking_mode = "legacy"
 "#,
         filename = CONFIG_FILENAME
     )
@@ -109,12 +119,19 @@ struct FileConfig {
     data_dir: Option<String>,
     log_level: Option<String>,
     scope_inference: Option<FileScopeInferenceConfig>,
+    recall: Option<FileRecallConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 struct FileScopeInferenceConfig {
     strategy: Option<ScopeInferenceStrategy>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct FileRecallConfig {
+    ranking_mode: Option<String>,
 }
 
 /// Load configuration with precedence: env vars > TOML file > defaults.
@@ -131,6 +148,13 @@ pub fn load() -> Result<Config> {
         }
         if let Some(level) = file_cfg.log_level {
             config.log_level = level;
+        }
+        if let Some(mode) = file_cfg
+            .recall
+            .and_then(|recall| recall.ranking_mode)
+            .map(|mode| RecallRankingMode::parse_or_legacy(&mode))
+        {
+            config.recall_ranking_mode = mode;
         }
     }
 
@@ -149,6 +173,9 @@ pub fn load() -> Result<Config> {
     }
     if let Ok(level) = std::env::var("CM_LOG_LEVEL") {
         config.log_level = level;
+    }
+    if let Ok(mode) = std::env::var("CM_RECALL_RANKING") {
+        config.recall_ranking_mode = RecallRankingMode::parse_or_legacy(&mode);
     }
 
     config.validate()?;
@@ -260,6 +287,7 @@ mod tests {
             config.scope_inference_strategy,
             ScopeInferenceStrategy::Filesystem
         );
+        assert_eq!(config.recall_ranking_mode, RecallRankingMode::Legacy);
     }
 
     #[test]
@@ -268,6 +296,7 @@ mod tests {
             data_dir: PathBuf::from("/tmp/test-cm"),
             log_level: "debug".to_owned(),
             scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+            recall_ranking_mode: RecallRankingMode::Legacy,
         };
         assert_eq!(config.db_path(), PathBuf::from("/tmp/test-cm/cm.db"));
     }
@@ -310,6 +339,7 @@ mod tests {
         assert!(cfg.data_dir.is_none());
         assert!(cfg.log_level.is_none());
         assert!(cfg.scope_inference.is_none());
+        assert!(cfg.recall.is_none());
     }
 
     #[test]
@@ -321,6 +351,9 @@ mod tests {
 
             [scope_inference]
             strategy = "custom"
+
+            [recall]
+            ranking_mode = "live"
             "#,
         )
         .unwrap();
@@ -330,6 +363,7 @@ mod tests {
             cfg.scope_inference.unwrap().strategy,
             Some(ScopeInferenceStrategy::Custom)
         );
+        assert_eq!(cfg.recall.unwrap().ranking_mode.as_deref(), Some("live"));
     }
 
     #[test]
@@ -349,6 +383,7 @@ mod tests {
             data_dir: PathBuf::new(),
             log_level: "warn".to_owned(),
             scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+            recall_ranking_mode: RecallRankingMode::Legacy,
         };
         let err = config.validate().unwrap_err();
         assert!(
@@ -363,6 +398,7 @@ mod tests {
             data_dir: PathBuf::from("relative/path"),
             log_level: "warn".to_owned(),
             scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+            recall_ranking_mode: RecallRankingMode::Legacy,
         };
         let err = config.validate().unwrap_err();
         assert!(
@@ -377,6 +413,7 @@ mod tests {
             data_dir: PathBuf::from("/tmp/cm-test"),
             log_level: "warn".to_owned(),
             scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+            recall_ranking_mode: RecallRankingMode::Legacy,
         };
         config.validate().unwrap();
     }
@@ -388,6 +425,7 @@ mod tests {
             [
                 ("CM_DATA_DIR", Some("relative/path")),
                 ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
             ],
             || {
                 let err = load().unwrap_err();
@@ -402,7 +440,11 @@ mod tests {
     #[test]
     fn load_propagates_validation_error_for_empty_data_dir() {
         temp_env::with_vars(
-            [("CM_DATA_DIR", Some("")), ("CM_LOG_LEVEL", None::<&str>)],
+            [
+                ("CM_DATA_DIR", Some("")),
+                ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
+            ],
             || {
                 let err = load().unwrap_err();
                 assert!(
@@ -419,6 +461,7 @@ mod tests {
             [
                 ("CM_DATA_DIR", Some("/tmp/cm-test-load")),
                 ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
             ],
             || {
                 let config = load().unwrap();
@@ -433,6 +476,7 @@ mod tests {
             [
                 ("CM_DATA_DIR", Some("~/custom-cm")),
                 ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
             ],
             || {
                 let config = load().unwrap();
@@ -449,10 +493,67 @@ mod tests {
             [
                 ("CM_DATA_DIR", Some("/tmp/cm-test-log")),
                 ("CM_LOG_LEVEL", Some("trace")),
+                ("CM_RECALL_RANKING", None::<&str>),
             ],
             || {
                 let config = load().unwrap();
                 assert_eq!(config.log_level, "trace");
+            },
+        );
+    }
+
+    #[test]
+    fn load_respects_recall_ranking_mode_from_config() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(CONFIG_FILENAME),
+            r#"
+            log_level = "debug"
+
+            [recall]
+            ranking_mode = "live"
+            "#,
+        )
+        .unwrap();
+        let data_dir = dir.path().to_string_lossy().into_owned();
+
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some(data_dir.as_str())),
+                ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(config.data_dir, dir.path());
+                assert_eq!(config.log_level, "debug");
+                assert_eq!(config.recall_ranking_mode, RecallRankingMode::Live);
+            },
+        );
+    }
+
+    #[test]
+    fn load_respects_recall_ranking_env_override() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(CONFIG_FILENAME),
+            r#"
+            [recall]
+            ranking_mode = "live"
+            "#,
+        )
+        .unwrap();
+        let data_dir = dir.path().to_string_lossy().into_owned();
+
+        temp_env::with_vars(
+            [
+                ("CM_DATA_DIR", Some(data_dir.as_str())),
+                ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", Some("legacy")),
+            ],
+            || {
+                let config = load().unwrap();
+                assert_eq!(config.recall_ranking_mode, RecallRankingMode::Legacy);
             },
         );
     }
@@ -474,6 +575,7 @@ mod tests {
             [
                 ("CM_DATA_DIR", Some(data_dir.as_str())),
                 ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
             ],
             || {
                 let config = load().unwrap();
@@ -491,6 +593,7 @@ mod tests {
             [
                 ("CM_DATA_DIR", None::<&str>),
                 ("CM_LOG_LEVEL", None::<&str>),
+                ("CM_RECALL_RANKING", None::<&str>),
             ],
             || {
                 let cwd_config = std::env::current_dir().unwrap().join(CONFIG_FILENAME);

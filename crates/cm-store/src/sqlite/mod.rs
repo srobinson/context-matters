@@ -30,8 +30,9 @@ use chrono::{DateTime, Utc};
 use cm_core::{
     AncestorWalkRequest, CmError, ContentSearchPage, ContentSearchRequest, ContextStore, Entry,
     EntryFilter, EntryKind, EntryRelation, MutationAction, MutationRecord, MutationSource,
-    NewEntry, NewScope, PagedResult, RelationKind, Scope, ScopeInferenceStrategy, ScopeKind,
-    ScopePath, ScoredEntry, StoreStats, UpdateEntry, WriteContext,
+    NewEntry, NewScope, PagedResult, RecallRankingMode, RelationKind, Scope,
+    ScopeInferenceStrategy, ScopeKind, ScopePath, ScoredEntry, StoreStats, UpdateEntry,
+    WriteContext,
 };
 use sqlx::sqlite::SqlitePool;
 use uuid::Uuid;
@@ -44,6 +45,7 @@ pub struct CmStore {
     pub(crate) write_pool: SqlitePool,
     pub(crate) read_pool: SqlitePool,
     scope_inference_strategy: ScopeInferenceStrategy,
+    recall_ranking_mode: RecallRankingMode,
 }
 
 impl CmStore {
@@ -53,6 +55,7 @@ impl CmStore {
             write_pool,
             read_pool,
             scope_inference_strategy: ScopeInferenceStrategy::Filesystem,
+            recall_ranking_mode: RecallRankingMode::Legacy,
         }
     }
 
@@ -66,6 +69,21 @@ impl CmStore {
             write_pool,
             read_pool,
             scope_inference_strategy,
+            recall_ranking_mode: RecallRankingMode::Legacy,
+        }
+    }
+
+    /// Create a new store with runtime config applied.
+    pub fn new_with_config(
+        write_pool: SqlitePool,
+        read_pool: SqlitePool,
+        config: &crate::config::Config,
+    ) -> Self {
+        Self {
+            write_pool,
+            read_pool,
+            scope_inference_strategy: config.scope_inference_strategy,
+            recall_ranking_mode: config.recall_ranking_mode,
         }
     }
 
@@ -83,6 +101,10 @@ impl CmStore {
 impl ContextStore for CmStore {
     fn scope_inference_strategy(&self) -> ScopeInferenceStrategy {
         self.scope_inference_strategy
+    }
+
+    fn recall_ranking_mode(&self) -> RecallRankingMode {
+        self.recall_ranking_mode
     }
 
     async fn create_entry(

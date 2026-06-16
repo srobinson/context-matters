@@ -84,6 +84,38 @@ pub enum ScopeInferenceStrategy {
     K8s,
 }
 
+/// Recall ordering mode resolved at store startup.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecallRankingMode {
+    /// Preserve existing scope-depth ordering.
+    #[default]
+    Legacy,
+    /// Reserved for observe-only diffing.
+    Shadow,
+    /// Serve deterministic kind/confidence/priority ordering.
+    Live,
+}
+
+impl RecallRankingMode {
+    /// Parse a recall ranking mode from config or environment text.
+    #[must_use]
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "legacy" => Some(Self::Legacy),
+            "shadow" => Some(Self::Shadow),
+            "live" => Some(Self::Live),
+            _ => None,
+        }
+    }
+
+    /// Parse a recall ranking mode, returning legacy on invalid input.
+    #[must_use]
+    pub fn parse_or_legacy(raw: &str) -> Self {
+        Self::parse(raw).unwrap_or_default()
+    }
+}
+
 /// Async storage interface for context entries.
 ///
 /// All methods are async and return `Result<T, CmError>`. Uses native
@@ -114,6 +146,11 @@ pub trait ContextStore: Send + Sync + 'static {
     /// Configured strategy for resolving `cwd_inferred` selectors.
     fn scope_inference_strategy(&self) -> ScopeInferenceStrategy {
         ScopeInferenceStrategy::Filesystem
+    }
+
+    /// Configured recall ordering mode.
+    fn recall_ranking_mode(&self) -> RecallRankingMode {
+        RecallRankingMode::Legacy
     }
 
     // ── Entry CRUD ──────────────────────────────────────────────

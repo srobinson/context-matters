@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -39,6 +41,22 @@ impl EntryKind {
             Self::Observation => "observation",
         }
     }
+
+    /// Return the recall tier for deterministic priority ordering.
+    ///
+    /// Lower values rank first.
+    pub fn rank_tier(&self) -> u8 {
+        match self {
+            Self::Feedback => 0,
+            Self::Decision => 1,
+            Self::Preference => 2,
+            Self::Lesson => 3,
+            Self::Pattern => 4,
+            Self::Fact => 5,
+            Self::Reference => 6,
+            Self::Observation => 7,
+        }
+    }
 }
 
 impl std::fmt::Display for EntryKind {
@@ -76,6 +94,31 @@ pub enum Confidence {
     High,
     Medium,
     Low,
+}
+
+impl Confidence {
+    /// Return the recall rank for deterministic priority ordering.
+    ///
+    /// Lower values rank first.
+    pub fn recall_rank(&self) -> u8 {
+        match self {
+            Self::High => 0,
+            Self::Medium => 1,
+            Self::Low => 2,
+        }
+    }
+}
+
+/// Deterministic lexicographic recall key.
+///
+/// The key sorts ascending. `Reverse` wraps fields where larger values
+/// should rank first.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RecallRankKey {
+    kind_tier: u8,
+    confidence_rank: u8,
+    priority: Reverse<i32>,
+    scope_depth: Reverse<usize>,
 }
 
 /// Structured metadata stored in the JSONB `meta` column.
@@ -157,6 +200,26 @@ pub struct Entry {
     /// If set, this entry has been superseded by the referenced entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<uuid::Uuid>,
+}
+
+/// Build the deterministic recall priority prefix for an entry.
+///
+/// Ordering is kind, confidence, priority, then scope depth.
+#[must_use]
+pub fn recall_rank_key(entry: &Entry) -> RecallRankKey {
+    let meta = entry.meta.as_ref();
+    let confidence_rank = meta
+        .and_then(|meta| meta.confidence)
+        .unwrap_or(Confidence::Medium)
+        .recall_rank();
+    let priority = meta.and_then(|meta| meta.priority).unwrap_or(0);
+
+    RecallRankKey {
+        kind_tier: entry.kind.rank_tier(),
+        confidence_rank,
+        priority: Reverse(priority),
+        scope_depth: Reverse(entry.scope_path.depth()),
+    }
 }
 
 /// Input for creating a new context entry.

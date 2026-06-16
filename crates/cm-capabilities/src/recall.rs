@@ -1,6 +1,8 @@
 //! Recall capability orchestration.
 
-use cm_core::{CmError, ContextStore, ScopePath};
+use std::cmp::Ordering;
+
+use cm_core::{CmError, ContextStore, RecallRankingMode, ScopePath, recall_rank_key};
 
 use crate::constants::MAX_LIMIT;
 use crate::projection::{RecallRow, entry_has_any_tag, estimate_tokens};
@@ -57,7 +59,11 @@ async fn recall_inner(
         route_query(store, &request, scope_path, fetch_limit).await?;
     let candidates_before_filter = raw_rows.len();
 
-    let rows = post_filter_rows(raw_rows, &request);
+    let rows = filter_rows(raw_rows, &request);
+    let rows = match store.recall_ranking_mode() {
+        RecallRankingMode::Live => rank_priority_rows(rows, &request),
+        RecallRankingMode::Legacy | RecallRankingMode::Shadow => rank_legacy_rows(rows, &request),
+    };
     let (budget_rows, total_tokens) = apply_token_budget(rows, request.max_tokens);
     let (scope_chain, scope_hits) = scope_chain_and_hits(scope_path, &budget_rows);
 
@@ -96,7 +102,7 @@ fn reject_non_singular_scope(selector: &ScopeSelector) -> Result<(), CmError> {
     }
 }
 
-fn post_filter_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {
+fn filter_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {
     if !request.kinds.is_empty() {
         rows.retain(|row| request.kinds.contains(&row.entry.kind));
     }
@@ -105,9 +111,36 @@ fn post_filter_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<Re
         rows.retain(|row| entry_has_any_tag(&row.entry, &request.tags));
     }
 
+    rows
+}
+
+fn rank_legacy_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {
     rows.sort_by_key(|row| std::cmp::Reverse(row.entry.scope_path.depth()));
     rows.truncate(request.limit as usize);
     rows
+}
+
+fn rank_priority_rows(mut rows: Vec<RecallRow>, request: &RecallRequest) -> Vec<RecallRow> {
+    rows.sort_by(compare_priority_rows);
+    rows.truncate(request.limit as usize);
+    rows
+}
+
+fn compare_priority_rows(left: &RecallRow, right: &RecallRow) -> Ordering {
+    recall_rank_key(&left.entry)
+        .cmp(&recall_rank_key(&right.entry))
+        .then_with(|| compare_bm25(left.score, right.score))
+        .then_with(|| right.entry.updated_at.cmp(&left.entry.updated_at))
+        .then_with(|| right.entry.id.cmp(&left.entry.id))
+}
+
+fn compare_bm25(left: Option<f32>, right: Option<f32>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => left.total_cmp(&right),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
 }
 
 fn apply_token_budget(rows: Vec<RecallRow>, max_tokens: Option<u32>) -> (Vec<RecallRow>, u32) {
